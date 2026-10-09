@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Gateway 8080" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
+    <module name="jsnx-edsp-data-gateway" />
+    <option name="SPRING_BOOT_MAIN_CLASS" value="com.jsnx.edsp.gateway.GatewayApplication" />
+    <method v="2"><option name="Make" enabled="true" /></method>
+  </configuration>
+</component>

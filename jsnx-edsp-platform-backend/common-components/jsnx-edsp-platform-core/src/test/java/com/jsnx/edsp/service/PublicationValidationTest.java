@@ -1,0 +1,164 @@
+package com.jsnx.edsp.service;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.jsnx.edsp.model.ApiModels.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.mock.env.MockEnvironment;
+
+import java.security.MessageDigest;
+import java.time.LocalDateTime;
+import java.util.*;
+
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+class PublicationValidationTest {
+    private static final long SERVICE_ID = 42L;
+    private static final long RESOURCE_ID = 7L;
+    private static final String URL = "https://supplier.example/company";
+    private static final Map<String, Object> REQUEST = Map.of("query_key", "企业001");
+    private static final Map<String, Object> RESPONSE = Map.of("result", Map.of("code", "0000"),
+            "data", Map.of("names", List.of("企业001", "企业002")));
+    private JdbcTemplate jdbc;
+    private InterfaceService service;
+    private ObjectMapper mapper;
+    private PublishedPlanRegistry plans;
+
+    @BeforeEach
+    void setUp() {
+        jdbc = mock(JdbcTemplate.class, withSettings().mockMaker("mock-maker-subclass"));
+        mapper = new ObjectMapper().findAndRegisterModules();
+        plans = new PublishedPlanRegistry();
+        service = spy(new InterfaceService(jdbc, new JsonSupport(mapper), mapper, plans, new MockEnvironment()));
+        doReturn(detail()).when(service).interfaceDetail(SERVICE_ID);
+        doReturn(resource(URL, "POST", 3000, "READY", REQUEST, RESPONSE)).when(service).resourceApi(RESOURCE_ID);
+        when(jdbc.queryForMap(contains("FOR UPDATE"), eq(SERVICE_ID)))
+                .thenReturn(Map.of("status", "DRAFT"));
+        doReturn(new ValidationResult(true, List.of(), List.of())).when(service).validate(SERVICE_ID);
+        when(jdbc.queryForObject(anyString(), org.mockito.ArgumentMatchers.<RowMapper<InterfaceSummary>>any(), eq(SERVICE_ID)))
+                .thenReturn(detail().summary());
+        when(jdbc.queryForList(contains("SELECT runtime_url FROM data_source"), eq(String.class), eq(1L)))
+                .thenReturn(List.of("http://127.0.0.1:1"));
+    }
+
+    @Test
+    void publishesServiceUsingItsVerifiedResourceWithoutDuplicateServiceVerification() throws Exception {
+        resourceVerified();
+        orchestrationVerified();
+        service.publishDirect(SERVICE_ID, new PublishRequest("管理员", "首次上线"));
+        assertThat(plans.size()).isEqualTo(1);
+        verify(jdbc).update("UPDATE api_interface SET status='PUBLISHED',published_version=? WHERE id=?", 3, SERVICE_ID);
+        verify(jdbc).update(contains("INSERT INTO published_route"), eq(SERVICE_ID), eq("COMPANY_QUERY"),
+                eq("/services/company"), eq("POST"), eq(3), eq(1L));
+    }
+
+    @Test
+    void resourceValidationDoesNotReplaceOrchestrationValidation() throws Exception {
+        resourceVerified();
+        assertThatThrownBy(() -> service.publishDirect(SERVICE_ID, new PublishRequest("管理员", "上线")))
+                .hasMessageContaining("标准编排验证").hasMessageNotContaining("提交审批");
+        assertThat(plans.size()).isZero();
+    }
+
+    @Test
+    void orchestrationAloneDoesNotProveAnUpstreamCallSucceeded() throws Exception {
+        orchestrationVerified();
+        assertThatThrownBy(() -> service.publishDirect(SERVICE_ID, null)).hasMessageContaining("上游能力接入");
+    }
+
+    @Test
+    void historicalTimestampWithoutConfigurationProofIsNotAccepted() {
+        // The fixture has verifiedAt; a timestamp alone cannot prove which configuration was tested.
+        when(jdbc.queryForList("SELECT verified_checksum FROM resource_api WHERE id=?", String.class, RESOURCE_ID))
+                .thenReturn(Collections.singletonList(null));
+        assertThat(service.validationStatus(SERVICE_ID).get("upstreamVerified")).isFalse();
+    }
+
+    @Test
+    void resourceAddressChangeInvalidatesPreviousProof() throws Exception {
+        resourceVerified();
+        doReturn(resource(URL + "/v2", "POST", 3000, "READY", REQUEST, RESPONSE))
+                .when(service).resourceApi(RESOURCE_ID);
+        assertThat(service.resourceValidationStatus(RESOURCE_ID).get("upstreamVerified")).isFalse();
+        assertThat(service.validationStatus(SERVICE_ID).get("upstreamVerified")).isFalse();
+    }
+
+    @Test
+    void methodTimeoutAndBothMessageContractsArePartOfVerification() throws Exception {
+        resourceVerified();
+        for (ResourceApiDetail changed : List.of(
+                resource(URL, "GET", 3000, "READY", REQUEST, RESPONSE),
+                resource(URL, "POST", 5000, "READY", REQUEST, RESPONSE),
+                resource(URL, "POST", 3000, "READY", Map.of("enterpriseName", "企业001"), RESPONSE),
+                resource(URL, "POST", 3000, "READY", REQUEST, Map.of("code", "OK")))) {
+            doReturn(changed).when(service).resourceApi(RESOURCE_ID);
+            assertThat(service.resourceValidationStatus(RESOURCE_ID).get("upstreamVerified")).isFalse();
+        }
+    }
+
+    @Test
+    void independentlyVerifiedServiceCanUseItsOwnUpstreamConfiguration() throws Exception {
+        when(jdbc.queryForList(contains("FROM interface_validation_record"), eq(String.class),
+                eq(SERVICE_ID), eq("UPSTREAM"))).thenReturn(List.of(upstreamFingerprint()));
+        assertThat(service.validationStatus(SERVICE_ID).get("upstreamVerified")).isTrue();
+        verify(service, never()).resourceApi(RESOURCE_ID);
+    }
+
+    @Test
+    void jsonKeyOrderDoesNotInvalidateIdenticalContracts() throws Exception {
+        resourceVerified();
+        Map<String, Object> reordered = new LinkedHashMap<>();
+        reordered.put("data", RESPONSE.get("data"));
+        reordered.put("result", RESPONSE.get("result"));
+        doReturn(resource(URL, "POST", 3000, "READY", REQUEST, reordered)).when(service).resourceApi(RESOURCE_ID);
+        assertThat(service.validationStatus(SERVICE_ID).get("upstreamVerified")).isTrue();
+    }
+
+    @Test
+    void aDraftResourceCannotSupplyValidationProof() throws Exception {
+        resourceVerified();
+        doReturn(resource(URL, "POST", 3000, "DRAFT", REQUEST, RESPONSE)).when(service).resourceApi(RESOURCE_ID);
+        assertThat(service.validationStatus(SERVICE_ID).get("upstreamVerified")).isFalse();
+    }
+
+    private void resourceVerified() throws Exception {
+        when(jdbc.queryForList("SELECT verified_checksum FROM resource_api WHERE id=?", String.class, RESOURCE_ID))
+                .thenReturn(List.of(upstreamFingerprint()));
+    }
+
+    private void orchestrationVerified() throws Exception {
+        String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(mapper.writeValueAsBytes(detail())));
+        when(jdbc.queryForList(contains("FROM interface_validation_record"), eq(String.class),
+                eq(SERVICE_ID), eq("ORCHESTRATION"))).thenReturn(List.of(hash));
+    }
+
+    private String upstreamFingerprint() throws Exception {
+        Map<String, Object> contract = Map.of("httpMethod", "POST", "upstreamUrl", URL, "timeoutMs", 3000,
+                "request", REQUEST, "response", RESPONSE);
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(
+                mapper.writer().with(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).writeValueAsBytes(contract)));
+    }
+
+    private InterfaceDetail detail() {
+        InterfaceSummary summary = new InterfaceSummary(SERVICE_ID, 1L, "COMPANY_QUERY", "企业查询",
+                "/services/company", "POST", URL, "/company", "OVERRIDE", "DIRECT", null, 3000,
+                "READY", "DRAFT", 3, null, LocalDateTime.of(2026, 10, 8, 10, 0),
+                RESOURCE_ID, "COMPANY_RESOURCE", "企业资源接口");
+        return new InterfaceDetail(summary, Map.of(), Map.of(), REQUEST, REQUEST, RESPONSE, RESPONSE,
+                3000, null, "DATA_SOURCE", 0, "result.code", List.of(), List.of(), null);
+    }
+
+    private ResourceApiDetail resource(String url, String method, int timeout, String status,
+                                       Map<String, Object> request, Map<String, Object> response) {
+        LocalDateTime verified = LocalDateTime.of(2026, 10, 8, 9, 0);
+        return new ResourceApiDetail(new ResourceApiSummary(RESOURCE_ID, 1L, "COMPANY_RESOURCE", "企业资源接口",
+                method, url, "/company", "OVERRIDE", timeout, status, 2, verified, verified, 1),
+                request, response, null, "DATA_SOURCE");
+    }
+}

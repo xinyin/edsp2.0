@@ -1,0 +1,371 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import vm from 'node:vm'
+import ts from 'typescript'
+import { parse } from '@vue/compiler-sfc'
+import { ref, computed, nextTick } from 'vue'
+
+const guideSource = readFileSync(new URL('../src/resource-guide.ts', import.meta.url), 'utf8')
+const guideJS = ts.transpileModule(guideSource, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 } }).outputText
+const guide = await import('data:text/javascript;base64,' + Buffer.from(guideJS).toString('base64'))
+const appText = readFileSync(new URL('../src/App.vue', import.meta.url), 'utf8')
+const script = parse(appText).descriptor.scriptSetup.content
+const sourceFile = ts.createSourceFile('App.ts', script, ts.ScriptTarget.Latest, true)
+const imports = sourceFile.statements.filter(ts.isImportDeclaration)
+let standalone = script
+for (const declaration of [...imports].reverse()) standalone = standalone.slice(0, declaration.getStart()) + standalone.slice(declaration.end)
+const appJS = ts.transpileModule(standalone, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText
+
+const mapping = direction => ({ direction, sourcePath: 'name', targetPath: 'name', transformType: 'DIRECT', transformConfig: {}, defaultValue: '', required: true, sortOrder: 1 })
+const codes = [{ vendorCode: '0000', standardCode: 'EXT-SUCCESS', resultStatus: 'HIT', billable: true, retryable: false }]
+const baseGuide = { upstreamUrl: 'http://localhost/query', servicePath: '/api/query', mappings: [mapping('REQUEST'), mapping('RESPONSE')], responseCodes: codes, securityEnabled: false, status: 'DRAFT', currentVersion: 2, publishedVersion: 1, orchestrationVerified: false }
+const result = () => ({ upstreamRequest: {}, upstreamResponse: {}, standardResponse: { resultStatus: 'HIT' }, steps: [], traceNodes: ['ESB_QUEUE', 'ESB_ADAPTER', 'GATEWAY', 'DATA_APPLICATION', 'SUPPLIER', 'STANDARD_RESPONSE'].map(key => ({ key, status: 'SUCCESS' })) })
+
+function harness(overrides = {}, confirm = async () => true) {
+  const messages = []
+  const deps = {}
+  for (const entry of imports) {
+    for (const element of entry.importClause?.namedBindings?.elements ?? []) deps[element.name.text] = {}
+  }
+  Object.assign(deps, guide, { ref, computed, nextTick, URL, AbortController, structuredClone,
+    setInterval: () => 1, clearInterval: () => {}, setTimeout: callback => { callback(); return 1 },
+    document: { querySelector: () => null }, navigator: {},
+    ElMessage: Object.fromEntries(['error', 'warning', 'success', 'info'].map(kind => [kind, message => messages.push({ kind, message })])),
+    ElMessageBox: { confirm }, isDemoMode: () => false,
+    api: new Proxy({ securityAlgorithms: async () => [],
+      validationStatus: async () => ({ upstreamVerified: false, orchestrationVerified: false }),
+      resourceValidationStatus: async () => ({ upstreamVerified: false }), ...overrides },
+      { get: (target, name) => target[name] ?? (() => { throw new Error('Unexpected API call: ' + String(name)) }) })
+  })
+  const state = vm.runInNewContext('(() => { ' + appJS + ' return { activeMenu, activeTab, detail, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, sourceExpansion, isSourceExpanded, sourceInterfaces, filteredSources, setAllSourcesExpanded, timeoutExpanded, hasUnsavedChanges, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, currentPreReleaseVerified, currentE2EVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, bringVendorApiToPlatform, vendorImportingKey, apiForm, apiDialog, mappingDirection, mappingIsPassThrough, mappingModeLabel, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
+  state.selectedSourceId.value = 1
+  state.activeMenu.value = 'resource'
+  state.selectedInterfaceId.value = 11
+  state.sources.value = [{ id: 1, sourceName: '企业工商数据源', sourceCode: 'ENTERPRISE', endpointUrl: 'http://localhost', defaultTimeoutMs: 5000 }]
+  state.detail.value = { summary: { id: 11, dataSourceId: 1, interfaceCode: 'ENTERPRISE_QUERY', currentVersion: 2, publishedVersion: 1, status: 'DRAFT', upstreamUrl: 'http://localhost/query', servicePath: '/api/query' }, mappings: [mapping('REQUEST'), mapping('RESPONSE')], responseCodes: codes, vendorCodePath: 'result.code', requestExample: { name: '测试企业' }, upstreamRequestExample: { name: '测试企业' }, upstreamResponseExample: { name: '测试企业' }, standardResponseExample: { name: '测试企业' } }
+  state.connectionForm.value = { configScope: 'INHERIT', upstreamPath: '/query', upstreamUrl: 'http://localhost/query', timeoutMode: 'INHERIT', timeoutMs: 5000 }
+  state.savedConnectionBaseline.value = JSON.stringify(state.connectionForm.value)
+  state.upstreamRequestText.value = state.savedUpstreamRequestBaseline.value = '{"name":"测试企业"}'
+  state.savedMappingsBaseline.value = [mapping('REQUEST'), mapping('RESPONSE')]
+  state.savedResponseCodesBaseline.value = JSON.stringify(codes)
+  state.savedSecurityBaseline.value = JSON.stringify(state.securityPolicy.value)
+  state.requestText.value = state.savedRequestBaseline.value = '{"name":"测试企业"}'
+  state.responseText.value = state.savedResponseBaseline.value = '{"name":"测试企业"}'
+  state.savedUpstreamResponseBaseline.value = state.responseText.value
+  state.standardServiceForm.value = { servicePath: '/api/query', httpMethod: 'POST' }
+  state.savedStandardServiceBaseline.value = JSON.stringify(state.standardServiceForm.value)
+  return { ...state, messages }
+}
+
+test('请求和响应可以独立选择映射或原报文透传；关闭安全策略是可跳过项', () => {
+  const steps = guide.buildResourceGuide({ ...baseGuide, mappings: [mapping('REQUEST')] })
+  assert.equal(steps[1].done, true)
+  assert.match(steps[1].hint, /响应 透传/)
+  assert.equal(steps[3].done, true)
+  assert.match(steps[3].hint, /可选/)
+})
+
+test('空映射被视为已完成的自动透传，无需生成一对一配置数据', async () => {
+  const steps = guide.buildResourceGuide({ ...baseGuide, mappings: [] })
+  assert.equal(steps[1].done, true)
+  assert.match(steps[1].hint, /请求、响应均透传/)
+  const s = harness()
+  s.activeTab.value = 'request'
+  s.detail.value.mappings = []
+  s.savedMappingsBaseline.value = []
+  assert.equal(s.mappingIsPassThrough.value, true)
+  assert.equal(s.mappingModeLabel.value, '自动透传')
+  await s.continueGuide()
+  assert.equal(s.activeTab.value, 'codes')
+  assert.equal(s.detail.value.mappings.length, 0)
+})
+
+test('只有用户主动配置字段转换时才创建第一条映射，删除最后一条后恢复透传', () => {
+  const s = harness()
+  s.activeTab.value = 'request'
+  s.detail.value.mappings = []
+  s.savedMappingsBaseline.value = []
+  s.mappingDirection.value = 'REQUEST'
+  s.startMappingConfiguration()
+  assert.equal(s.detail.value.mappings.length, 1)
+  assert.equal(s.detail.value.mappings[0].direction, 'REQUEST')
+  assert.equal(s.mappingIsPassThrough.value, false)
+  s.deleteMapping(s.detail.value.mappings[0])
+  assert.equal(s.mappingIsPassThrough.value, true)
+  assert.match(appText, /平台请求将按原路径一对一发送给上游，无需逐条配置映射/)
+})
+
+test('已进入字段转换模式但存在空映射行时不能继续', async () => {
+  const s = harness()
+  s.activeTab.value = 'request'
+  s.detail.value.mappings = []
+  s.savedMappingsBaseline.value = []
+  s.startMappingConfiguration()
+  const incomplete = guide.buildResourceGuide({ ...baseGuide, mappings: s.detail.value.mappings })
+  assert.equal(incomplete[1].done, false)
+  await s.continueGuide()
+  assert.equal(s.activeTab.value, 'request')
+  assert.match(s.guideError.value, /补全已添加的映射行/)
+})
+
+test('每条映射行具有稳定且唯一的界面标识，下拉框不会被 Vue 错误复用', () => {
+  const { mappingRowKey } = harness()
+  const first = { ...mapping('REQUEST'), id: 0 }
+  const second = { ...mapping('REQUEST'), id: 0 }
+  assert.equal(mappingRowKey(first), mappingRowKey(first))
+  assert.notEqual(mappingRowKey(first), mappingRowKey(second))
+  assert.match(appText, /:teleported="false"\s+:persistent="true"\s+placement="bottom-start"\s+popper-class="mapping-rule-dropdown"/)
+  assert.match(appText, /<el-option label="直接映射" value="DIRECT"\/>/)
+})
+
+test('旧版自动生成的上游样例升级为供应商字段，用户自定义样例保持不变', () => {
+  const { upgradeLegacyGeneratedUpstreamExample } = harness()
+  assert.deepEqual(JSON.parse(JSON.stringify(upgradeLegacyGeneratedUpstreamExample({
+    queryKey: 'DEMO-QUERY-001', queryReason: '业务准入'
+  }))), { query_key: 'DEMO-QUERY-001', query_reason: '业务准入' })
+  assert.deepEqual(JSON.parse(JSON.stringify(upgradeLegacyGeneratedUpstreamExample({
+    queryKey: 'CUSTOM', queryReason: '供应商确实使用驼峰'
+  }))), { queryKey: 'CUSTOM', queryReason: '供应商确实使用驼峰' })
+})
+
+test('枚举配置使用独立草稿，清空或删除枚举项不会被旧值回填', () => {
+  const state = harness()
+  const row = state.detail.value.mappings[0]
+  row.transformType = 'ENUM'
+  row.transformConfig = { '1': 'MALE', '2': 'FEMALE' }
+  row.defaultValue = 'UNKNOWN'
+  state.openEnumDrawer(row)
+  assert.equal(state.enumPairs.value.length, 2)
+  state.enumPairs.value[0].sourceValue = ''
+  state.enumPairs.value[0].targetValue = ''
+  state.enumDefaultValue.value = ''
+  state.applyEnumConfig()
+  assert.equal(JSON.stringify(row.transformConfig), JSON.stringify({ '2': 'FEMALE' }))
+  assert.equal(row.defaultValue, '')
+  assert.equal(state.enumDrawer.value, false)
+})
+test('审批中、旧已发布版本都不能标记当前版本上线', () => {
+  assert.equal(guide.buildResourceGuide({ ...baseGuide, status: 'PENDING_APPROVAL' })[5].done, false)
+  assert.equal(guide.buildResourceGuide({ ...baseGuide, status: 'PUBLISHED' })[5].done, false)
+  assert.equal(guide.buildResourceGuide({ ...baseGuide, status: 'PUBLISHED', publishedVersion: 2 })[5].done, true)
+})
+test('空返回码不能标记已配置；URL 必须是 HTTP/HTTPS', () => {
+  assert.equal(guide.buildResourceGuide({ ...baseGuide, responseCodes: [{ ...codes[0], vendorCode: '' }] })[2].done, false)
+  for (const invalid of ['', '/query', 'file:///tmp/a', 'javascript:alert(1)']) assert.equal(guide.isHttpEndpoint(invalid), false)
+  assert.equal(guide.isHttpEndpoint('https://provider.example/query'), true)
+})
+test('只有完整链路且关键节点成功才可记为 E2E 通过', () => {
+  assert.equal(guide.isSuccessfulE2E(result(), 'E2E'), true)
+  assert.equal(guide.isSuccessfulE2E(result(), 'UPSTREAM'), false)
+  assert.equal(guide.isSuccessfulE2E(result(), 'PLATFORM'), false)
+  const failed = result(); failed.traceNodes[1].status = 'ERROR'
+  assert.equal(guide.isSuccessfulE2E(failed, 'E2E'), false)
+  assert.equal(guide.isSuccessfulE2E({ ...result(), traceNodes: [] }, 'E2E'), false)
+  assert.equal(guide.isSuccessfulE2E({ ...result(), standardResponse: { resultStatus: 'ERROR' } }, 'E2E'), false)
+})
+test('浏览器联调截止时间包含上游超时和平台处理余量', () => {
+  assert.equal(guide.requestDeadlineMs(3000), 10000)
+  assert.equal(guide.requestDeadlineMs(15000), 20000)
+  assert.equal(guide.requestDeadlineMs(120000), 125000)
+  assert.equal(guide.requestDeadlineMs(Number.NaN), 10000)
+})
+test('已保存配置下一步不重复保存，不增加版本', async () => {
+  const s = harness()
+  await s.continueGuide()
+  assert.equal(s.activeTab.value, 'request')
+  assert.equal(s.detail.value.summary.currentVersion, 2)
+})
+test('无效连接保存失败时停留当前步并显示原因', async () => {
+  const s = harness()
+  s.connectionForm.value.configScope = 'OVERRIDE'; s.connectionForm.value.upstreamUrl = 'bad-url'
+  await s.continueGuide()
+  assert.equal(s.activeTab.value, 'overview')
+  assert.match(s.guideError.value, /HTTP/)
+  assert.equal(s.guideBusy.value, false)
+})
+test('映射样例 JSON 错误不会跳步', async () => {
+  const s = harness(); s.activeTab.value = 'request'; s.requestText.value = '{'
+  await s.continueGuide()
+  assert.equal(s.activeTab.value, 'request')
+  assert.match(s.guideError.value, /JSON/)
+})
+test('保存请求失败保留编辑内容且不跳步', async () => {
+  const s = harness({ saveMappings: async () => { throw new Error('数据库暂不可用') } })
+  s.activeTab.value = 'request'; s.detail.value.mappings[0].targetPath = 'companyName'
+  await s.continueGuide()
+  assert.equal(s.activeTab.value, 'request')
+  assert.equal(s.detail.value.mappings[0].targetPath, 'companyName')
+  assert.equal(s.hasUnsavedChanges.value, true)
+  assert.ok(s.guideError.value)
+})
+test('保存成功后继续下一步并清除脏状态', async () => {
+  const s = harness({ saveMappings: async (_id, mappings) => JSON.parse(JSON.stringify(mappings)) })
+  s.activeTab.value = 'request'; s.detail.value.mappings[0].targetPath = 'companyName'
+  await s.continueGuide()
+  assert.equal(s.activeTab.value, 'codes')
+  assert.equal(s.detail.value.summary.currentVersion, 3)
+  assert.equal(s.hasUnsavedChanges.value, false)
+})
+test('确认放弃后真正还原映射；取消离开则保留编辑', async () => {
+  const s = harness(); s.activeTab.value = 'request'; s.detail.value.mappings[0].targetPath = 'changed'
+  await s.openGuideStep('codes')
+  assert.equal(s.detail.value.mappings[0].targetPath, 'name')
+  assert.equal(s.activeTab.value, 'codes')
+  const keep = harness({}, async () => { throw 'cancel' }); keep.activeTab.value = 'request'; keep.detail.value.mappings[0].targetPath = 'changed'
+  await keep.openGuideStep('codes')
+  assert.equal(keep.activeTab.value, 'request')
+  assert.equal(keep.detail.value.mappings[0].targetPath, 'changed')
+})
+test('安全策略默认关闭可以直接继续联调，不触发保存', async () => {
+  const s = harness(); s.activeTab.value = 'security'
+  await s.continueGuide()
+  assert.equal(s.activeTab.value, 'test')
+})
+test('发布前验证记录绑定接口、连接和草稿版本；旧凭证不能进入发布', async () => {
+  const s = harness(); s.activeTab.value = 'test'
+  s.lastUpstreamValidation.value = { interfaceId: 11, connectionFingerprint: [s.savedConnectionBaseline.value, s.savedUpstreamRequestBaseline.value, s.savedUpstreamResponseBaseline.value].join('|') }
+  s.lastOrchestrationValidation.value = { interfaceId: 11, version: 1 }
+  await s.continueGuide()
+  assert.equal(s.activeTab.value, 'test')
+  s.lastOrchestrationValidation.value = { interfaceId: 12, version: 2 }
+  assert.equal(s.currentPreReleaseVerified.value, false)
+  s.lastOrchestrationValidation.value = { interfaceId: 11, version: 2 }
+  await s.continueGuide()
+  assert.equal(s.activeMenu.value, 'releases')
+  assert.equal(s.activeTab.value, 'test')
+})
+test('搜索自动展开所有匹配项，清除搜索后恢复折叠偏好', () => {
+  const s = harness(); s.setAllSourcesExpanded(false)
+  assert.equal(s.isSourceExpanded(1), false)
+  s.sourceSearch.value = '企业'
+  assert.equal(s.isSourceExpanded(1), true)
+  assert.equal(s.filteredSources.value.length, 1)
+  s.sourceSearch.value = ''
+  assert.equal(s.isSourceExpanded(1), false)
+})
+test('加载已有接口保留独立超时；折叠状态不改变配置', async () => {
+  let loaded
+  const s = harness({ detail: async () => loaded })
+  loaded = JSON.parse(JSON.stringify(s.detail.value))
+  loaded.configuredTimeoutMs = 8500; loaded.timeoutMs = 8500
+  s.activeMenu.value = 'service-development'
+  await s.loadDetail()
+  assert.equal(s.connectionForm.value.timeoutMode, 'OVERRIDE')
+  assert.equal(s.connectionForm.value.timeoutMs, 8500)
+  s.timeoutExpanded.value = true; s.timeoutExpanded.value = false
+  assert.equal(s.connectionForm.value.timeoutMs, 8500)
+  assert.equal(s.hasUnsavedChanges.value, false)
+})
+test('目录样式取消固定高度裁切，长名称允许换行', () => {
+  const css = readFileSync(new URL('../src/resource-workbench.css', import.meta.url), 'utf8')
+  assert.match(css, /\.resource-workbench \.resource-tree \{ max-height: none; min-height: 0; overflow: visible/)
+  assert.match(css, /white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere/)
+})
+
+test('只配置请求映射时响应自动透传并允许进入下一步', async () => {
+  const s = harness(); s.activeTab.value = 'request'
+  s.detail.value.mappings = [mapping('REQUEST')]; s.savedMappingsBaseline.value = [mapping('REQUEST')]
+  await s.continueGuide()
+  assert.equal(s.activeTab.value, 'codes')
+})
+test('完整链路测试会记录版本，后续失败会清除已通过记录', async () => {
+  let failed = false
+  let latest
+  const s = harness({ detail: async () => latest, esbDiagnostic: async () => { if (failed) throw new Error('上游连接失败'); return { ...result(), apiCode: 'ENTERPRISE_QUERY', servicePath: '/api/query', traceId: 'T001', parsedRequest: {}, xmlRequest: '<edspRequest/>', nodes: result().traceNodes } } })
+  latest = s.detail.value
+  s.detail.value.summary.status = 'PUBLISHED'
+  s.detail.value.summary.publishedVersion = 2
+  s.clients.value = [{ id: 7, clientCode: 'TEST_CLIENT', status: 'ACTIVE' }]
+  s.authorizations.value = [{ id: 8, clientId: 7, interfaceId: 11, environment: 'TEST', status: 'ACTIVE', validFrom: '2020-01-01', validTo: '2099-12-31' }]
+  s.activeTab.value = 'test'; s.testMode.value = 'E2E'
+  assert.equal(await s.runTest(), true)
+  assert.equal(s.currentE2EVerified.value, true)
+  failed = true
+  assert.equal(await s.runTest(), false)
+  assert.equal(s.currentE2EVerified.value, false)
+})
+test('上游测试成功不会被误判为完整链路通过', async () => {
+  const s = harness({ test: async () => result() })
+  s.activeTab.value = 'test'; s.testMode.value = 'UPSTREAM'
+  assert.equal(await s.runTest(), true)
+  assert.equal(s.currentE2EVerified.value, false)
+})
+test('上游验证与标准编排验证分别记录，发布前不要求已发布链路', async () => {
+  const s = harness({ test: async () => result() })
+  s.activeTab.value = 'test'; s.testMode.value = 'UPSTREAM'
+  assert.equal(await s.runTest(), true)
+  assert.equal(s.currentUpstreamVerified.value, true)
+  assert.equal(s.currentPreReleaseVerified.value, false)
+  s.testMode.value = 'PLATFORM'
+  assert.equal(await s.runTest(), true)
+  assert.equal(s.currentOrchestrationVerified.value, true)
+  assert.equal(s.currentPreReleaseVerified.value, true)
+})
+test('服务开发三阶段可以从上游接入切换到标准编排，发布阶段交由服务发布', async () => {
+  const s = harness()
+  s.serviceDevelopmentStage.value = 'UPSTREAM'
+  await s.selectServiceDevelopmentStage('ORCHESTRATION')
+  assert.equal(s.serviceDevelopmentStage.value, 'ORCHESTRATION')
+  assert.equal(s.activeTab.value, 'request')
+})
+test('主页面使用新的三阶段产品名称和运行管理名称', () => {
+  assert.match(appText, /上游能力接入/)
+  assert.match(appText, /标准服务编排/)
+  assert.match(appText, /标准服务开发/)
+  assert.match(appText, /上游接口验证/)
+  assert.match(appText, /标准编排验证/)
+  assert.match(appText, /链路追踪/)
+  assert.match(appText, /运行监控/)
+  assert.doesNotMatch(appText, /<span>数据资源服务<\/span>/)
+})
+test('标准服务只展示上游已保存接口，菜单支持横向和分组折叠，审批不占主菜单', () => {
+  assert.match(appText, /item\.upstreamStatus === 'READY'/)
+  assert.match(appText, /sidebarCollapsed/)
+  assert.match(appText, /menuGroups\.service/)
+  assert.doesNotMatch(appText, /<el-menu-item index="approvals"/)
+})
+test('没有接口级超时的草稿继续继承数据源默认配置', async () => {
+  let loaded
+  const s = harness({ detail: async () => loaded })
+  loaded = JSON.parse(JSON.stringify(s.detail.value)); loaded.configuredTimeoutMs = null; loaded.timeoutMs = 5000
+  s.activeMenu.value = 'service-development'
+  await s.loadDetail()
+  assert.equal(s.connectionForm.value.timeoutMode, 'INHERIT')
+  assert.equal(s.connectionForm.value.timeoutMs, 5000)
+  assert.equal(s.timeoutExpanded.value, false)
+})
+test('忙碌状态禁止重复保存和跳步', async () => {
+  const s = harness(); s.guideBusy.value = true
+  await s.continueGuide(); await s.openGuideStep('release')
+  assert.equal(s.activeTab.value, 'overview')
+  assert.equal(await s.runCurrentPrimaryAction(), false)
+})
+
+test('供应商目录接入不依赖固定主键，空库时先创建提供商再创建数据源', async () => {
+  const calls = []
+  const provider = { id: 37, providerCode: 'VENDOR_DEMO', providerName: '上游演示资源提供商', status: 'ACTIVE' }
+  const source = { id: 52, providerId: 37, sourceCode: 'ENTERPRISE', sourceName: '企业数据源', endpointUrl: 'http://127.0.0.1:8090/enterprise', defaultTimeoutMs: 3000, interfaceCount: 0 }
+  const s = harness({
+    createProvider: async body => { calls.push(['provider', body]); return provider },
+    createDataSource: async body => { calls.push(['source', body]); return source },
+    dashboard: async () => ({ providerCount: 1, dataSourceCount: 1, interfaceCount: 0, publishedCount: 0, draftCount: 0, activePublishedPlans: 0 }),
+    providers: async () => [provider], providerAccounts: async () => [], dataSources: async () => [source], resourceApis: async () => [], interfaces: async () => [],
+    clients: async () => [], authorizations: async () => [], billingRules: async () => [],
+    billingSummary: async () => ({ totalCalls: 0, billableCalls: 0, totalAmount: 0, hitCalls: 0, missCalls: 0, errorCalls: 0 }),
+    usageRecords: async () => [], monitorSummary: async () => ({ totalCalls: 0, successCalls: 0, errorCalls: 0, successRate: 100, avgDurationMs: 0, p95DurationMs: 0, avgUpstreamDurationMs: 0, activeAlerts: 0 }),
+    monitorPoints: async () => [], monitorAlerts: async () => [], approvals: async () => []
+  })
+  s.providers.value = []
+  s.sources.value = []
+  await s.bringVendorApiToPlatform(
+    { apiCode: 'COMPANY_QUERY', apiName: '企业查询', httpMethod: 'POST', servicePath: '/enterprise/query', requestExample: { name: '测试企业' }, responseBody: { code: '0000' } },
+    { sourceCode: 'ENTERPRISE', sourceName: '企业数据源', basePath: '/enterprise' }
+  )
+  assert.equal(calls[0][0], 'provider')
+  assert.equal(calls[1][0], 'source')
+  assert.equal(calls[1][1].providerId, 37)
+  assert.equal(s.apiForm.value.dataSourceId, 52)
+  assert.equal(s.apiDialog.value, true)
+  assert.equal(s.vendorImportingKey.value, '')
+})

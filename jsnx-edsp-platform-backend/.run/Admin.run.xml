@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Admin 8081" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
+    <module name="jsnx-edsp-data-admin" />
+    <option name="SPRING_BOOT_MAIN_CLASS" value="com.jsnx.edsp.EdspDemoApplication" />
+    <method v="2"><option name="Make" enabled="true" /></method>
+  </configuration>
+</component>

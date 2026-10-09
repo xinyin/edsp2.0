@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Capability Runtime 8091" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
+    <module name="jsnx-edsp-capability-runtime" />
+    <option name="SPRING_BOOT_MAIN_CLASS" value="com.jsnx.edsp.capability.CapabilityRuntimeApplication" />
+    <method v="2"><option name="Make" enabled="true" /></method>
+  </configuration>
+</component>

@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Credit Data App 8182" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
+    <module name="jsnx-edsp-data-credit" />
+    <option name="SPRING_BOOT_MAIN_CLASS" value="com.jsnx.edsp.data.credit.CreditDataApplication" />
+    <method v="2"><option name="Make" enabled="true" /></method>
+  </configuration>
+</component>

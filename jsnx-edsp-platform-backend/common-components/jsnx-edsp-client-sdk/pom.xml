@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion>
+  <parent><groupId>com.jsnx.edsp</groupId><artifactId>jsnx-edsp-platform-backend</artifactId><version>2.0.0-SNAPSHOT</version><relativePath>../../pom.xml</relativePath></parent>
+  <artifactId>jsnx-edsp-client-sdk</artifactId>
+  <dependencies>
+    <dependency><groupId>com.jsnx.edsp</groupId><artifactId>jsnx-edsp-contracts</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>com.jsnx.edsp</groupId><artifactId>jsnx-edsp-plan-core</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>com.jsnx.edsp</groupId><artifactId>jsnx-edsp-crypto-core</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>com.jsnx.edsp</groupId><artifactId>jsnx-edsp-signature-core</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>org.springframework</groupId><artifactId>spring-web</artifactId></dependency>
+    <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId></dependency>
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
+  </dependencies>
+</project>

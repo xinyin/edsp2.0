@@ -1,0 +1,44 @@
+# macOS
+.DS_Store
+**/.DS_Store
+
+# IntelliJ IDEA / VS Code
+.idea/
+*.iml
+.vscode/
+
+# Java / Maven
+target/
+*.class
+*.jar.original
+dependency-reduced-pom.xml
+
+# Node / Vue / Vite
+node_modules/
+dist/
+.vite/
+.vite-cache/
+coverage/
+*.tsbuildinfo
+
+# Runtime files
+*.log
+*.pid
+logs/
+var/logs/
+var/run/
+jsnx-edsp-deployment/bin/[0-9]*
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+application-local.yml
+application-local.yaml
+application-local.properties
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+*~

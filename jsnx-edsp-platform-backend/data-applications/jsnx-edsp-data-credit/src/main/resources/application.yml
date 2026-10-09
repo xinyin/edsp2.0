@@ -1,0 +1,28 @@
+server:
+  port: ${SERVER_PORT:8182}
+spring:
+  application:
+    name: jsnx-edsp-data-credit
+  config:
+    import: ${SPRING_CONFIG_IMPORT:optional:nacos:jsnx-edsp-data-credit.yaml}
+  cloud:
+    nacos:
+      server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+      discovery:
+        enabled: ${NACOS_ENABLED:false}
+        register-enabled: ${NACOS_ENABLED:false}
+      config:
+        enabled: ${NACOS_ENABLED:false}
+    sentinel:
+      enabled: ${SENTINEL_ENABLED:false}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+edsp:
+  admin-url: ${ADMIN_URL:http://127.0.0.1:8081}
+  observability-url: ${OBSERVABILITY_URL:http://127.0.0.1:8083}

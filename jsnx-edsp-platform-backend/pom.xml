@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.3.4</version>
+    <relativePath/>
+  </parent>
+  <groupId>com.jsnx.edsp</groupId>
+  <artifactId>jsnx-edsp-platform-backend</artifactId>
+  <version>2.0.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <name>EDSP 2.0 Platform Backend</name>
+
+  <properties>
+    <java.version>17</java.version>
+    <spring-cloud.version>2023.0.3</spring-cloud.version>
+    <spring-cloud-alibaba.version>2023.0.3.2</spring-cloud-alibaba.version>
+    <bouncycastle.version>1.78</bouncycastle.version>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <modules>
+    <module>common-components/jsnx-edsp-contracts</module>
+    <module>common-components/jsnx-edsp-client-sdk</module>
+    <module>common-components/jsnx-edsp-transform-core</module>
+    <module>common-components/jsnx-edsp-crypto-core</module>
+    <module>common-components/jsnx-edsp-signature-core</module>
+    <module>common-components/jsnx-edsp-response-core</module>
+    <module>common-components/jsnx-edsp-log-core</module>
+    <module>common-components/jsnx-edsp-plan-core</module>
+    <module>common-components/jsnx-edsp-platform-core</module>
+    <module>platform-services/jsnx-edsp-data-admin</module>
+    <module>platform-services/jsnx-edsp-data-observability</module>
+    <module>platform-services/jsnx-edsp-data-gateway</module>
+    <module>platform-services/jsnx-edsp-esb-adapter</module>
+    <module>platform-services/jsnx-edsp-capability-runtime</module>
+    <module>data-applications/jsnx-edsp-data-enterprise</module>
+    <module>data-applications/jsnx-edsp-data-antifraud</module>
+    <module>data-applications/jsnx-edsp-data-credit</module>
+    <module>data-applications/jsnx-edsp-data-source-lhzx</module>
+  </modules>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-dependencies</artifactId>
+        <version>${spring-cloud.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>com.alibaba.cloud</groupId>
+        <artifactId>spring-cloud-alibaba-dependencies</artifactId>
+        <version>${spring-cloud-alibaba.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+</project>

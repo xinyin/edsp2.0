@@ -1,0 +1,9 @@
+server:
+  port: ${SERVER_PORT:8091}
+spring:
+  application:
+    name: jsnx-edsp-capability-runtime
+edsp:
+  admin-url: ${ADMIN_URL:http://127.0.0.1:8081}
+management:
+  endpoints.web.exposure.include: health,info,metrics,prometheus

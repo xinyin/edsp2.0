@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Enterprise Data App 8181" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
+    <module name="jsnx-edsp-data-enterprise" />
+    <option name="SPRING_BOOT_MAIN_CLASS" value="com.jsnx.edsp.data.enterprise.EnterpriseDataApplication" />
+    <method v="2"><option name="Make" enabled="true" /></method>
+  </configuration>
+</component>
