@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1600" viewBox="0 0 1800 1600"><rect width="100%" height="100%" fill="white"/>
+<text x="55" y="64" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="36" fill="#172033">外部数据平台 2.0 完整调用链路</text>
+<text x="55" y="104" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="22" fill="#172033">当前实现基线 2026-10-09   实线：业务请求与返回   独立分区：控制与异步观测</text>
+<text x="55" y="168" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="28" fill="#172033">一  线上业务调用与 JSON 返回</text>
+<rect x="55" y="205" width="430" height="125" rx="8" fill="#f6f7f9" stroke="#536477" stroke-width="2"/>
+<text x="71" y="242" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="25" fill="#172033">01  行内调用系统</text>
+<text x="71" y="278" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">XML：apiCode / environment / body</text>
+<text x="71" y="307" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">认证信息与唯一 Trace ID</text>
+<rect x="685" y="205" width="430" height="125" rx="8" fill="#f6f7f9" stroke="#536477" stroke-width="2"/>
+<text x="701" y="242" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="25" fill="#172033">02  模拟 ESB 请求队列</text>
+<text x="701" y="278" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">请求入队与 requestReply 关联</text>
+<text x="701" y="307" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">本地为内存队列；生产对接行内 ESB</text>
+<rect x="1315" y="205" width="430" height="125" rx="8" fill="#f6f7f9" stroke="#536477" stroke-width="2"/>
+<text x="1331" y="242" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="25" fill="#172033">03  ESB Adapter  8084</text>
+<text x="1331" y="278" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">XML → JSON，解析 apiCode</text>
+<text x="1331" y="307" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">向 Admin 解析已发布服务路径</text>
+<path d="M485 267 L685 267" stroke="#546879" stroke-width="3" fill="none"/>
+<polygon points="685,267 674.4690092573155,272.75310646325045 674.4690092573155,261.24689353674955" fill="#546879"/>
+<path d="M1115 267 L1315 267" stroke="#546879" stroke-width="3" fill="none"/>
+<polygon points="1315,267 1304.4690092573155,272.75310646325045 1304.4690092573155,261.24689353674955" fill="#546879"/>
+<rect x="1315" y="440" width="430" height="125" rx="8" fill="#f6f7f9" stroke="#536477" stroke-width="2"/>
+<text x="1331" y="477" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="25" fill="#172033">04  Gateway  8080</text>
+<text x="1331" y="513" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">校验凭证；向 Admin 查询 API 授权</text>
+<text x="1331" y="542" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">本地路由匹配 code + method + path</text>
+<path d="M1530 330 L1530 440" stroke="#546879" stroke-width="3" fill="none"/>
+<polygon points="1530,440 1524.2468935367497,429.4690092573155 1535.7531064632503,429.4690092573155" fill="#546879"/>
+<text x="1542.0" y="395.0" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" fill="#172033">JSON</text>
+<rect x="685" y="440" width="430" height="125" rx="8" fill="#f6f7f9" stroke="#536477" stroke-width="2"/>
+<text x="701" y="477" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="25" fill="#172033">05  独立数据源应用</text>
+<text x="701" y="513" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">校验应用归属与 X-Route-Version</text>
+<text x="701" y="542" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">读取本 JVM 的不可变 PlanSnapshot</text>
+<path d="M1315 502 L1115 502" stroke="#546879" stroke-width="3" fill="none"/>
+<polygon points="1115,502 1125.5309907426845,496.24689353674955 1125.5309907426845,507.75310646325045" fill="#546879"/>
+<rect x="55" y="440" width="430" height="125" rx="8" fill="#f6f7f9" stroke="#536477" stroke-width="2"/>
+<text x="71" y="477" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="25" fill="#172033">06  请求转换与安全处理</text>
+<text x="71" y="513" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">标准字段 → 供应商字段</text>
+<text x="71" y="542" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">透传 / 枚举 / 日期 / 加密 / 签名</text>
+<path d="M685 502 L485 502" stroke="#546879" stroke-width="3" fill="none"/>
+<polygon points="485,502 495.5309907426845,496.24689353674955 495.5309907426845,507.75310646325045" fill="#546879"/>
+<rect x="55" y="675" width="430" height="125" rx="8" fill="#f6f7f9" stroke="#536477" stroke-width="2"/>
+<text x="71" y="712" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="25" fill="#172033">07  实际上游接口</text>
+<text x="71" y="748" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">按发布计划 URL 和超时调用</text>
+<text x="71" y="777" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">当前通用执行器使用 POST JSON</text>
+<path d="M270 565 L270 675" stroke="#546879" stroke-width="3" fill="none"/>
+<polygon points="270,675 264.24689353674955,664.4690092573155 275.75310646325045,664.4690092573155" fill="#546879"/>
+<rect x="685" y="675" width="430" height="125" rx="8" fill="#f6f7f9" stroke="#536477" stroke-width="2"/>
+<text x="701" y="712" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="25" fill="#172033">08  数据应用响应标准化</text>
+<text x="701" y="748" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">提取自定义码值路径 → 统一返回码</text>
+<text x="701" y="777" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">供应商字段 → 行内字段；保留同一 Plan</text>
+<path d="M485 737 L685 737" stroke="#546879" stroke-width="3" fill="none"/>
+<polygon points="685,737 674.4690092573155,742.7531064632504 674.4690092573155,731.2468935367496" fill="#546879"/>
+<text x="597.0" y="725.0" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" fill="#172033">上游响应</text>
+<rect x="1315" y="675" width="430" height="125" rx="8" fill="#f6f7f9" stroke="#536477" stroke-width="2"/>
+<text x="1331" y="712" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="25" fill="#172033">09  返回调用系统</text>
+<text x="1331" y="748" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">JSON → Gateway → Adapter</text>
+<text x="1331" y="777" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">模拟响应队列 → 调用系统；不转 XML</text>
+<path d="M1115 737 L1315 737" stroke="#546879" stroke-width="3" fill="none"/>
+<polygon points="1315,737 1304.4690092573155,742.7531064632504 1304.4690092573155,731.2468935367496" fill="#546879"/>
+<text x="55" y="863" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="21" fill="#172033">失败分支：解析失败 / 授权拒绝 / 路由缺失 / 版本不一致 / 上游错误，返回对应错误并关联 Trace ID。</text>
+<text x="55" y="940" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="28" fill="#172033">二  配置发布与热更新控制链</text>
+<rect x="55" y="973" width="430" height="125" rx="8" fill="#f6f7f9" stroke="#536477" stroke-width="2"/>
+<text x="71" y="1010" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="25" fill="#172033">管理页面 → Admin  8081</text>
+<text x="71" y="1046" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">资源接入 → 标准服务配置 → 发布</text>
+<text x="71" y="1075" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">测试可选；上线须配置校验通过</text>
+<rect x="685" y="973" width="430" height="125" rx="8" fill="#f6f7f9" stroke="#536477" stroke-width="2"/>
+<text x="701" y="1010" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="25" fill="#172033">MySQL 持久化</text>
+<text x="701" y="1046" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">草稿 api_interface 及配置子表</text>
+<text x="701" y="1075" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">线上 published_route / plan snapshot</text>
+<rect x="1315" y="973" width="430" height="125" rx="8" fill="#f6f7f9" stroke="#536477" stroke-width="2"/>
+<text x="1331" y="1010" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="25" fill="#172033">Gateway 与数据应用刷新</text>
+<text x="1331" y="1046" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">Gateway 主动通知 + 5 秒定时拉取</text>
+<text x="1331" y="1075" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">数据应用通知刷新；缺失/版本不符重载</text>
+<path d="M485 1035 L685 1035" stroke="#546879" stroke-width="3" fill="none"/>
+<polygon points="685,1035 674.4690092573155,1040.7531064632503 674.4690092573155,1029.2468935367497" fill="#546879"/>
+<path d="M1115 1035 L1315 1035" stroke="#546879" stroke-width="3" fill="none"/>
+<polygon points="1315,1035 1304.4690092573155,1040.7531064632503 1304.4690092573155,1029.2468935367497" fill="#546879"/>
+<text x="55" y="1162" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="22" fill="#172033">下线删除线上路由但保留草稿；恢复旧发布快照与发布新草稿是两个独立操作。</text>
+<text x="55" y="1238" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="28" fill="#172033">三  异步日志与计量链</text>
+<rect x="55" y="1270" width="430" height="125" rx="8" fill="#f6f7f9" stroke="#536477" stroke-width="2"/>
+<text x="71" y="1307" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="25" fill="#172033">Gateway / 数据应用日志事件</text>
+<text x="71" y="1343" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">携带 Trace ID、状态与请求响应</text>
+<text x="71" y="1372" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">Gateway 使用有界队列；失败可丢弃</text>
+<rect x="685" y="1270" width="430" height="125" rx="8" fill="#f6f7f9" stroke="#536477" stroke-width="2"/>
+<text x="701" y="1307" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="25" fill="#172033">Observability  8083</text>
+<text x="701" y="1343" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">本地 HTTP 模拟 Kafka 事件传输</text>
+<text x="701" y="1372" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">解析节点、调用结果并计算计量金额</text>
+<rect x="1315" y="1270" width="430" height="125" rx="8" fill="#f6f7f9" stroke="#536477" stroke-width="2"/>
+<text x="1331" y="1307" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="25" fill="#172033">MySQL → 运营页面</text>
+<text x="1331" y="1343" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">usage_record / api_call_node_log</text>
+<text x="1331" y="1372" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">demo_async_event → 查询与统计</text>
+<path d="M485 1332 L685 1332" stroke="#546879" stroke-width="3" fill="none"/>
+<polygon points="685,1332 674.4690092573155,1337.7531064632503 674.4690092573155,1326.2468935367497" fill="#546879"/>
+<path d="M1115 1332 L1315 1332" stroke="#546879" stroke-width="3" fill="none"/>
+<polygon points="1315,1332 1304.4690092573155,1337.7531064632503 1304.4690092573155,1326.2468935367497" fill="#546879"/>
+<text x="55" y="1461" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="21" fill="#172033">实现边界：部分节点耗时为演示值；数据应用事件线程池仍需有界化；丢失日志不能作为可靠结算账。</text>
+<text x="55" y="1501" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="21" fill="#172033">控制面依赖：Adapter 解析、Gateway 授权及冷启动计划加载依赖 Admin。当前尚非完全离线自治。</text>
+</svg>

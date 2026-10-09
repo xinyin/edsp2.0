@@ -1,0 +1,59 @@
+/* Shared type scale. Keep controls readable without oversized page headings. */
+:root {
+  --edsp-text-small: 12px;
+  --edsp-text-body: 13px;
+  --edsp-text-section: 16px;
+  --edsp-text-title: 18px;
+  --edsp-text-metric: 22px;
+  --el-font-size-base: 13px;
+  --el-font-size-small: 12px;
+  --el-font-size-medium: 14px;
+  --el-font-size-large: 16px;
+  --el-font-size-extra-large: 18px;
+}
+body { font-size: var(--edsp-text-body); line-height: 1.5; }
+.page-heading h1,
+.api-context-header .context-title h2,
+.release-command-title h2,
+.login-title h2 { font-size: var(--edsp-text-title); font-weight: 600; line-height: 1.45; }
+.context-title h2,
+.enum-drawer-title > strong,
+.algorithm-drawer-title > strong,
+.drawer-trace-title strong,
+.drawer-trace-title > div:first-child > strong,
+.version-history-panel h3,
+.vendor-brand-icon + div h2 { font-size: var(--edsp-text-section); font-weight: 600; line-height: 1.5; }
+.login-message h1 { font-size: clamp(24px, 2.2vw, 30px); font-weight: 600; }
+.login-brand strong { font-size: 18px; }
+.metric-strip strong,
+.version-detail-hero > strong,
+.batch-auth-selected strong,
+.overview-metrics strong,
+.auth-summary-panel b,
+.billing-metrics strong,
+.ops-metrics strong,
+.log-metrics strong,
+.resource-summary strong,
+.cockpit-kpi > strong,
+.result-donut strong,
+.monitor-kpis strong { font-size: var(--edsp-text-metric); font-weight: 600; line-height: 1.25; font-variant-numeric: tabular-nums; }
+.side-menu .el-menu-item,
+.el-button,
+.el-input__inner,
+.el-textarea__inner,
+.el-form-item__label,
+.el-select__wrapper,
+.el-table { font-size: var(--edsp-text-body); }
+.resource-api-item strong,
+.resource-source-head strong,
+.release-tree strong { font-size: var(--edsp-text-body); }
+.resource-api-item small,
+.resource-source-head small,
+.api-save-state small,
+.cockpit-kpi > span,
+.monitor-kpis span,
+.monitor-kpis small,
+.resource-workflow small { font-size: var(--edsp-text-small); line-height: 1.5; }
+.el-dialog__title,
+.el-drawer__title { font-size: var(--edsp-text-section); font-weight: 600; }
+.el-table .cell { line-height: 1.6; }

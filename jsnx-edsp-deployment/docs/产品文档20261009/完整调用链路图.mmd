@@ -1,0 +1,43 @@
+sequenceDiagram
+    participant C as 行内调用系统
+    participant Q as 模拟ESB队列
+    participant E as ESB Adapter
+    participant G as Gateway
+    participant A as Admin
+    participant D as 独立数据源应用
+    participant U as 上游供应商
+    participant O as Observability
+    participant M as MySQL
+    C->>Q: XML与认证信息
+    Q->>E: 消费请求并关联Trace ID
+    E->>A: apiCode解析已发布路径
+    A->>M: published_route关联data_source
+    M-->>A: 路由记录
+    A-->>E: 服务路径
+    E->>G: JSON + API编码 + 调用系统
+    G->>A: 授权有效期和日配额检查
+    A-->>G: 授权结果
+    alt 未授权或路由不可用
+        G-->>E: 401 / 403 / 404 / 503
+    else 路由可用
+        G->>G: 匹配内存路由快照
+        G->>D: published入口 + X-Route-Version
+        opt 本地计划缺失或版本不一致
+            D->>A: 拉取已发布计划与校验归属
+            A->>M: release_plan_snapshot
+            M-->>A: 持久化快照
+            A-->>D: 不可变PlanSnapshot
+        end
+        D->>D: 请求映射和安全处理
+        D->>U: POST JSON与配置超时
+        U-->>D: 上游报文或HTTP错误
+        D->>D: 返回码提取与响应标准化
+        D-->>G: 统一JSON响应
+        D-->>O: 异步调用事件
+    end
+    G-->>E: JSON响应
+    G-->>O: 异步Gateway事件
+    E-->>Q: JSON响应入队
+    Q-->>C: 按请求标识返回JSON
+    O->>M: 事件与节点日志和计量记录
+    Note over D,O: 本地HTTP模拟Kafka；部分节点耗时为演示值
