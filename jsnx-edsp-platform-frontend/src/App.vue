@@ -1038,6 +1038,16 @@ async function offlineRelease() {
     await Promise.all([loadReleaseManagement(releaseDetail.value.summary.id), loadAll()])
   } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '下线失败') }
 }
+async function onlineRelease() {
+  if (!releaseDetail.value?.summary.publishedVersion) return
+  const summary = releaseDetail.value.summary
+  try {
+    await ElMessageBox.confirm(`将恢复最近一次已发布的 V${summary.publishedVersion} 执行计划和 Gateway 路由。${summary.currentVersion !== summary.publishedVersion ? `V${summary.currentVersion} 草稿会继续保留，不会进入线上流量。` : ''}现有有效授权将恢复调用，确认重新上线吗？`, '确认重新上线', { type: 'warning', confirmButtonText: '恢复线上服务', cancelButtonText: '取消' })
+    await api.onlineInterface(summary.id)
+    ElMessage.success(`线上 V${summary.publishedVersion} 已恢复`)
+    await Promise.all([loadReleaseManagement(summary.id), loadAll()])
+  } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '重新上线失败') }
+}
 async function archiveRelease() {
   if (!releaseDetail.value) return
   const target = { ...releaseDetail.value.summary }
@@ -2188,6 +2198,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                   <el-button v-if="releaseDetail.summary.status!=='PENDING_APPROVAL' && releaseDetail.summary.currentVersion!==releaseDetail.summary.publishedVersion && releaseDetail.summary.status!=='OFFLINE'" type="primary" :icon="Promotion" @click="submitReleaseFromManagement">直接上线</el-button>
                   <el-button v-if="releaseDetail.summary.publishedVersion!=null" plain :icon="DocumentCopy" @click="openPublishedDetail(releaseDetail.summary.id)">查看接口详情</el-button>
                   <el-button v-if="releaseDetail.summary.publishedVersion!=null && releaseDetail.summary.status==='PUBLISHED'" type="primary" plain :icon="Key" @click="authForm.interfaceId=releaseDetail.summary.id; navigate('authorization')">配置访问授权</el-button>
+                  <el-button v-if="releaseDetail.summary.status==='OFFLINE' && releaseDetail.summary.publishedVersion!=null" type="primary" :icon="Promotion" @click="onlineRelease">恢复线上 V{{ releaseDetail.summary.publishedVersion }}</el-button>
                   <el-button v-if="releaseDetail.summary.publishedVersion!=null && releaseDetail.summary.status!=='OFFLINE'" type="warning" plain @click="offlineRelease">下线接口</el-button>
                   <el-button v-if="releaseDetail.summary.status==='OFFLINE' || releaseDetail.summary.publishedVersion==null" type="danger" plain :icon="Delete" @click="archiveRelease">归档删除</el-button>
                 </div>

@@ -82,6 +82,12 @@ export const api = {
     item.status = 'OFFLINE'
     return structuredClone(item)
   }),
+  onlineInterface: (id: number, reason = '恢复最近已发布版本') => request<InterfaceSummary>(`/api/interfaces/${id}/online`, { method: 'POST', body: JSON.stringify({ operatedBy: '平台管理员', reason }) }, () => {
+    const item = mock.interfaces.find(row => row.id === id)
+    if (!item) throw new Error('接口不存在')
+    item.status = item.currentVersion === item.publishedVersion ? 'PUBLISHED' : 'DRAFT'
+    return structuredClone(item)
+  }),
   detail: (id: number) => request<InterfaceDetail>(`/api/interfaces/${id}`, undefined, () => mock.getInterfaceDetail(id)),
   validationStatus: (id: number) => request<{ upstreamVerified: boolean; orchestrationVerified: boolean; resourceContractChanged: boolean }>(`/api/interfaces/${id}/validation-status`),
   syncResourceContract: (id: number) => request<InterfaceDetail>(`/api/interfaces/${id}/sync-resource`, { method: 'POST' }),

@@ -586,6 +586,74 @@ public class InterfaceService {
         return detail.summary();
     }
 
+    /** Restore the last immutable published snapshot without publishing a newer draft. */
+    @Transactional
+    public InterfaceSummary onlineInterface(long interfaceId, LifecycleRequest request) {
+        Map<String, Object> row = jdbc.queryForMap(
+                "SELECT status,published_version,current_version FROM api_interface WHERE id=? FOR UPDATE", interfaceId);
+        if ("DELETED".equals(row.get("status"))) throw new IllegalStateException("API 已归档删除，不能重新上线");
+        if (!"OFFLINE".equals(row.get("status"))) throw new IllegalStateException("只有已下线的 API 可以重新上线");
+        if (row.get("published_version") == null) throw new IllegalStateException("接口没有可恢复的已发布版本");
+        int publishedVersion = ((Number) row.get("published_version")).intValue();
+        int currentVersion = ((Number) row.get("current_version")).intValue();
+        List<Map<String, Object>> snapshots = jdbc.queryForList("""
+                SELECT plan_json,checksum FROM release_plan_snapshot
+                WHERE interface_id=? AND release_version=?
+                """, interfaceId, publishedVersion);
+
+        PublishedPlanRegistry.PublishedPlan restoredPlan;
+        InterfaceSummary publishedSummary;
+        if (!snapshots.isEmpty()) {
+            try {
+                Map<String, Object> snapshot = mapper.readValue(String.valueOf(snapshots.get(0).get("plan_json")), Map.class);
+                publishedSummary = mapper.convertValue(snapshot.get("summary"), InterfaceSummary.class);
+                int snapshotVersion = ((Number) snapshot.get("version")).intValue();
+                if (publishedSummary.id() != interfaceId || snapshotVersion != publishedVersion) {
+                    throw new IllegalStateException("发布快照标识与待恢复接口不一致");
+                }
+                restoredPlan = new PublishedPlanRegistry.PublishedPlan(interfaceId,
+                        String.valueOf(snapshot.get("interfaceCode")), publishedVersion,
+                        mapper.convertValue(snapshot.get("requestMappings"), new TypeReference<List<FieldMapping>>() {}),
+                        mapper.convertValue(snapshot.get("responseMappings"), new TypeReference<List<FieldMapping>>() {}),
+                        String.valueOf(snapshots.get(0).get("checksum")), Instant.now(), publishedSummary,
+                        normalizeVendorCodePath(String.valueOf(snapshot.getOrDefault("vendorCodePath", "result.code"))),
+                        mapper.convertValue(snapshot.get("responseCodes"), new TypeReference<List<ResponseCodeMapping>>() {}),
+                        mapper.convertValue(snapshot.get("securityPolicy"), SecurityPolicy.class));
+            } catch (Exception e) {
+                throw new IllegalStateException("已发布版本 V" + publishedVersion + " 的执行计划快照无法解析，不能安全恢复", e);
+            }
+        } else {
+            if (currentVersion != publishedVersion) {
+                throw new IllegalStateException("已发布版本 V" + publishedVersion + " 缺少执行计划快照；当前还存在 V"
+                        + currentVersion + " 草稿，不能使用草稿覆盖恢复");
+            }
+            InterfaceDetail detail = interfaceDetail(interfaceId);
+            publishedSummary = detail.summary();
+            restoredPlan = new PublishedPlanRegistry.PublishedPlan(interfaceId, publishedSummary.interfaceCode(),
+                    publishedVersion,
+                    detail.mappings().stream().filter(item -> "REQUEST".equals(item.direction())).toList(),
+                    detail.mappings().stream().filter(item -> "RESPONSE".equals(item.direction())).toList(),
+                    checksum(detail), Instant.now(), publishedSummary, detail.vendorCodePath(),
+                    detail.responseCodes(), detail.securityPolicy());
+        }
+
+        requireDataApplicationRoute(publishedSummary);
+        validatePublishableServicePath(publishedSummary.servicePath());
+        upsertPublishedRoute(publishedSummary, publishedVersion);
+        String restoredStatus = currentVersion == publishedVersion ? "PUBLISHED" : "DRAFT";
+        jdbc.update("UPDATE api_interface SET status=? WHERE id=?", restoredStatus, interfaceId);
+        jdbc.update("INSERT INTO interface_lifecycle_record(interface_id,action,operated_by,reason) VALUES(?, 'ONLINE', ?, ?)",
+                interfaceId, valueOr(request == null ? null : request.operatedBy(), "平台管理员"),
+                request == null ? "恢复最近已发布版本" : valueOr(request.reason(), "恢复最近已发布版本"));
+        plans.activate(restoredPlan);
+        InterfaceSummary notificationSummary = publishedSummary;
+        runAfterCommit(() -> {
+            pushPlanToDataApplication(notificationSummary);
+            refreshGatewayRoutes();
+        });
+        return interfaceSummary(interfaceId);
+    }
+
     private void removePlanFromDataApplication(InterfaceDetail detail) {
         String endpoint = dataApplicationEndpoint(detail.summary());
         if (endpoint == null || endpoint.isBlank()) return;
@@ -1957,7 +2025,7 @@ public class InterfaceService {
                 mappings.stream().filter(m -> "RESPONSE".equals(m.direction())).toList(), releaseChecksum, Instant.now(),
                 publishedDetail.summary(), publishedDetail.vendorCodePath(), publishedDetail.responseCodes(), publishedDetail.securityPolicy()));
         savePlanSnapshot(interfaceId, version, releaseChecksum, publishedDetail);
-        notifyPublishedRouteAfterCommit(publishedDetail, version, releaseChecksum);
+        notifyPublishedRouteAfterCommit(publishedDetail);
         return interfaceSummary(interfaceId);
     }
 
@@ -2131,12 +2199,15 @@ public class InterfaceService {
                 mappings.stream().filter(m -> "RESPONSE".equals(m.direction())).toList(), checksum, Instant.now(),
                 detail.summary(), detail.vendorCodePath(), detail.responseCodes(), detail.securityPolicy()));
         savePlanSnapshot(approval.interfaceId(), approval.releaseVersion(), checksum, detail);
-        notifyPublishedRouteAfterCommit(detail, approval.releaseVersion(), checksum);
+        notifyPublishedRouteAfterCommit(detail);
         return approval(id);
     }
 
     private void upsertPublishedRoute(InterfaceDetail detail, int version) {
-        InterfaceSummary summary = detail.summary();
+        upsertPublishedRoute(detail.summary(), version);
+    }
+
+    private void upsertPublishedRoute(InterfaceSummary summary, int version) {
         jdbc.update("""
                 INSERT INTO published_route(
                     interface_id,interface_code,service_path,http_method,route_version,data_source_id
@@ -2158,9 +2229,9 @@ public class InterfaceService {
         }
     }
 
-    private void notifyPublishedRouteAfterCommit(InterfaceDetail detail, int version, String checksum) {
+    private void notifyPublishedRouteAfterCommit(InterfaceDetail detail) {
         runAfterCommit(() -> {
-            pushPlanToDataApplication(detail, version, checksum);
+            pushPlanToDataApplication(detail.summary());
             refreshGatewayRoutes();
         });
     }
@@ -2192,14 +2263,14 @@ public class InterfaceService {
         }
     }
 
-    private void pushPlanToDataApplication(InterfaceDetail detail, int version, String checksum) {
+    private void pushPlanToDataApplication(InterfaceSummary summary) {
         // MySQL remains the durable source. This notification only asks the owning data
         // application to pull the published snapshot and atomically replace its local plan.
-        String endpoint = dataApplicationEndpoint(detail.summary());
+        String endpoint = dataApplicationEndpoint(summary);
         if (endpoint == null || endpoint.isBlank()) return;
         try {
             restClient.post().uri(URI.create(endpoint + "/internal/adapter/plans/"
-                            + detail.summary().interfaceCode() + "/refresh"))
+                            + summary.interfaceCode() + "/refresh"))
                     .retrieve().toBodilessEntity();
         } catch (Exception e) {
             // Publication remains durable in MySQL. A stopped data application loads the

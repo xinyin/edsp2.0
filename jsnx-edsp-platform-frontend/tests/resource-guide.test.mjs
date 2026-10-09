@@ -10,6 +10,7 @@ const guideSource = readFileSync(new URL('../src/resource-guide.ts', import.meta
 const guideJS = ts.transpileModule(guideSource, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 } }).outputText
 const guide = await import('data:text/javascript;base64,' + Buffer.from(guideJS).toString('base64'))
 const appText = readFileSync(new URL('../src/App.vue', import.meta.url), 'utf8')
+const apiText = readFileSync(new URL('../src/api.ts', import.meta.url), 'utf8')
 const script = parse(appText).descriptor.scriptSetup.content
 const sourceFile = ts.createSourceFile('App.ts', script, ts.ScriptTarget.Latest, true)
 const imports = sourceFile.statements.filter(ts.isImportDeclaration)
@@ -367,6 +368,11 @@ test('主页面使用新的三阶段产品名称和运行管理名称', () => {
   assert.match(appText, /链路追踪/)
   assert.match(appText, /运行监控/)
   assert.doesNotMatch(appText, /<span>数据资源服务<\/span>/)
+})
+test('已下线接口提供恢复最近线上版本入口并保留更高版本草稿', () => {
+  assert.match(apiText, /interfaces\/\$\{id\}\/online/)
+  assert.match(appText, /status==='OFFLINE'.*恢复线上 V\{\{ releaseDetail\.summary\.publishedVersion \}\}/s)
+  assert.match(appText, /草稿会继续保留，不会进入线上流量/)
 })
 test('标准服务只展示上游已保存接口，菜单支持横向和分组折叠，审批不占主菜单', () => {
   assert.match(appText, /item\.upstreamStatus === 'READY'/)

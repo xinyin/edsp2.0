@@ -117,6 +117,11 @@ public class ApiController {
         return service.offlineInterface(id, request);
     }
 
+    @PostMapping("/interfaces/{id}/online")
+    public InterfaceSummary online(@PathVariable long id, @RequestBody(required = false) LifecycleRequest request) {
+        return service.onlineInterface(id, request);
+    }
+
     @GetMapping("/interfaces/{id}")
     public InterfaceDetail detail(@PathVariable long id) { return service.interfaceDetail(id); }
 
