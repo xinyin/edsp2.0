@@ -630,6 +630,35 @@ public class InterfaceService {
     }
 
     @Transactional
+    public InterfaceDetail syncResourceContract(long interfaceId) {
+        lockEditableInterface(interfaceId);
+        InterfaceDetail draft = interfaceDetail(interfaceId);
+        Long resourceId = draft.summary().resourceApiId();
+        if (resourceId == null) throw new IllegalStateException("该服务未绑定资源 API");
+        jdbc.queryForObject("SELECT id FROM resource_api WHERE id=? FOR UPDATE", Long.class, resourceId);
+        ResourceApiDetail resource = resourceApi(resourceId);
+        if (!"READY".equals(resource.summary().status())) throw new IllegalStateException("请先保存上游资源接口");
+        boolean inheritRequest = draft.mappings().stream().noneMatch(m -> "REQUEST".equals(m.direction()))
+                && Objects.equals(draft.requestExample(), draft.upstreamRequestExample());
+        boolean inheritResponse = draft.mappings().stream().noneMatch(m -> "RESPONSE".equals(m.direction()))
+                && Objects.equals(draft.standardResponseExample(), draft.upstreamResponseExample());
+        jdbc.update("""
+                UPDATE api_interface SET config_scope=?,upstream_path=?,upstream_url=?,timeout_ms=?,
+                upstream_request_example=?,upstream_response_example=?,request_example=?,standard_response_example=?,
+                upstream_status='READY',current_version=COALESCE(published_version,0)+1,status='DRAFT' WHERE id=?
+                """, resource.summary().configScope(), resource.summary().upstreamPath(), resource.summary().upstreamUrl(),
+                resource.configuredTimeoutMs(), json.write(resource.requestExample()), json.write(resource.responseExample()),
+                json.write(inheritRequest ? resource.requestExample() : draft.requestExample()),
+                json.write(inheritResponse ? resource.responseExample() : draft.standardResponseExample()), interfaceId);
+        invalidateDraftValidation(interfaceId);
+        return interfaceDetail(interfaceId);
+    }
+
+    private void invalidateDraftValidation(long interfaceId) {
+        jdbc.update("DELETE FROM interface_validation_record WHERE interface_id=? AND validation_type IN ('ORCHESTRATION','PRE_RELEASE')", interfaceId);
+    }
+
+    @Transactional
     public InterfaceDetail saveConnectionConfig(long interfaceId, SaveInterfaceConnectionRequest request) {
         lockEditableInterface(interfaceId);
         String configScope = normalizeConfigScope(request.configScope());
@@ -661,10 +690,11 @@ public class InterfaceService {
                 UPDATE api_interface SET config_scope=?,upstream_path=?,upstream_url=?,timeout_ms=?,
                 upstream_request_example=?,upstream_response_example=?,
                 request_example=?,standard_response_example=?,
-                upstream_status='READY',current_version=current_version+1,status='DRAFT' WHERE id=?
+                upstream_status='READY',current_version=COALESCE(published_version,0)+1,status='DRAFT' WHERE id=?
                 """, configScope, upstreamPath, upstreamUrl, configuredTimeoutMs,
                 json.write(request.upstreamRequestExample()), json.write(request.upstreamResponseExample()),
                 json.write(standardRequest), json.write(standardResponse), interfaceId);
+        invalidateDraftValidation(interfaceId);
         return interfaceDetail(interfaceId);
     }
 
@@ -693,7 +723,8 @@ public class InterfaceService {
                 """, interfaceId, request.enabled(), valueOr(request.encryptMode(), "NONE"),
                 valueOr(request.signatureMode(), "NONE"), request.requestFields(), request.encryptionKeyReference(),
                 request.signingKeyReference(), valueOr(request.signatureField(), "signature"), request.description());
-        jdbc.update("UPDATE api_interface SET current_version=current_version+1,status='DRAFT' WHERE id=?", interfaceId);
+        jdbc.update("UPDATE api_interface SET current_version=COALESCE(published_version,0)+1,status='DRAFT' WHERE id=?", interfaceId);
+        invalidateDraftValidation(interfaceId);
         return securityPolicy(interfaceId);
     }
 
@@ -772,8 +803,9 @@ public class InterfaceService {
                     """, interfaceId, code.vendorCode(), code.standardCode(), code.resultStatus(),
                     code.retryable(), code.billable());
         }
-        jdbc.update("UPDATE api_interface SET vendor_code_path=?,current_version=current_version+1,status='DRAFT' WHERE id=?",
+        jdbc.update("UPDATE api_interface SET vendor_code_path=?,current_version=COALESCE(published_version,0)+1,status='DRAFT' WHERE id=?",
                 vendorCodePath, interfaceId);
+        invalidateDraftValidation(interfaceId);
         return responseCodes(interfaceId);
     }
 
@@ -803,12 +835,13 @@ public class InterfaceService {
             }
             jdbc.update("""
                     UPDATE api_interface SET service_path=?,http_method=?,request_example=?,
-                    current_version=current_version+1,status='DRAFT' WHERE id=?
+                    current_version=COALESCE(published_version,0)+1,status='DRAFT' WHERE id=?
                     """, servicePath, httpMethod, json.write(request.requestExample()),
                     interfaceId);
         } else {
-            jdbc.update("UPDATE api_interface SET current_version=current_version+1,status='DRAFT' WHERE id=?", interfaceId);
+            jdbc.update("UPDATE api_interface SET current_version=COALESCE(published_version,0)+1,status='DRAFT' WHERE id=?", interfaceId);
         }
+        invalidateDraftValidation(interfaceId);
         return mappings(interfaceId);
     }
 
@@ -1019,6 +1052,9 @@ public class InterfaceService {
         InterfaceSummary executionSummary = publishedPlan == null ? detail.summary() : publishedPlan.summary();
         String testMode = request.testMode() == null || request.testMode().isBlank()
                 ? (request.callUpstream() ? "E2E" : "PLATFORM") : request.testMode();
+        if (!Set.of("UPSTREAM", "PLATFORM", "E2E").contains(testMode)) {
+            throw new IllegalArgumentException("不支持的验证模式");
+        }
         if ("UPSTREAM".equals(testMode)) {
             TestResult result = testUpstreamConnection(detail, request.request());
             if (Objects.equals(request.request(), detail.upstreamRequestExample())) {
@@ -1026,7 +1062,17 @@ public class InterfaceService {
             }
             return result;
         }
-        boolean callUpstream = "E2E".equals(testMode);
+        boolean preRelease = publishedPlan == null && "PLATFORM".equals(testMode);
+        if (preRelease) {
+            invalidateDraftValidation(interfaceId);
+            if (!Objects.equals(request.request(), detail.requestExample())
+                    || (request.mappings() != null && !Objects.equals(request.mappings(), detail.mappings()))) {
+                throw new IllegalStateException("请先保存标准请求与映射配置，再执行发布前链路验证");
+            }
+            ValidationResult validation = validate(interfaceId);
+            if (!validation.valid()) throw new IllegalStateException(String.join("；", validation.errors()));
+            requireDataApplicationRoute(detail.summary());
+        }
 
         Map<String, Object> downstreamEnvelope = new LinkedHashMap<>();
         downstreamEnvelope.put("systemCode", "DEMO_DOWNSTREAM_SYSTEM");
@@ -1045,16 +1091,17 @@ public class InterfaceService {
         gatewayOutput.put("interfaceCode", executionSummary.interfaceCode());
         gatewayOutput.put("route", "data-source-" + executionSummary.dataSourceId());
         gatewayOutput.put("body", request.request());
-        traceNodes.add(new TraceNode("GATEWAY", "统一 Gateway", "PLATFORM", "SUCCESS",
-                "完成认证、授权、配额校验与动态路由", 1, gatewayRequest, gatewayOutput));
+        traceNodes.add(new TraceNode("GATEWAY", "统一 Gateway", "PLATFORM", publishedPlan == null ? "SKIPPED" : "SUCCESS",
+                publishedPlan == null ? "管理端草稿验证不经过 ESB/Gateway，不执行调用方授权与配额校验"
+                        : "已在调用入口完成授权与配额校验", 0, gatewayRequest, gatewayOutput));
 
         Map<String, Object> schemaOutput = new LinkedHashMap<>();
         schemaOutput.put("valid", true);
         schemaOutput.put("validatedFields", request.request().keySet());
         schemaOutput.put("body", request.request());
         traceNodes.add(new TraceNode("SCHEMA", "Schema 校验", "PLATFORM", "SUCCESS",
-                "请求结构、字段类型与必填项校验通过", 1, request.request(), schemaOutput));
-        steps.add(new ExecutionStep("请求Schema校验", "通过", "必填字段与类型校验完成", 1));
+                "已装载标准请求；转换后的字段按保存的上游样例契约校验", 1, request.request(), schemaOutput));
+        steps.add(new ExecutionStep("请求契约校验", "通过", "已装载保存的标准请求", 1));
         long mappingStarted = System.nanoTime();
         Map<String, Object> upstreamRequest = applyMappings(request.request(), effectiveMappings, "REQUEST");
         long mappingDurationMs = elapsedMs(mappingStarted);
@@ -1065,11 +1112,15 @@ public class InterfaceService {
                 "按当前页面映射快照转换为供应商字段", mappingDurationMs,
                 Map.of("requestBody", request.request(), "mappingCount", effectiveMappings.stream()
                         .filter(mapping -> "REQUEST".equals(mapping.direction())).count()), upstreamRequest));
-        steps.add(new ExecutionStep("认证与加解密", "通过", "演示模式：使用数据源认证配置引用", 1));
+        steps.add(new ExecutionStep("安全策略", "通过", "按配置执行加密与签名", 1));
         SecurityPolicy securityPolicy = publishedPlan == null ? detail.securityPolicy() : publishedPlan.securityPolicy();
         Map<String, Object> securedBody = applySecurityPolicy(upstreamRequest, securityPolicy);
+        if (publishedPlan == null) {
+            List<String> contractErrors = new ArrayList<>();
+            validateExampleContract(detail.upstreamRequestExample(), securedBody, "", contractErrors);
+            if (!contractErrors.isEmpty()) throw new IllegalStateException(String.join("；", contractErrors));
+        }
         Map<String, Object> securedRequest = new LinkedHashMap<>();
-        securedRequest.put("authReference", "nacos://edsp/security/enterprise-test");
         securedRequest.put("encryptMode", securityPolicy.enabled() ? securityPolicy.encryptMode() : "NONE");
         securedRequest.put("signatureMode", securityPolicy.enabled() ? securityPolicy.signatureMode() : "NONE");
         securedRequest.put("body", securedBody);
@@ -1085,26 +1136,16 @@ public class InterfaceService {
         dataSourceOutput.put("requestBody", securedBody);
         traceNodes.add(new TraceNode("DATA_SOURCE", "数据源应用", "ADAPTER", "SUCCESS",
                 "独立数据源部署单元执行供应商协议适配", 1, securedRequest, dataSourceOutput));
-        Map<String, Object> upstreamResponse;
-        if (callUpstream) {
-            long callStarted = System.nanoTime();
-            upstreamResponse = invokeThroughDataApplication(executionSummary, securedBody, traceId);
-            upstreamDurationMs = Math.max(1, (System.nanoTime() - callStarted) / 1_000_000);
-            steps.add(new ExecutionStep("上游 HTTP 调用", "通过", executionSummary.upstreamUrl(),
-                    upstreamDurationMs));
-        } else {
-            upstreamResponse = request.upstreamResponse() == null || request.upstreamResponse().isEmpty()
-                    ? detail.upstreamResponseExample() : request.upstreamResponse();
-            steps.add(new ExecutionStep("响应样例装载", "通过", "使用当前接口的供应商响应样例", 1));
-        }
+        long callStarted = System.nanoTime();
+        Map<String, Object> upstreamResponse = invokeThroughDataApplication(executionSummary, securedBody, traceId);
+        upstreamDurationMs = Math.max(1, (System.nanoTime() - callStarted) / 1_000_000);
+        steps.add(new ExecutionStep("上游 HTTP 调用", "通过", executionSummary.upstreamUrl(), upstreamDurationMs));
         Map<String, Object> vendorInput = new LinkedHashMap<>();
         vendorInput.put("method", "POST");
         vendorInput.put("url", executionSummary.upstreamUrl());
         vendorInput.put("body", securedBody);
-        traceNodes.add(new TraceNode(callUpstream ? "VENDOR" : "MOCK_RESPONSE",
-                callUpstream ? "上游供应商" : "响应样例", callUpstream ? "EXTERNAL" : "MOCK", "SUCCESS",
-                callUpstream ? "真实 HTTP 请求已完成" : "装载响应样例，不访问上游供应商",
-                callUpstream ? upstreamDurationMs : 1, vendorInput, upstreamResponse));
+        traceNodes.add(new TraceNode("VENDOR", "上游供应商", "EXTERNAL", "SUCCESS",
+                "真实 HTTP 请求已完成", upstreamDurationMs, vendorInput, upstreamResponse));
         long standardizeStarted = System.nanoTime();
         String vendorCodePath = publishedPlan == null ? detail.vendorCodePath() : publishedPlan.vendorCodePath();
         Object vendorCodeValue = readPath(upstreamResponse, vendorCodePath);
@@ -1145,10 +1186,11 @@ public class InterfaceService {
                 Map.of("traceId", traceId, "resultStatus", code.resultStatus(), "durationMs", totalDurationMs),
                 Map.of("recorded", true, "billable", billed, "standardCode", code.standardCode())));
         recordTraceNodes(traceId, traceNodes);
-        if ("PLATFORM".equals(testMode)
-                && (request.mappings() == null || request.mappings().isEmpty()
-                || Objects.equals(request.mappings(), detail.mappings()))) {
-            saveValidationRecord(interfaceId, "ORCHESTRATION", checksum(detail));
+        if (preRelease && Set.of("HIT", "MISS").contains(code.resultStatus())) {
+            if (!Objects.equals(checksum(detail), checksum(interfaceDetail(interfaceId)))) {
+                throw new IllegalStateException("验证期间草稿配置已变更，请重新执行发布前链路验证");
+            }
+            saveValidationRecord(interfaceId, "PRE_RELEASE", checksum(detail));
         }
         return new TestResult(upstreamRequest, upstreamResponse, response, steps, traceNodes);
     }
@@ -1378,7 +1420,7 @@ public class InterfaceService {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> invokeThroughDataApplication(InterfaceSummary summary,
+    Map<String, Object> invokeThroughDataApplication(InterfaceSummary summary,
                                                               Map<String, Object> request,
                                                               String traceId) {
         String applicationEndpoint = dataApplicationEndpoint(summary);
@@ -1891,8 +1933,7 @@ public class InterfaceService {
         if (!validation.valid()) throw new IllegalStateException(String.join("；", validation.errors()));
         requireDataApplicationRoute(detail.summary());
         validatePublishableServicePath(detail.summary().servicePath());
-        requireUpstreamValidation(detail);
-        requireValidationRecord(interfaceId, "ORCHESTRATION", checksum(detail), "标准编排验证");
+        requireValidationRecord(interfaceId, "PRE_RELEASE", checksum(detail), "发布前链路验证（真实调用上游）");
         int version = detail.summary().currentVersion();
         String releaseChecksum = checksum(detail);
         String releasedBy = valueOr(request == null ? null : request.releasedBy(), "平台管理员");
@@ -1961,8 +2002,7 @@ public class InterfaceService {
         ValidationResult validation = validate(interfaceId);
         if (!validation.valid()) throw new IllegalStateException(String.join("；", validation.errors()));
         InterfaceDetail detail = interfaceDetail(interfaceId);
-        requireUpstreamValidation(detail);
-        requireValidationRecord(interfaceId, "ORCHESTRATION", checksum(detail), "标准编排验证");
+        requireValidationRecord(interfaceId, "PRE_RELEASE", checksum(detail), "发布前链路验证（真实调用上游）");
         int version = detail.summary().currentVersion();
         Integer pending = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM release_approval WHERE interface_id=? AND release_version=? AND status='PENDING'
@@ -2065,7 +2105,8 @@ public class InterfaceService {
         }
         if (!"APPROVE".equalsIgnoreCase(request.decision())) throw new IllegalArgumentException("审批决定必须为 APPROVE 或 REJECT");
         InterfaceDetail detail = interfaceDetail(approval.interfaceId());
-        if (detail.summary().currentVersion() != approval.releaseVersion()) {
+        if (!"PENDING_APPROVAL".equals(detail.summary().status())
+                || detail.summary().currentVersion() != approval.releaseVersion()) {
             throw new IllegalStateException("审批版本与当前草稿版本不一致，请驳回后重新提交");
         }
         ValidationResult validation = validate(approval.interfaceId());
@@ -2073,6 +2114,7 @@ public class InterfaceService {
         requireDataApplicationRoute(detail.summary());
         validatePublishableServicePath(detail.summary().servicePath());
         String checksum = checksum(detail);
+        requireValidationRecord(approval.interfaceId(), "PRE_RELEASE", checksum, "发布前链路验证（真实调用上游）");
         jdbc.update("UPDATE api_interface SET status='PUBLISHED',published_version=? WHERE id=?",
                 approval.releaseVersion(), approval.interfaceId());
         upsertPublishedRoute(detail, approval.releaseVersion());
@@ -2187,7 +2229,15 @@ public class InterfaceService {
 
     private String checksum(InterfaceDetail detail) {
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(json.write(detail).getBytes(StandardCharsets.UTF_8));
+            Map<String, Object> config = mapper.convertValue(detail, new TypeReference<>() {});
+            @SuppressWarnings("unchecked")
+            Map<String, Object> summary = (Map<String, Object>) config.get("summary");
+            // Lifecycle transitions are not execution configuration changes.
+            summary.remove("status");
+            summary.remove("updatedAt");
+            summary.remove("publishedVersion");
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(mapper.writer()
+                    .with(com.fasterxml.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).writeValueAsBytes(config));
             return HexFormat.of().formatHex(digest);
         } catch (Exception e) {
             throw new IllegalStateException("Cannot create release checksum", e);
@@ -2225,7 +2275,9 @@ public class InterfaceService {
     public Map<String, Boolean> validationStatus(long interfaceId) {
         InterfaceDetail detail = interfaceDetail(interfaceId);
         return Map.of("upstreamVerified", hasUpstreamValidation(detail),
-                "orchestrationVerified", hasValidationRecord(interfaceId, "ORCHESTRATION", checksum(detail)));
+                "orchestrationVerified", hasValidationRecord(interfaceId, "PRE_RELEASE", checksum(detail)),
+                "resourceContractChanged", detail.summary().resourceApiId() != null
+                        && !Objects.equals(upstreamChecksum(detail), upstreamChecksum(resourceApi(detail.summary().resourceApiId()))));
     }
 
     public Map<String, Boolean> resourceValidationStatus(long resourceId) {
@@ -2247,13 +2299,6 @@ public class InterfaceService {
         if (resourceId == null) return false;
         ResourceApiDetail resource = resourceApi(resourceId);
         return Objects.equals(expected, upstreamChecksum(resource)) && hasResourceValidation(resource);
-    }
-
-    private void requireUpstreamValidation(InterfaceDetail detail) {
-        if (!hasUpstreamValidation(detail)) {
-            throw new IllegalStateException("当前上游配置缺少有效验证结果，请在“上游能力接入”验证绑定的资源接口；"
-                    + "如平台服务使用独立的上游配置，请验证该服务的上游接口后再上线");
-        }
     }
 
     private void saveValidationRecord(long interfaceId, String validationType, String configChecksum) {

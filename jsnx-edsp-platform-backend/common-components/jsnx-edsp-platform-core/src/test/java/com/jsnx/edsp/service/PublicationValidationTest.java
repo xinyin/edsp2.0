@@ -49,7 +49,7 @@ class PublicationValidationTest {
     @Test
     void publishesServiceUsingItsVerifiedResourceWithoutDuplicateServiceVerification() throws Exception {
         resourceVerified();
-        orchestrationVerified();
+        preReleaseVerified();
         service.publishDirect(SERVICE_ID, new PublishRequest("管理员", "首次上线"));
         assertThat(plans.size()).isEqualTo(1);
         verify(jdbc).update("UPDATE api_interface SET status='PUBLISHED',published_version=? WHERE id=?", 3, SERVICE_ID);
@@ -61,14 +61,15 @@ class PublicationValidationTest {
     void resourceValidationDoesNotReplaceOrchestrationValidation() throws Exception {
         resourceVerified();
         assertThatThrownBy(() -> service.publishDirect(SERVICE_ID, new PublishRequest("管理员", "上线")))
-                .hasMessageContaining("标准编排验证").hasMessageNotContaining("提交审批");
+                .hasMessageContaining("发布前链路验证").hasMessageNotContaining("提交审批");
         assertThat(plans.size()).isZero();
     }
 
     @Test
     void orchestrationAloneDoesNotProveAnUpstreamCallSucceeded() throws Exception {
-        orchestrationVerified();
-        assertThatThrownBy(() -> service.publishDirect(SERVICE_ID, null)).hasMessageContaining("上游能力接入");
+        when(jdbc.queryForList(contains("FROM interface_validation_record"), eq(String.class),
+                eq(SERVICE_ID), eq("ORCHESTRATION"))).thenReturn(List.of(configurationFingerprint()));
+        assertThatThrownBy(() -> service.publishDirect(SERVICE_ID, null)).hasMessageContaining("发布前链路验证");
     }
 
     @Test
@@ -106,7 +107,6 @@ class PublicationValidationTest {
         when(jdbc.queryForList(contains("FROM interface_validation_record"), eq(String.class),
                 eq(SERVICE_ID), eq("UPSTREAM"))).thenReturn(List.of(upstreamFingerprint()));
         assertThat(service.validationStatus(SERVICE_ID).get("upstreamVerified")).isTrue();
-        verify(service, never()).resourceApi(RESOURCE_ID);
     }
 
     @Test
@@ -131,11 +131,85 @@ class PublicationValidationTest {
                 .thenReturn(List.of(upstreamFingerprint()));
     }
 
-    private void orchestrationVerified() throws Exception {
-        String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                .digest(mapper.writeValueAsBytes(detail())));
+    private void preReleaseVerified() throws Exception {
         when(jdbc.queryForList(contains("FROM interface_validation_record"), eq(String.class),
-                eq(SERVICE_ID), eq("ORCHESTRATION"))).thenReturn(List.of(hash));
+                eq(SERVICE_ID), eq("PRE_RELEASE"))).thenReturn(List.of(configurationFingerprint()));
+    }
+
+    @SuppressWarnings("unchecked")
+    private String configurationFingerprint() throws Exception {
+        Map<String, Object> config = mapper.convertValue(detail(), Map.class);
+        Map<String, Object> summary = (Map<String, Object>) config.get("summary");
+        summary.remove("status"); summary.remove("updatedAt"); summary.remove("publishedVersion");
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(mapper.writer()
+                .with(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).writeValueAsBytes(config)));
+    }
+
+    @Test
+    void preReleaseCallsDataApplicationAndNeverUsesSubmittedMockResponse() {
+        doReturn(RESPONSE).when(service).invokeThroughDataApplication(any(), eq(REQUEST), anyString());
+        TestResult result = service.test(SERVICE_ID,
+                new TestRequest(REQUEST, Map.of("fake", "response"), false, List.of(), "PLATFORM"));
+        assertThat(result.upstreamResponse()).isEqualTo(RESPONSE);
+        verify(service).invokeThroughDataApplication(any(), eq(REQUEST), anyString());
+        verify(jdbc).update(contains("INSERT INTO interface_validation_record"), eq(SERVICE_ID), eq("PRE_RELEASE"), anyString());
+        assertThat(result.traceNodes()).anyMatch(n -> n.key().equals("GATEWAY") && n.status().equals("SKIPPED"));
+    }
+
+    @Test
+    void upstreamBusinessErrorCannotProduceReleaseProof() {
+        doReturn(Map.of("result", Map.of("code", "9999"))).when(service)
+                .invokeThroughDataApplication(any(), anyMap(), anyString());
+        TestResult result = service.test(SERVICE_ID, new TestRequest(REQUEST, null, true, List.of(), "PLATFORM"));
+        assertThat(result.traceNodes()).anyMatch(n -> n.key().equals("RESPONSE_MAPPING") && n.status().equals("ERROR"));
+        verify(jdbc, never()).update(contains("INSERT INTO interface_validation_record"), eq(SERVICE_ID), eq("PRE_RELEASE"), anyString());
+    }
+
+    @Test
+    void transportFailureCannotProduceReleaseProofAndIsTraced() {
+        doThrow(new IllegalStateException("上游返回 HTTP 400")).when(service)
+                .invokeThroughDataApplication(any(), anyMap(), anyString());
+        assertThatThrownBy(() -> service.test(SERVICE_ID, new TestRequest(REQUEST, null, true, List.of(), "PLATFORM")))
+                .isInstanceOf(InterfaceService.TrackedCallException.class).hasMessageContaining("HTTP 400");
+        verify(jdbc, never()).update(contains("INSERT INTO interface_validation_record"), eq(SERVICE_ID), eq("PRE_RELEASE"), anyString());
+        assertThat(mockingDetails(jdbc).getInvocations()).anyMatch(invocation -> Arrays.asList(invocation.getArguments()).contains("ERROR"));
+    }
+
+    @Test
+    void unsavedInputCannotCertifySavedDraft() {
+        assertThatThrownBy(() -> service.test(SERVICE_ID,
+                new TestRequest(Map.of("query_key", "未保存样例"), null, true, List.of(), "PLATFORM")))
+                .hasMessageContaining("请先保存");
+        verify(service, never()).invokeThroughDataApplication(any(), anyMap(), anyString());
+    }
+
+    @Test
+    void changedDraftDuringRealCallDoesNotReceiveProof() {
+        doAnswer(invocation -> {
+            InterfaceDetail original = detail();
+            InterfaceDetail changed = new InterfaceDetail(original.summary(), original.requestSchema(), original.responseSchema(),
+                    Map.of("query_key", "changed"), REQUEST, RESPONSE, RESPONSE, 3000, null, "DATA_SOURCE", 0,
+                    "result.code", List.of(), original.responseCodes(), original.securityPolicy());
+            doReturn(changed).when(service).interfaceDetail(SERVICE_ID);
+            return RESPONSE;
+        }).when(service).invokeThroughDataApplication(any(), anyMap(), anyString());
+        assertThatThrownBy(() -> service.test(SERVICE_ID, new TestRequest(REQUEST, null, true, List.of(), "PLATFORM")))
+                .hasMessageContaining("验证期间草稿配置已变更");
+        verify(jdbc, never()).update(contains("INSERT INTO interface_validation_record"), eq(SERVICE_ID), eq("PRE_RELEASE"), anyString());
+    }
+
+    @Test
+    void syncUpdatesPassThroughBaselineButNeverTouchesPublishedPlan() {
+        Map<String, Object> updatedRequest = Map.of("company_name", "企业001");
+        doReturn(resource(URL + "/v2", "POST", 3000, "READY", updatedRequest, RESPONSE))
+                .when(service).resourceApi(RESOURCE_ID);
+        service.syncResourceContract(SERVICE_ID);
+        verify(jdbc).update(contains("upstream_status='READY',current_version=COALESCE(published_version,0)+1"),
+                eq("OVERRIDE"), eq("/company"), eq(URL + "/v2"), isNull(),
+                eq(new JsonSupport(mapper).write(updatedRequest)), eq(new JsonSupport(mapper).write(RESPONSE)),
+                eq(new JsonSupport(mapper).write(updatedRequest)), eq(new JsonSupport(mapper).write(RESPONSE)), eq(SERVICE_ID));
+        assertThat(plans.size()).isZero();
+        assertThat(service.validationStatus(SERVICE_ID).get("resourceContractChanged")).isTrue();
     }
 
     private String upstreamFingerprint() throws Exception {
@@ -151,7 +225,9 @@ class PublicationValidationTest {
                 "READY", "DRAFT", 3, null, LocalDateTime.of(2026, 10, 8, 10, 0),
                 RESOURCE_ID, "COMPANY_RESOURCE", "企业资源接口");
         return new InterfaceDetail(summary, Map.of(), Map.of(), REQUEST, REQUEST, RESPONSE, RESPONSE,
-                3000, null, "DATA_SOURCE", 0, "result.code", List.of(), List.of(), null);
+                3000, null, "DATA_SOURCE", 0, "result.code", List.of(),
+                List.of(new ResponseCodeMapping(1L, "0000", "EXT-SUCCESS", "HIT", false, false)),
+                new SecurityPolicy(SERVICE_ID, false, "NONE", "NONE", "", "", "", "signature", ""));
     }
 
     private ResourceApiDetail resource(String url, String method, int timeout, String status,

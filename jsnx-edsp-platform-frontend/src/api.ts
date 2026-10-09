@@ -83,7 +83,8 @@ export const api = {
     return structuredClone(item)
   }),
   detail: (id: number) => request<InterfaceDetail>(`/api/interfaces/${id}`, undefined, () => mock.getInterfaceDetail(id)),
-  validationStatus: (id: number) => request<{ upstreamVerified: boolean; orchestrationVerified: boolean }>(`/api/interfaces/${id}/validation-status`),
+  validationStatus: (id: number) => request<{ upstreamVerified: boolean; orchestrationVerified: boolean; resourceContractChanged: boolean }>(`/api/interfaces/${id}/validation-status`),
+  syncResourceContract: (id: number) => request<InterfaceDetail>(`/api/interfaces/${id}/sync-resource`, { method: 'POST' }),
   interfaceVersions: (id: number) => request<InterfaceVersionHistory[]>(`/api/interfaces/${id}/versions`, undefined, () => {
     const item = mock.getInterfaceDetail(id).summary
     const rows: InterfaceVersionHistory[] = [{

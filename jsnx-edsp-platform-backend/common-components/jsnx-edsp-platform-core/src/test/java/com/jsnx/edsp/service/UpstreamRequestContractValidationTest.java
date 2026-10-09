@@ -15,6 +15,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import com.jsnx.edsp.model.ApiModels.TestRequest;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -46,5 +48,9 @@ class UpstreamRequestContractValidationTest {
 
         assertThat(result.valid()).isFalse();
         assertThat(result.errors()).contains("转换后的上游请求缺少供应商必填字段：query_key");
+        assertThatThrownBy(() -> service.test(42,
+                new TestRequest(detail.requestExample(), detail.upstreamResponseExample(), false, detail.mappings(), "PLATFORM")))
+                .isInstanceOf(InterfaceService.TrackedCallException.class)
+                .hasMessageContaining("缺少供应商必填字段：query_key");
     }
 }

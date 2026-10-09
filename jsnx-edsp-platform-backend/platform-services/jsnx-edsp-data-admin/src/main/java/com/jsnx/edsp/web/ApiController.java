@@ -125,6 +125,11 @@ public class ApiController {
         return service.interfaceVersions(id);
     }
 
+    @PostMapping("/interfaces/{id}/sync-resource")
+    public InterfaceDetail syncResourceContract(@PathVariable long id) {
+        return service.syncResourceContract(id);
+    }
+
     @PutMapping("/interfaces/{id}/connection-config")
     public InterfaceDetail saveConnectionConfig(
             @PathVariable long id, @Valid @RequestBody SaveInterfaceConnectionRequest request) {

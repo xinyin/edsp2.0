@@ -204,7 +204,7 @@ test('保存成功后继续下一步并清除脏状态', async () => {
   s.activeTab.value = 'request'; s.detail.value.mappings[0].targetPath = 'companyName'
   await s.continueGuide()
   assert.equal(s.activeTab.value, 'codes')
-  assert.equal(s.detail.value.summary.currentVersion, 3)
+  assert.equal(s.detail.value.summary.currentVersion, 2)
   assert.equal(s.hasUnsavedChanges.value, false)
 })
 test('确认放弃后真正还原映射；取消离开则保留编辑', async () => {
@@ -291,8 +291,10 @@ test('上游测试成功不会被误判为完整链路通过', async () => {
   assert.equal(await s.runTest(), true)
   assert.equal(s.currentE2EVerified.value, false)
 })
-test('上游验证与标准编排验证分别记录，发布前不要求已发布链路', async () => {
-  const s = harness({ test: async () => result() })
+test('发布前真实验证由后端凭证确认，不要求已发布和授权', async () => {
+  let submitted
+  const s = harness({ test: async (_id, body) => { submitted = body; return result() },
+    validationStatus: async () => ({ upstreamVerified: true, orchestrationVerified: true }) })
   s.activeTab.value = 'test'; s.testMode.value = 'UPSTREAM'
   assert.equal(await s.runTest(), true)
   assert.equal(s.currentUpstreamVerified.value, true)
@@ -301,6 +303,30 @@ test('上游验证与标准编排验证分别记录，发布前不要求已发�
   assert.equal(await s.runTest(), true)
   assert.equal(s.currentOrchestrationVerified.value, true)
   assert.equal(s.currentPreReleaseVerified.value, true)
+  assert.equal(submitted.callUpstream, true)
+  assert.equal(submitted.upstreamResponse, undefined)
+  s.requestText.value = '{"name":"未保存的请求"}'
+  assert.equal(s.currentPreReleaseVerified.value, false)
+  assert.equal(await s.runTest(), false)
+})
+
+test('响应看似成功但后端未签发凭证时不能进入发布', async () => {
+  const s = harness({ test: async () => result() })
+  s.activeTab.value = 'test'; s.testMode.value = 'PLATFORM'
+  assert.equal(await s.runTest(), false)
+  assert.equal(s.currentPreReleaseVerified.value, false)
+})
+
+test('同一草稿反复保存不跳版本，保存后必须重新验证', async () => {
+  const s = harness({ saveMappings: async (_id, mappings) => JSON.parse(JSON.stringify(mappings)) })
+  for (const name of ['companyName', 'enterpriseName']) {
+    s.lastOrchestrationValidation.value = { interfaceId: 11, version: 2 }
+    s.activeTab.value = 'request'
+    s.detail.value.mappings[0].targetPath = name
+    await s.continueGuide()
+    assert.equal(s.detail.value.summary.currentVersion, 2)
+    assert.equal(s.currentPreReleaseVerified.value, false)
+  }
 })
 test('服务开发三阶段可以从上游接入切换到标准编排，发布阶段交由服务发布', async () => {
   const s = harness()
@@ -314,7 +340,7 @@ test('主页面使用新的三阶段产品名称和运行管理名称', () => {
   assert.match(appText, /标准服务编排/)
   assert.match(appText, /标准服务开发/)
   assert.match(appText, /上游接口验证/)
-  assert.match(appText, /标准编排验证/)
+  assert.match(appText, /发布前链路验证/)
   assert.match(appText, /链路追踪/)
   assert.match(appText, /运行监控/)
   assert.doesNotMatch(appText, /<span>数据资源服务<\/span>/)

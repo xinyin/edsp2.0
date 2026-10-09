@@ -135,7 +135,7 @@ const releaseNote = ref('完成接口字段标准化配置并通过联调验证'
 const requestText = ref('{}')
 const responseText = ref('{}')
 const upstreamRequestText = ref('{}')
-const testMode = ref<'UPSTREAM' | 'PLATFORM' | 'E2E'>('E2E')
+const testMode = ref<'UPSTREAM' | 'PLATFORM' | 'E2E'>('PLATFORM')
 const savedRequestBaseline = ref('{}')
 const savedResponseBaseline = ref('{}')
 const savedConnectionBaseline = ref('')
@@ -233,20 +233,20 @@ const esbTraceNodeDefinitions = [
 
 const testModes = [
   { value: 'UPSTREAM' as const, index: '01', label: '上游接口验证', path: '数据源应用 → 上游服务', description: '发送真实请求，验证连接、认证和原始响应' },
-  { value: 'PLATFORM' as const, index: '02', label: '标准编排验证', path: '标准请求 → 转换编排 → 标准响应', description: '验证字段映射、结果码和安全策略，不访问上游服务' },
-  { value: 'E2E' as const, index: '03', label: '发布后链路验收', path: 'XML → ESB → Gateway → 上游服务 → JSON', description: '服务发布并授权后，按行内真实入口执行完整调用' }
+  { value: 'PLATFORM' as const, index: '02', label: '发布前链路验证', path: '标准请求 → 转换与安全 → 数据源应用 → 上游 → 标准响应', description: '真实调用上游，验证当前草稿，通过后即可上线' },
+  { value: 'E2E' as const, index: '03', label: '线上入口验收（可选）', path: 'XML → ESB → Gateway → 上游服务 → JSON', description: '上线并授权后，检查 ESB 入口与调用方授权；不作为上线前置条件' }
 ]
 const orchestrationTestModes = computed(() => testModes.filter(mode => mode.value !== 'UPSTREAM'))
 
 const activeTraceDefinitions = computed(() => (testMode.value === 'E2E' ? esbTraceNodeDefinitions : traceNodeDefinitions).filter(node => {
   if (testMode.value === 'UPSTREAM') return ['DATA_SOURCE', 'VENDOR'].includes(node.key)
-  if (testMode.value === 'PLATFORM') return node.key !== 'VENDOR'
+  if (testMode.value === 'PLATFORM') return !['GATEWAY', 'MOCK_RESPONSE'].includes(node.key)
   return node.key !== 'MOCK_RESPONSE'
 }))
 
 const activeTestMode = computed(() => testModes.find(mode => mode.value === testMode.value) ?? testModes[2])
 const testActionLabel = computed(() => testMode.value === 'UPSTREAM'
-  ? '验证上游接口' : testMode.value === 'PLATFORM' ? '执行标准编排验证' : '执行发布后链路验收')
+  ? '验证上游接口' : testMode.value === 'PLATFORM' ? '执行发布前链路验证' : '执行线上入口验收')
 
 function selectTestMode(mode: 'UPSTREAM' | 'PLATFORM' | 'E2E') {
   if (testRunning.value || guideBusy.value) return
@@ -572,13 +572,23 @@ const currentUpstreamVerified = computed(() => !!detail.value
   && lastUpstreamValidation.value.connectionFingerprint === upstreamValidationFingerprint.value)
 const currentOrchestrationVerified = computed(() => !!detail.value
   && lastOrchestrationValidation.value?.interfaceId === detail.value.summary.id
-  && lastOrchestrationValidation.value.version === detail.value.summary.currentVersion)
+  && lastOrchestrationValidation.value.version === detail.value.summary.currentVersion
+  && draftEditorMatchesSaved())
+const resourceContractChanged = ref(false)
+function draftEditorMatchesSaved() {
+  return !!detail.value && JSON.stringify(detail.value.mappings) === JSON.stringify(savedMappingsBaseline.value)
+    && requestText.value === savedRequestBaseline.value
+    && responseText.value === savedResponseBaseline.value
+    && JSON.stringify(securityPolicy.value) === savedSecurityBaseline.value
+    && JSON.stringify(detail.value.responseCodes) === savedResponseCodesBaseline.value
+    && (detail.value.vendorCodePath || 'result.code') === (savedVendorCodePathBaseline.value || 'result.code')
+    && JSON.stringify(standardServiceForm.value) === savedStandardServiceBaseline.value
+}
 const currentPublishedVersion = computed(() => !!detail.value
   && detail.value.summary.status === 'PUBLISHED'
   && detail.value.summary.publishedVersion != null
   && detail.value.summary.publishedVersion === detail.value.summary.currentVersion)
-const currentPreReleaseVerified = computed(() => currentPublishedVersion.value
-  || (currentUpstreamVerified.value && currentOrchestrationVerified.value))
+const currentPreReleaseVerified = computed(() => currentOrchestrationVerified.value)
 const apiGuideSteps = computed(() => buildResourceGuide({
   upstreamUrl: detail.value?.summary.upstreamUrl ?? '', servicePath: detail.value?.summary.servicePath ?? '',
   mappings: savedMappingsBaseline.value, responseCodes: JSON.parse(savedResponseCodesBaseline.value || '[]'),
@@ -732,7 +742,7 @@ async function loadDetail() {
       ? adaptResourceDetail(await api.resourceApi(requestedInterfaceId))
       : await api.detail(requestedInterfaceId)
     const loadedVerification = resourceWorkspace
-      ? { ...await api.resourceValidationStatus(requestedInterfaceId), orchestrationVerified: false }
+      ? { ...await api.resourceValidationStatus(requestedInterfaceId), orchestrationVerified: false, resourceContractChanged: false }
       : await api.validationStatus(requestedInterfaceId)
     // Version history is additive. Keep the editor usable while an older
     // management service is being rolled out and expose an empty archive.
@@ -775,6 +785,7 @@ async function loadDetail() {
       ? { interfaceId: requestedInterfaceId, connectionFingerprint: upstreamValidationFingerprint.value } : null
     lastOrchestrationValidation.value = loadedVerification.orchestrationVerified
       ? { interfaceId: requestedInterfaceId, version: loadedDetail.summary.currentVersion } : null
+    resourceContractChanged.value = loadedVerification.resourceContractChanged === true
     validation.value = null
     publishResult.value = null
   } catch (error) {
@@ -784,6 +795,31 @@ async function loadDetail() {
   } finally {
     if (requestedInterfaceId === selectedInterfaceId.value) detailLoading.value = false
   }
+}
+
+async function syncResourceContract() {
+  if (!detail.value || !await confirmDiscardUnsaved()) return
+  const id = detail.value.summary.id
+  try {
+    await ElMessageBox.confirm('更新草稿的上游地址、超时及请求/响应契约。已有映射保留，未单独修改的透传样例随之更新；线上版本不变，更新后需重新验证。', '同步资源契约', { confirmButtonText: '同步到草稿', cancelButtonText: '取消', type: 'warning' })
+  } catch { return }
+  try {
+    guideBusy.value = true
+    await api.syncResourceContract(id)
+    detailCache.delete(id)
+    if (selectedInterfaceId.value === id) await loadDetail()
+    ElMessage.success('资源契约已同步，请核对映射并执行发布前链路验证')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '同步失败')
+  } finally { guideBusy.value = false }
+}
+
+function markDraftSaved() {
+  if (!detail.value) return
+  detail.value.summary.currentVersion = (detail.value.summary.publishedVersion ?? 0) + 1
+  detail.value.summary.status = 'DRAFT'
+  lastOrchestrationValidation.value = null
+  lastE2ETest.value = null
 }
 
 async function saveSecurityPolicy() {
@@ -799,11 +835,10 @@ async function saveSecurityPolicy() {
     description: securityPolicy.value.description
   })
   detailCache.delete(detail.value.summary.id)
-  detail.value.summary.currentVersion += 1
-  detail.value.summary.status = 'DRAFT'
+  markDraftSaved()
   savedSecurityBaseline.value = JSON.stringify(securityPolicy.value)
   validation.value = null
-  ElMessage.success('安全策略已保存为新草稿版本')
+  ElMessage.success('安全策略已保存，请重新验证当前草稿')
   return true
 }
 
@@ -1265,9 +1300,7 @@ async function continueGuide() {
     return
   }
   if (stepKey === 'test' && !currentPreReleaseVerified.value) {
-    guideError.value = currentUpstreamVerified.value
-      ? '请先执行“标准编排验证”，确认当前草稿的请求转换和响应标准化均正确。'
-      : '请先返回“上游能力接入”验证真实上游接口，再完成标准编排验证。'
+    guideError.value = '请先执行“发布前链路验证”，确认当前草稿能够真实调用上游并返回标准响应。'
     return
   }
   if (nextKey === 'release') {
@@ -1460,10 +1493,9 @@ async function saveMappings() {
   detail.value.summary.servicePath = standardServiceForm.value.servicePath
   detail.value.summary.httpMethod = standardServiceForm.value.httpMethod
   savedStandardServiceBaseline.value = JSON.stringify(standardServiceForm.value)
-  detail.value.summary.currentVersion += 1
-  detail.value.summary.status = 'DRAFT'
+  markDraftSaved()
   validation.value = null
-  ElMessage.success('映射配置已保存为新草稿版本')
+  ElMessage.success('映射配置已保存，请重新验证当前草稿')
   return true
 }
 function addMapping() {
@@ -1519,8 +1551,7 @@ async function saveResponseCodes() {
   savedResponseCodesBaseline.value = JSON.stringify(detail.value.responseCodes)
   savedVendorCodePathBaseline.value = detail.value.vendorCodePath
   detailCache.delete(selectedInterfaceId.value)
-  detail.value.summary.currentVersion += 1
-  detail.value.summary.status = 'DRAFT'
+  markDraftSaved()
   validation.value = null
   ElMessage.success('统一返回码配置已保存')
   return true
@@ -1554,6 +1585,10 @@ async function runTest() {
   const testingInterfaceId = selectedInterfaceId.value
   const testingVersion = detail.value.summary.currentVersion
   const testingMode = testMode.value
+  if (testingMode === 'PLATFORM' && !draftEditorMatchesSaved()) {
+    ElMessage.warning('请先保存标准请求、映射和安全策略，再执行发布前链路验证')
+    return false
+  }
   if (testingMode === 'UPSTREAM') lastUpstreamValidation.value = null
   if (testingMode === 'PLATFORM') lastOrchestrationValidation.value = null
   if (testingMode === 'E2E') lastE2ETest.value = null
@@ -1594,7 +1629,7 @@ async function runTest() {
       if (latestDetail.summary.status !== 'PUBLISHED'
         || latestDetail.summary.publishedVersion == null
         || latestDetail.summary.publishedVersion !== latestDetail.summary.currentVersion) {
-        throw new Error(`当前接口状态为“${latestDetail.summary.status || '未知'}”，线上版本为 V${latestDetail.summary.publishedVersion ?? '-'}。请先在发布管理上线当前版本，再执行发布后链路验收。`)
+        throw new Error(`当前接口状态为“${latestDetail.summary.status || '未知'}”，线上版本为 V${latestDetail.summary.publishedVersion ?? '-'}。开发阶段请选择“发布前链路验证”；线上入口验收需要先上线并授权。`)
       }
     }
     const e2eClient = testingMode === 'E2E' ? (() => {
@@ -1616,8 +1651,7 @@ async function runTest() {
           } as TestResult))
       : await api.test(testingInterfaceId, {
           request: requestPayload,
-          upstreamResponse: testMode.value === 'PLATFORM' ? JSON.parse(responseText.value) : undefined,
-          callUpstream: testMode.value !== 'PLATFORM',
+          callUpstream: true,
           mappings: mappingSnapshot,
           testMode: testMode.value
         }, { timeoutMs: requestDeadlineMs(previewTimeoutMs.value), signal: controller.signal })
@@ -1634,23 +1668,26 @@ async function runTest() {
       || result.standardResponse.resultStatus === 'ERROR') {
       throw new Error('链路返回异常，请点击异常节点核对入参与出参，修正配置后重新测试。')
     }
-    testSucceeded.value = true
     if (testingMode === 'UPSTREAM' && testingInterfaceId === detail.value.summary.id) {
       lastUpstreamValidation.value = { interfaceId: testingInterfaceId, connectionFingerprint: upstreamValidationFingerprint.value }
     }
     if (testingMode === 'PLATFORM' && testingVersion === detail.value.summary.currentVersion
       && JSON.stringify(mappingSnapshot) === JSON.stringify(savedMappingsBaseline.value)) {
-      lastOrchestrationValidation.value = { interfaceId: testingInterfaceId, version: testingVersion }
+      const proof = await api.validationStatus(testingInterfaceId)
+      lastOrchestrationValidation.value = proof.orchestrationVerified
+        ? { interfaceId: testingInterfaceId, version: testingVersion } : null
+      if (!proof.orchestrationVerified) throw new Error('当前草稿未取得有效验证凭证，请保存配置后重新验证。')
     }
     if (isSuccessfulE2E(result, testingMode) && testingVersion === detail.value.summary.currentVersion
       && JSON.stringify(mappingSnapshot) === JSON.stringify(savedMappingsBaseline.value)) {
       lastE2ETest.value = { interfaceId: testingInterfaceId, version: testingVersion }
     }
+    testSucceeded.value = true
     if (testingMode !== 'UPSTREAM') {
       try { await refreshBilling() } catch { ElMessage.warning('联调已完成，计费统计刷新失败，可稍后刷新') }
     }
     ElMessage.success(testMode.value === 'UPSTREAM' ? '上游接口验证成功'
-      : testMode.value === 'PLATFORM' ? '标准编排验证完成' : '发布后完整链路验收成功')
+      : testMode.value === 'PLATFORM' ? '发布前链路验证通过，可以进入发布' : '线上入口验收成功')
     return true
   } catch (error) {
     const apiError = error && typeof error === 'object' && 'payload' in error && 'message' in error
@@ -1843,7 +1880,7 @@ async function publishConfig() {
   if (!validation.value?.valid) return false
   const testHint = currentPreReleaseVerified.value
     ? '当前上游配置与服务草稿已通过验证。'
-    : '当前配置缺少有效验证结果，请完成上游接口验证和标准编排验证。'
+    : '当前配置缺少有效验证结果，请执行发布前链路验证。'
   await ElMessageBox.confirm(`${testHint} 确认上线 ${detail.value.summary.interfaceCode} V${detail.value.summary.currentVersion}？`, '确认服务上线', { confirmButtonText: '确认上线', cancelButtonText: '返回检查', type: 'warning' })
   const published = await api.directPublish(selectedInterfaceId.value, releaseNote.value)
   detail.value.summary = published
@@ -2260,7 +2297,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                         </div>
                     </section>
                     <section class="api-preview-panel">
-                      <header><div><h3>当前配置预览</h3><p>保存后进入标准服务开发；完成编排验证即可上线。</p></div><el-tag :type="hasUnsavedChanges ? 'warning' : detail.summary.upstreamStatus==='READY' ? 'success' : 'info'" effect="plain">{{ hasUnsavedChanges ? '有未保存修改' : detail.summary.upstreamStatus==='READY' ? '上游能力已保存' : '尚未保存' }}</el-tag></header>
+                      <header><div><h3>当前配置预览</h3><p>保存后进入标准服务开发；发布前真实验证通过后上线。</p></div><el-tag :type="hasUnsavedChanges ? 'warning' : detail.summary.upstreamStatus==='READY' ? 'success' : 'info'" effect="plain">{{ hasUnsavedChanges ? '有未保存修改' : detail.summary.upstreamStatus==='READY' ? '上游能力已保存' : '尚未保存' }}</el-tag></header>
                       <dl><div><dt>完整上游地址</dt><dd><code>{{ previewUpstreamUrl || '请填写上游地址' }}</code><el-button v-if="previewUpstreamUrl" text :icon="DocumentCopy" aria-label="复制上游地址" @click="copyApiValue(previewUpstreamUrl)">复制</el-button></dd></div><div><dt>请求超时</dt><dd><strong>{{ previewTimeoutMs }} ms</strong><span>{{ connectionForm.timeoutMode==='INHERIT' ? '继承数据源' : '单接口覆盖' }}</span></dd></div></dl>
                     </section>
                     <section class="upstream-contract-panel">
@@ -2282,7 +2319,8 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                   <section class="service-origin-strip">
                     <span>来源资源 API</span>
                     <div><strong>{{ detail.summary.resourceApiName || '历史服务资源' }}</strong><code>{{ detail.summary.resourceApiCode || '-' }}</code></div>
-                    <small>平台服务基于该资源接口封装；资源方契约与平台服务生命周期彼此独立。</small>
+                    <small>{{ resourceContractChanged ? '资源契约已变更，当前草稿仍保留原契约' : '草稿与线上版本独立，资源变更可同步到当前草稿' }}</small>
+                    <el-button v-if="detail.summary.resourceApiId" :type="resourceContractChanged ? 'warning' : 'primary'" plain :disabled="guideBusy || testRunning" @click="syncResourceContract">同步资源契约</el-button>
                   </section>
                   <section class="standard-contract-strip">
                     <div><strong>平台 API 契约</strong><span>定义提供给行内系统的标准调用入口</span></div>
@@ -2325,6 +2363,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                     </button>
                   </div>
                   <div class="test-mode-context"><div><span>{{ activeTestMode.path }}</span><strong>{{ activeTestMode.label }}</strong><small>{{ activeTestMode.description }}</small></div><code>{{ testMode === 'UPSTREAM' ? detail.summary.upstreamUrl : detail.summary.servicePath }}</code></div>
+                  <el-alert v-if="resourceContractChanged && testMode==='PLATFORM'" type="warning" :closable="false" show-icon title="来源资源契约已变更。如需采用新入参，请先回到请求转换，点击“同步资源契约”并核对映射。" />
                   <div v-if="testMode==='E2E'" class="esb-contract-strip"><div><span>真实调用入口</span><strong>行内系统 → XML → 模拟 ESB 队列</strong><small>队列消费后由 apiCode 解析服务路由，不再由调用方传 servicePath。</small></div><el-tag type="success" effect="plain">apiCode：{{ detail.summary.interfaceCode }}</el-tag></div>
                   <div v-if="testMode==='E2E'" class="esb-contract-details">
                     <div><span>XML 必填元数据</span><strong>apiCode · traceId</strong><small>apiCode 是接口唯一编码；traceId 用于全链路追踪。业务字段放在 body 节点。</small></div>
@@ -2333,7 +2372,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                   </div>
                   <div class="test-grid">
                     <div class="code-pane"><div class="code-title"><span>{{ testMode === 'UPSTREAM' ? '上游请求报文' : testMode === 'E2E' ? '行内 XML 入队报文' : '行内标准请求' }}</span><small>{{ testMode === 'UPSTREAM' ? '数据源应用发送' : testMode === 'E2E' ? 'ESB Adapter 消费并解析' : '用于验证请求转换' }}</small></div><el-input v-if="testMode==='UPSTREAM'" v-model="upstreamRequestText" type="textarea" :autosize="{ minRows: 10, maxRows: 16 }"/><el-input v-else-if="testMode==='PLATFORM'" v-model="requestText" type="textarea" :autosize="{ minRows: 10, maxRows: 16 }"/><pre v-else class="esb-xml-preview">{{ esbXmlPreview }}</pre></div>
-                    <div v-if="testMode==='PLATFORM'" class="code-pane"><div class="code-title"><span>上游原始响应样例</span><small>用于验证响应标准化，本模式不访问上游服务</small></div><el-input v-model="responseText" type="textarea" :autosize="{ minRows: 10, maxRows: 16 }" /></div>
+                    <div v-if="testMode==='PLATFORM'" class="code-pane readonly"><div class="code-title"><span>{{ testResult ? '上游实际响应' : '上游响应契约参考' }}</span><small>验证会真实访问上游；本步骤不经过 ESB / Gateway</small></div><pre>{{ testResult ? formatJson(testResult.upstreamResponse) : responseText }}</pre></div>
                     <div v-else-if="testMode==='E2E'" class="code-pane readonly"><div class="code-title"><span>解析后的标准请求</span><small>ESB Adapter 输出给 Gateway</small></div><pre>{{ formatJson(standardRequestPreview) }}</pre></div>
                     <div v-else class="connection-target"><span>UPSTREAM TARGET</span><strong>{{ detail.summary.upstreamUrl }}</strong><div><p><b>Method</b>{{ detail.summary.httpMethod }}</p><p><b>Timeout</b>{{ detail.timeoutMs }} ms</p><p><b>Adapter</b>{{ selectedSource.applicationName }}</p></div></div>
                   </div>
@@ -2397,7 +2436,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                     <el-button v-if="orchestrationStepIndex>0" :disabled="guideBusy || testRunning || connectionSaving" @click="openGuideStep(orchestrationGuideSteps[orchestrationStepIndex-1].key)">上一步</el-button>
                     <el-button :type="activeTab==='test' ? 'primary' : 'default'" :loading="guideBusy || testRunning || connectionSaving" :disabled="resourcePrimaryActionDisabled || deletingApi || detailLoading" @click="runCurrentPrimaryAction">{{ resourcePrimaryActionLabel }}</el-button>
                     <el-button v-if="orchestrationGuideSteps[orchestrationStepIndex+1]" type="primary" :disabled="guideBusy || testRunning || connectionSaving || detailLoading" @click="openGuideStep(orchestrationGuideSteps[orchestrationStepIndex+1].key)">下一步：{{ orchestrationGuideSteps[orchestrationStepIndex+1].title }}<el-icon class="el-icon--right"><ArrowRight/></el-icon></el-button>
-                    <el-tooltip v-else :disabled="currentPreReleaseVerified" :content="currentUpstreamVerified ? '请先执行标准编排验证' : '请先完成上游接口验证和标准编排验证'" placement="top"><span><el-button type="primary" :disabled="guideBusy || testRunning || connectionSaving || !currentPreReleaseVerified" @click="selectServiceDevelopmentStage('RELEASE')">进入发布检查<el-icon class="el-icon--right"><ArrowRight/></el-icon></el-button></span></el-tooltip>
+                    <el-tooltip v-else :disabled="currentPreReleaseVerified" content="请先执行发布前链路验证" placement="top"><span><el-button type="primary" :disabled="guideBusy || testRunning || connectionSaving || !currentPreReleaseVerified" @click="selectServiceDevelopmentStage('RELEASE')">进入发布检查<el-icon class="el-icon--right"><ArrowRight/></el-icon></el-button></span></el-tooltip>
                   </template>
                 </div>
               </footer>
