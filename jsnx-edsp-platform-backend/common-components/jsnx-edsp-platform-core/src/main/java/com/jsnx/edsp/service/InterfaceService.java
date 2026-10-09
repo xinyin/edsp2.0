@@ -665,16 +665,13 @@ public class InterfaceService {
         }
     }
 
-    // Serialize editing, deletion and release on the same API row. A stale browser
-    // must not revive a deleted draft by saving mappings or approving an old task.
+    // Serialize editing, deletion and release on the same API row. OFFLINE only
+    // stops production traffic; its next draft remains editable.
     private void lockEditableInterface(long interfaceId) {
         Map<String, Object> row = jdbc.queryForMap(
                 "SELECT status,published_version FROM api_interface WHERE id=? FOR UPDATE", interfaceId);
         if ("DELETED".equals(row.get("status"))) {
             throw new IllegalStateException("API 已删除，请刷新资源目录");
-        }
-        if ("OFFLINE".equals(row.get("status"))) {
-            throw new IllegalStateException("API 已下线，请在发布管理中重新接入或创建新版本");
         }
     }
 
@@ -713,7 +710,8 @@ public class InterfaceService {
         jdbc.update("""
                 UPDATE api_interface SET config_scope=?,upstream_path=?,upstream_url=?,timeout_ms=?,
                 upstream_request_example=?,upstream_response_example=?,request_example=?,standard_response_example=?,
-                upstream_status='READY',current_version=COALESCE(published_version,0)+1,status='DRAFT' WHERE id=?
+                upstream_status='READY',current_version=COALESCE(published_version,0)+1,
+                status=CASE WHEN status='OFFLINE' THEN 'OFFLINE' ELSE 'DRAFT' END WHERE id=?
                 """, resource.summary().configScope(), resource.summary().upstreamPath(), resource.summary().upstreamUrl(),
                 resource.configuredTimeoutMs(), json.write(resource.requestExample()), json.write(resource.responseExample()),
                 json.write(inheritRequest ? resource.requestExample() : draft.requestExample()),
@@ -758,7 +756,8 @@ public class InterfaceService {
                 UPDATE api_interface SET config_scope=?,upstream_path=?,upstream_url=?,timeout_ms=?,
                 upstream_request_example=?,upstream_response_example=?,
                 request_example=?,standard_response_example=?,
-                upstream_status='READY',current_version=COALESCE(published_version,0)+1,status='DRAFT' WHERE id=?
+                upstream_status='READY',current_version=COALESCE(published_version,0)+1,
+                status=CASE WHEN status='OFFLINE' THEN 'OFFLINE' ELSE 'DRAFT' END WHERE id=?
                 """, configScope, upstreamPath, upstreamUrl, configuredTimeoutMs,
                 json.write(request.upstreamRequestExample()), json.write(request.upstreamResponseExample()),
                 json.write(standardRequest), json.write(standardResponse), interfaceId);
@@ -791,7 +790,10 @@ public class InterfaceService {
                 """, interfaceId, request.enabled(), valueOr(request.encryptMode(), "NONE"),
                 valueOr(request.signatureMode(), "NONE"), request.requestFields(), request.encryptionKeyReference(),
                 request.signingKeyReference(), valueOr(request.signatureField(), "signature"), request.description());
-        jdbc.update("UPDATE api_interface SET current_version=COALESCE(published_version,0)+1,status='DRAFT' WHERE id=?", interfaceId);
+        jdbc.update("""
+                UPDATE api_interface SET current_version=COALESCE(published_version,0)+1,
+                status=CASE WHEN status='OFFLINE' THEN 'OFFLINE' ELSE 'DRAFT' END WHERE id=?
+                """, interfaceId);
         invalidateDraftValidation(interfaceId);
         return securityPolicy(interfaceId);
     }
@@ -871,7 +873,10 @@ public class InterfaceService {
                     """, interfaceId, code.vendorCode(), code.standardCode(), code.resultStatus(),
                     code.retryable(), code.billable());
         }
-        jdbc.update("UPDATE api_interface SET vendor_code_path=?,current_version=COALESCE(published_version,0)+1,status='DRAFT' WHERE id=?",
+        jdbc.update("""
+                UPDATE api_interface SET vendor_code_path=?,current_version=COALESCE(published_version,0)+1,
+                status=CASE WHEN status='OFFLINE' THEN 'OFFLINE' ELSE 'DRAFT' END WHERE id=?
+                """,
                 vendorCodePath, interfaceId);
         invalidateDraftValidation(interfaceId);
         return responseCodes(interfaceId);
@@ -903,11 +908,15 @@ public class InterfaceService {
             }
             jdbc.update("""
                     UPDATE api_interface SET service_path=?,http_method=?,request_example=?,
-                    current_version=COALESCE(published_version,0)+1,status='DRAFT' WHERE id=?
+                    current_version=COALESCE(published_version,0)+1,
+                    status=CASE WHEN status='OFFLINE' THEN 'OFFLINE' ELSE 'DRAFT' END WHERE id=?
                     """, servicePath, httpMethod, json.write(request.requestExample()),
                     interfaceId);
         } else {
-            jdbc.update("UPDATE api_interface SET current_version=COALESCE(published_version,0)+1,status='DRAFT' WHERE id=?", interfaceId);
+            jdbc.update("""
+                    UPDATE api_interface SET current_version=COALESCE(published_version,0)+1,
+                    status=CASE WHEN status='OFFLINE' THEN 'OFFLINE' ELSE 'DRAFT' END WHERE id=?
+                    """, interfaceId);
         }
         invalidateDraftValidation(interfaceId);
         return mappings(interfaceId);

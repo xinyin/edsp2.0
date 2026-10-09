@@ -113,14 +113,14 @@ export const api = {
     mock.interfaceDetail.mappings = plainMappings
     mock.interfaceDetail.requestExample = structuredClone(requestExample)
     mock.interfaceDetail.summary.currentVersion += 1
-    mock.interfaceDetail.summary.status = 'DRAFT'
+    if (mock.interfaceDetail.summary.status !== 'OFFLINE') mock.interfaceDetail.summary.status = 'DRAFT'
     return plainMappings
   }),
   saveResponseCodes: (id: number, vendorCodePath: string, responseCodes: InterfaceDetail['responseCodes']) => request<InterfaceDetail['responseCodes']>(`/api/interfaces/${id}/response-codes`, { method: 'PUT', body: JSON.stringify({ vendorCodePath, responseCodes }) }, () => {
     mock.interfaceDetail.vendorCodePath = vendorCodePath || 'result.code'
     mock.interfaceDetail.responseCodes = structuredClone(responseCodes)
     mock.interfaceDetail.summary.currentVersion += 1
-    mock.interfaceDetail.summary.status = 'DRAFT'
+    if (mock.interfaceDetail.summary.status !== 'OFFLINE') mock.interfaceDetail.summary.status = 'DRAFT'
     return structuredClone(mock.interfaceDetail.responseCodes)
   }),
   securityPolicy: (id: number) => request<SecurityPolicy>(`/api/interfaces/${id}/security-policy`, undefined, () => ({
@@ -129,7 +129,7 @@ export const api = {
   saveSecurityPolicy: (id: number, policy: Omit<SecurityPolicy, 'interfaceId'>) => request<SecurityPolicy>(`/api/interfaces/${id}/security-policy`, { method: 'PUT', body: JSON.stringify(policy) }, () => {
     mock.interfaceDetail.securityPolicy = { interfaceId: id, ...structuredClone(policy) }
     mock.interfaceDetail.summary.currentVersion += 1
-    mock.interfaceDetail.summary.status = 'DRAFT'
+    if (mock.interfaceDetail.summary.status !== 'OFFLINE') mock.interfaceDetail.summary.status = 'DRAFT'
     return structuredClone(mock.interfaceDetail.securityPolicy)
   }),
   validate: (id: number) => request<ValidationResult>(`/api/interfaces/${id}/validate`, { method: 'POST' }, () => mock.validation),

@@ -39,7 +39,7 @@ function harness(overrides = {}, confirm = async () => true) {
       resourceValidationStatus: async () => ({ upstreamVerified: false }), ...overrides },
       { get: (target, name) => target[name] ?? (() => { throw new Error('Unexpected API call: ' + String(name)) }) })
   })
-  const state = vm.runInNewContext('(() => { ' + appJS + ' return { activeMenu, activeTab, detail, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, sourceExpansion, isSourceExpanded, sourceInterfaces, filteredSources, setAllSourcesExpanded, timeoutExpanded, hasUnsavedChanges, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, currentPreReleaseVerified, currentE2EVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, bringVendorApiToPlatform, vendorImportingKey, apiForm, apiDialog, mappingDirection, mappingIsPassThrough, mappingModeLabel, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
+  const state = vm.runInNewContext('(() => { ' + appJS + ' return { activeMenu, activeTab, detail, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, sourceExpansion, isSourceExpanded, sourceInterfaces, filteredSources, setAllSourcesExpanded, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, currentPreReleaseVerified, currentE2EVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, bringVendorApiToPlatform, vendorImportingKey, apiForm, apiDialog, mappingDirection, mappingIsPassThrough, mappingModeLabel, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
   state.selectedSourceId.value = 1
   state.activeMenu.value = 'resource'
   state.selectedInterfaceId.value = 11
@@ -373,6 +373,20 @@ test('已下线接口提供恢复最近线上版本入口并保留更高版本�
   assert.match(apiText, /interfaces\/\$\{id\}\/online/)
   assert.match(appText, /status==='OFFLINE'.*恢复线上 V\{\{ releaseDetail\.summary\.publishedVersion \}\}/s)
   assert.match(appText, /草稿会继续保留，不会进入线上流量/)
+})
+test('已下线接口仍可编辑保存，并可选择上线新草稿或恢复旧线上版本', () => {
+  const s = harness()
+  s.detail.value.summary.status = 'OFFLINE'
+  s.detail.value.summary.currentVersion = 2
+  s.detail.value.summary.publishedVersion = 2
+  s.activeTab.value = 'request'
+  assert.equal(s.resourcePrimaryActionDisabled.value, false)
+  s.markDraftSaved()
+  assert.equal(s.detail.value.summary.status, 'OFFLINE')
+  assert.equal(s.detail.value.summary.currentVersion, 3)
+  assert.equal(s.resourceEditorState.value.label, '线上已下线')
+  assert.match(appText, /上线草稿 V\$\{releaseDetail\.summary\.currentVersion\}/)
+  assert.match(appText, /恢复线上 V\{\{ releaseDetail\.summary\.publishedVersion \}\}/)
 })
 test('标准服务只展示上游已保存接口，菜单支持横向和分组折叠，审批不占主菜单', () => {
   assert.match(appText, /item\.upstreamStatus === 'READY'/)

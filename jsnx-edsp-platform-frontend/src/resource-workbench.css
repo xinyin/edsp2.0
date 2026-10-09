@@ -260,6 +260,7 @@
 .vendor-code-path-panel code { color: #286f9c; font: 11px Menlo, Monaco, monospace; }
 .api-guide-error.compact { margin: 0 0 12px 0; }
 .status-dot.offline { background: #bf4545; }
+.resource-action-dot.offline { background: #bf4545; }
 @media (max-width: 1000px) {
   .service-stage-bar { grid-template-columns: minmax(0,1fr); }
   .service-stage-bar > i { display: none; }

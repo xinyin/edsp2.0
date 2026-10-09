@@ -617,6 +617,7 @@ const upstreamSaveRequired = computed(() => hasUnsavedChanges.value
   || (activeMenu.value === 'resource' && detail.value?.summary.upstreamStatus !== 'READY'))
 const resourceEditorState = computed(() => {
   if (hasUnsavedChanges.value) return { key: 'unsaved', label: '未保存修改', hint: '仅保留在当前浏览器页面' }
+  if (detail.value?.summary.status === 'OFFLINE') return { key: 'offline', label: '线上已下线', hint: `草稿 V${detail.value.summary.currentVersion} 可继续编辑` }
   if (detail.value?.summary.status === 'PENDING_APPROVAL') return { key: 'pending', label: '审批中', hint: `草稿 V${detail.value.summary.currentVersion} 已提交审批` }
   if (detail.value && detail.value.summary.publishedVersion === detail.value.summary.currentVersion) return { key: 'published', label: '已发布', hint: `线上生效 V${detail.value.summary.currentVersion}` }
   return { key: 'draft', label: '草稿版本', hint: `已持久化 V${detail.value?.summary.currentVersion ?? '-'}` }
@@ -627,7 +628,6 @@ const resourcePrimaryActionLabel = computed(() => ({
 }[activeTab.value] ?? '保存当前配置'))
 const resourcePrimaryActionDisabled = computed(() => activeTab.value === 'release'
   && (!hasUnpublishedChanges.value || detail.value?.summary.status === 'PENDING_APPROVAL'))
-  || detail.value?.summary.status === 'OFFLINE'
 const slowestLogNode = computed(() => callTrace.value?.nodes.reduce((slowest, node) => !slowest || node.durationMs > slowest.durationMs ? node : slowest, callTrace.value.nodes[0]))
 
 async function login() {
@@ -813,7 +813,7 @@ async function syncResourceContract() {
 function markDraftSaved() {
   if (!detail.value) return
   detail.value.summary.currentVersion = (detail.value.summary.publishedVersion ?? 0) + 1
-  detail.value.summary.status = 'DRAFT'
+  if (detail.value.summary.status !== 'OFFLINE') detail.value.summary.status = 'DRAFT'
   lastOrchestrationValidation.value = null
   lastE2ETest.value = null
 }
@@ -2195,7 +2195,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                 <div class="release-command-title"><span class="release-command-icon"><Promotion/></span><div><small>RELEASE CONTROL</small><h2>{{ releaseDetail.summary.interfaceName }}</h2><p><code>{{ releaseDetail.summary.interfaceCode }}</code><i></i>{{ releaseDetail.summary.servicePath }}</p></div></div>
                 <div class="release-state"><span>当前草稿<strong>V{{ releaseDetail.summary.currentVersion }}</strong></span><b></b><span>线上生效<strong>{{ releaseDetail.summary.publishedVersion == null ? '-' : 'V'+releaseDetail.summary.publishedVersion }}</strong></span><el-tag effect="plain" :type="releaseDetail.summary.status==='OFFLINE'?'danger':releaseDetail.summary.status==='PENDING_APPROVAL'?'warning':releaseDetail.summary.publishedVersion!=null?'success':'info'">{{ releaseDetail.summary.status==='OFFLINE'?'已下线':releaseDetail.summary.status==='PENDING_APPROVAL'?'审批中':releaseDetail.summary.publishedVersion!=null?'运行中':'未上线' }}</el-tag></div>
                 <div class="release-command-actions">
-                  <el-button v-if="releaseDetail.summary.status!=='PENDING_APPROVAL' && releaseDetail.summary.currentVersion!==releaseDetail.summary.publishedVersion && releaseDetail.summary.status!=='OFFLINE'" type="primary" :icon="Promotion" @click="submitReleaseFromManagement">直接上线</el-button>
+                  <el-button v-if="releaseDetail.summary.status!=='PENDING_APPROVAL' && releaseDetail.summary.currentVersion!==releaseDetail.summary.publishedVersion" type="primary" :icon="Promotion" @click="submitReleaseFromManagement">{{ releaseDetail.summary.status==='OFFLINE' ? `上线草稿 V${releaseDetail.summary.currentVersion}` : '直接上线' }}</el-button>
                   <el-button v-if="releaseDetail.summary.publishedVersion!=null" plain :icon="DocumentCopy" @click="openPublishedDetail(releaseDetail.summary.id)">查看接口详情</el-button>
                   <el-button v-if="releaseDetail.summary.publishedVersion!=null && releaseDetail.summary.status==='PUBLISHED'" type="primary" plain :icon="Key" @click="authForm.interfaceId=releaseDetail.summary.id; navigate('authorization')">配置访问授权</el-button>
                   <el-button v-if="releaseDetail.summary.status==='OFFLINE' && releaseDetail.summary.publishedVersion!=null" type="primary" :icon="Promotion" @click="onlineRelease">恢复线上 V{{ releaseDetail.summary.publishedVersion }}</el-button>
@@ -2204,7 +2204,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                 </div>
               </section>
               <section class="release-lifecycle plain-panel"><div class="done"><span><CircleCheck/></span><strong>配置完成</strong><small>草稿已持久化</small></div><i></i><div :class="{done:releaseDetail.summary.publishedVersion!=null && releaseDetail.summary.status!=='OFFLINE'}"><span><Promotion/></span><strong>服务上线</strong><small>{{ releaseDetail.summary.publishedVersion==null?'等待上线':'生效 V'+releaseDetail.summary.publishedVersion }}</small></div><i></i><div :class="{done:releaseHasAuthorization}"><span><Key/></span><strong>访问授权</strong><small>{{ releaseHasAuthorization?'已有有效授权':'上线后配置' }}</small></div><i></i><div :class="{done:releaseDetail.summary.status==='OFFLINE'}"><span><Delete/></span><strong>下线归档</strong><small>{{ releaseDetail.summary.status==='OFFLINE'?'已停止服务':'按需执行' }}</small></div></section>
-              <section v-if="releaseDetail.summary.currentVersion!==releaseDetail.summary.publishedVersion && releaseDetail.summary.status!=='PENDING_APPROVAL' && releaseDetail.summary.status!=='OFFLINE'" class="release-submit-panel plain-panel"><div><strong>待上线版本 V{{ releaseDetail.summary.currentVersion }}</strong><span>保存线上版本的新配置时生成下一草稿版本；同一草稿反复保存不递增，上线也不额外加版本。</span></div><el-input v-model="releaseNoteManagement" type="textarea" :rows="2" placeholder="填写本次变更内容"/></section>
+              <section v-if="releaseDetail.summary.currentVersion!==releaseDetail.summary.publishedVersion && releaseDetail.summary.status!=='PENDING_APPROVAL'" class="release-submit-panel plain-panel"><div><strong>待上线版本 V{{ releaseDetail.summary.currentVersion }}</strong><span>{{ releaseDetail.summary.status==='OFFLINE' ? `线上流量已停止；可上线草稿 V${releaseDetail.summary.currentVersion}，或恢复原线上 V${releaseDetail.summary.publishedVersion}。` : '保存线上版本的新配置时生成下一草稿版本；同一草稿反复保存不递增，上线也不额外加版本。' }}</span></div><el-input v-model="releaseNoteManagement" type="textarea" :rows="2" placeholder="填写本次变更内容"/></section>
               <section id="interface-version-history" class="version-history-panel plain-panel">
                 <header><div><span>VERSION ARCHIVE</span><h3>接口版本历史</h3><p>集中保存草稿、发布记录和执行计划快照。</p></div><el-tag type="info">{{ releaseVersions.length }} 个版本</el-tag></header>
                 <el-alert v-if="releaseVersions.some(item => !item.historyComplete)" title="检测到旧版本记录不完整" type="warning" :closable="false" description="接口主表保留了已发布版本号，但旧审批单、发布记录或执行计划快照缺失；版本仍保留并阻止未经下线的删除。"/>
