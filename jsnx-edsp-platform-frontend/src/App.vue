@@ -1504,7 +1504,7 @@ function addMapping() {
   nextTick(() => ElMessage.info('已新增映射行'))
 }
 function startMappingConfiguration() {
-  if (!filteredMappings.value.length) addMapping()
+  addMapping()
 }
 function deleteMapping(row: FieldMapping) { if (detail.value) detail.value.mappings = detail.value.mappings.filter(item => item !== row) }
 

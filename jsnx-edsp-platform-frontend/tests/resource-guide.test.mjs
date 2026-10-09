@@ -96,6 +96,21 @@ test('只有用户主动配置字段转换时才创建第一条映射，删除�
   assert.match(appText, /平台请求将按原路径一对一发送给上游，无需逐条配置映射/)
 })
 
+test('请求转换和响应标准化已有映射时仍可继续新增行', () => {
+  const s = harness()
+  const requestCount = s.detail.value.mappings.filter(item => item.direction === 'REQUEST').length
+  s.mappingDirection.value = 'REQUEST'
+  s.startMappingConfiguration()
+  s.startMappingConfiguration()
+  assert.equal(s.detail.value.mappings.filter(item => item.direction === 'REQUEST').length, requestCount + 2)
+
+  const responseCount = s.detail.value.mappings.filter(item => item.direction === 'RESPONSE').length
+  s.mappingDirection.value = 'RESPONSE'
+  s.startMappingConfiguration()
+  assert.equal(s.detail.value.mappings.filter(item => item.direction === 'RESPONSE').length, responseCount + 1)
+  assert.equal(s.detail.value.mappings.at(-1).direction, 'RESPONSE')
+})
+
 test('已进入字段转换模式但存在空映射行时不能继续', async () => {
   const s = harness()
   s.activeTab.value = 'request'
