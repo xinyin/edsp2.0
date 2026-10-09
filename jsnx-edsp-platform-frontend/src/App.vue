@@ -233,8 +233,8 @@ const esbTraceNodeDefinitions = [
 
 const testModes = [
   { value: 'UPSTREAM' as const, index: '01', label: '上游接口验证', path: '数据源应用 → 上游服务', description: '发送真实请求，验证连接、认证和原始响应' },
-  { value: 'PLATFORM' as const, index: '02', label: '发布前链路验证', path: '标准请求 → 转换与安全 → 数据源应用 → 上游 → 标准响应', description: '真实调用上游，验证当前草稿，通过后即可上线' },
-  { value: 'E2E' as const, index: '03', label: '线上入口验收（可选）', path: 'XML → ESB → Gateway → 上游服务 → JSON', description: '上线并授权后，检查 ESB 入口与调用方授权；不作为上线前置条件' }
+  { value: 'PLATFORM' as const, index: '02', label: '草稿链路测试（可选）', path: '标准请求 → 转换与安全 → 数据源应用 → 上游 → 标准响应', description: '真实调用上游，辅助检查当前草稿，不影响上线' },
+  { value: 'E2E' as const, index: '03', label: '线上入口验收（可选）', path: 'XML → ESB → Gateway → 上游服务 → JSON', description: '检查当前线上版本的 ESB 入口与调用方授权，与草稿发布相互独立' }
 ]
 const orchestrationTestModes = computed(() => testModes.filter(mode => mode.value !== 'UPSTREAM'))
 
@@ -246,7 +246,7 @@ const activeTraceDefinitions = computed(() => (testMode.value === 'E2E' ? esbTra
 
 const activeTestMode = computed(() => testModes.find(mode => mode.value === testMode.value) ?? testModes[2])
 const testActionLabel = computed(() => testMode.value === 'UPSTREAM'
-  ? '验证上游接口' : testMode.value === 'PLATFORM' ? '执行发布前链路验证' : '执行线上入口验收')
+  ? '验证上游接口' : testMode.value === 'PLATFORM' ? '执行草稿链路测试' : '执行线上入口验收')
 
 function selectTestMode(mode: 'UPSTREAM' | 'PLATFORM' | 'E2E') {
   if (testRunning.value || guideBusy.value) return
@@ -563,7 +563,7 @@ const filteredMonitorRecords = computed(() => usageRecords.value.filter(item => 
   return true
 }))
 const currentE2EVerified = computed(() => !!detail.value && lastE2ETest.value?.interfaceId === detail.value.summary.id
-  && lastE2ETest.value?.version === detail.value.summary.currentVersion)
+  && lastE2ETest.value?.version === detail.value.summary.publishedVersion)
 const upstreamValidationFingerprint = computed(() => [
   savedConnectionBaseline.value, savedUpstreamRequestBaseline.value, savedUpstreamResponseBaseline.value
 ].join('|'))
@@ -584,10 +584,6 @@ function draftEditorMatchesSaved() {
     && (detail.value.vendorCodePath || 'result.code') === (savedVendorCodePathBaseline.value || 'result.code')
     && JSON.stringify(standardServiceForm.value) === savedStandardServiceBaseline.value
 }
-const currentPublishedVersion = computed(() => !!detail.value
-  && detail.value.summary.status === 'PUBLISHED'
-  && detail.value.summary.publishedVersion != null
-  && detail.value.summary.publishedVersion === detail.value.summary.currentVersion)
 const currentPreReleaseVerified = computed(() => currentOrchestrationVerified.value)
 const apiGuideSteps = computed(() => buildResourceGuide({
   upstreamUrl: detail.value?.summary.upstreamUrl ?? '', servicePath: detail.value?.summary.servicePath ?? '',
@@ -808,7 +804,7 @@ async function syncResourceContract() {
     await api.syncResourceContract(id)
     detailCache.delete(id)
     if (selectedInterfaceId.value === id) await loadDetail()
-    ElMessage.success('资源契约已同步，请核对映射并执行发布前链路验证')
+    ElMessage.success('资源契约已同步，请核对映射；可按需执行草稿链路测试')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '同步失败')
   } finally { guideBusy.value = false }
@@ -1299,10 +1295,6 @@ async function continueGuide() {
     guideError.value = '请填写完整的上游原始码与平台标准码，再继续安全策略配置。'
     return
   }
-  if (stepKey === 'test' && !currentPreReleaseVerified.value) {
-    guideError.value = '请先执行“发布前链路验证”，确认当前草稿能够真实调用上游并返回标准响应。'
-    return
-  }
   if (nextKey === 'release') {
     releaseInterfaceId.value = selectedInterfaceId.value
     navigate('releases')
@@ -1586,7 +1578,7 @@ async function runTest() {
   const testingVersion = detail.value.summary.currentVersion
   const testingMode = testMode.value
   if (testingMode === 'PLATFORM' && !draftEditorMatchesSaved()) {
-    ElMessage.warning('请先保存标准请求、映射和安全策略，再执行发布前链路验证')
+    ElMessage.warning('请先保存标准请求、映射和安全策略，再执行草稿链路测试')
     return false
   }
   if (testingMode === 'UPSTREAM') lastUpstreamValidation.value = null
@@ -1626,10 +1618,9 @@ async function runTest() {
       const latestDetail = await api.detail(testingInterfaceId)
       if (testingInterfaceId !== selectedInterfaceId.value) return
       detail.value.summary = latestDetail.summary
-      if (latestDetail.summary.status !== 'PUBLISHED'
-        || latestDetail.summary.publishedVersion == null
-        || latestDetail.summary.publishedVersion !== latestDetail.summary.currentVersion) {
-        throw new Error(`当前接口状态为“${latestDetail.summary.status || '未知'}”，线上版本为 V${latestDetail.summary.publishedVersion ?? '-'}。开发阶段请选择“发布前链路验证”；线上入口验收需要先上线并授权。`)
+      if (latestDetail.summary.publishedVersion == null
+        || ['OFFLINE', 'DELETED'].includes(latestDetail.summary.status)) {
+        throw new Error('当前接口没有可验收的线上版本。线上入口验收只测试已上线版本；草稿可按需执行“草稿链路测试”。')
       }
     }
     const e2eClient = testingMode === 'E2E' ? (() => {
@@ -1678,16 +1669,15 @@ async function runTest() {
         ? { interfaceId: testingInterfaceId, version: testingVersion } : null
       if (!proof.orchestrationVerified) throw new Error('当前草稿未取得有效验证凭证，请保存配置后重新验证。')
     }
-    if (isSuccessfulE2E(result, testingMode) && testingVersion === detail.value.summary.currentVersion
-      && JSON.stringify(mappingSnapshot) === JSON.stringify(savedMappingsBaseline.value)) {
-      lastE2ETest.value = { interfaceId: testingInterfaceId, version: testingVersion }
+    if (isSuccessfulE2E(result, testingMode) && detail.value.summary.publishedVersion != null) {
+      lastE2ETest.value = { interfaceId: testingInterfaceId, version: detail.value.summary.publishedVersion }
     }
     testSucceeded.value = true
     if (testingMode !== 'UPSTREAM') {
       try { await refreshBilling() } catch { ElMessage.warning('联调已完成，计费统计刷新失败，可稍后刷新') }
     }
     ElMessage.success(testMode.value === 'UPSTREAM' ? '上游接口验证成功'
-      : testMode.value === 'PLATFORM' ? '发布前链路验证通过，可以进入发布' : '线上入口验收成功')
+      : testMode.value === 'PLATFORM' ? '草稿链路测试通过' : `线上 V${detail.value.summary.publishedVersion} 入口验收成功`)
     return true
   } catch (error) {
     const apiError = error && typeof error === 'object' && 'payload' in error && 'message' in error
@@ -1879,8 +1869,8 @@ async function publishConfig() {
   await validateConfig()
   if (!validation.value?.valid) return false
   const testHint = currentPreReleaseVerified.value
-    ? '当前上游配置与服务草稿已通过验证。'
-    : '当前配置缺少有效验证结果，请执行发布前链路验证。'
+    ? '当前草稿已完成可选链路测试。'
+    : '当前草稿尚未执行可选链路测试；该测试不影响上线。'
   await ElMessageBox.confirm(`${testHint} 确认上线 ${detail.value.summary.interfaceCode} V${detail.value.summary.currentVersion}？`, '确认服务上线', { confirmButtonText: '确认上线', cancelButtonText: '返回检查', type: 'warning' })
   const published = await api.directPublish(selectedInterfaceId.value, releaseNote.value)
   detail.value.summary = published
@@ -2203,7 +2193,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                 </div>
               </section>
               <section class="release-lifecycle plain-panel"><div class="done"><span><CircleCheck/></span><strong>配置完成</strong><small>草稿已持久化</small></div><i></i><div :class="{done:releaseDetail.summary.publishedVersion!=null && releaseDetail.summary.status!=='OFFLINE'}"><span><Promotion/></span><strong>服务上线</strong><small>{{ releaseDetail.summary.publishedVersion==null?'等待上线':'生效 V'+releaseDetail.summary.publishedVersion }}</small></div><i></i><div :class="{done:releaseHasAuthorization}"><span><Key/></span><strong>访问授权</strong><small>{{ releaseHasAuthorization?'已有有效授权':'上线后配置' }}</small></div><i></i><div :class="{done:releaseDetail.summary.status==='OFFLINE'}"><span><Delete/></span><strong>下线归档</strong><small>{{ releaseDetail.summary.status==='OFFLINE'?'已停止服务':'按需执行' }}</small></div></section>
-              <section v-if="releaseDetail.summary.currentVersion!==releaseDetail.summary.publishedVersion && releaseDetail.summary.status!=='PENDING_APPROVAL' && releaseDetail.summary.status!=='OFFLINE'" class="release-submit-panel plain-panel"><div><strong>待上线版本 V{{ releaseDetail.summary.currentVersion }}</strong><span>填写变更说明后直接生成执行计划并上线。</span></div><el-input v-model="releaseNoteManagement" type="textarea" :rows="2" placeholder="填写本次变更内容"/></section>
+              <section v-if="releaseDetail.summary.currentVersion!==releaseDetail.summary.publishedVersion && releaseDetail.summary.status!=='PENDING_APPROVAL' && releaseDetail.summary.status!=='OFFLINE'" class="release-submit-panel plain-panel"><div><strong>待上线版本 V{{ releaseDetail.summary.currentVersion }}</strong><span>保存线上版本的新配置时生成下一草稿版本；同一草稿反复保存不递增，上线也不额外加版本。</span></div><el-input v-model="releaseNoteManagement" type="textarea" :rows="2" placeholder="填写本次变更内容"/></section>
               <section id="interface-version-history" class="version-history-panel plain-panel">
                 <header><div><span>VERSION ARCHIVE</span><h3>接口版本历史</h3><p>集中保存草稿、发布记录和执行计划快照。</p></div><el-tag type="info">{{ releaseVersions.length }} 个版本</el-tag></header>
                 <el-alert v-if="releaseVersions.some(item => !item.historyComplete)" title="检测到旧版本记录不完整" type="warning" :closable="false" description="接口主表保留了已发布版本号，但旧审批单、发布记录或执行计划快照缺失；版本仍保留并阻止未经下线的删除。"/>
@@ -2297,7 +2287,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                         </div>
                     </section>
                     <section class="api-preview-panel">
-                      <header><div><h3>当前配置预览</h3><p>保存后进入标准服务开发；发布前真实验证通过后上线。</p></div><el-tag :type="hasUnsavedChanges ? 'warning' : detail.summary.upstreamStatus==='READY' ? 'success' : 'info'" effect="plain">{{ hasUnsavedChanges ? '有未保存修改' : detail.summary.upstreamStatus==='READY' ? '上游能力已保存' : '尚未保存' }}</el-tag></header>
+                      <header><div><h3>当前配置预览</h3><p>保存后进入标准服务开发；链路测试为可选辅助功能。</p></div><el-tag :type="hasUnsavedChanges ? 'warning' : detail.summary.upstreamStatus==='READY' ? 'success' : 'info'" effect="plain">{{ hasUnsavedChanges ? '有未保存修改' : detail.summary.upstreamStatus==='READY' ? '上游能力已保存' : '尚未保存' }}</el-tag></header>
                       <dl><div><dt>完整上游地址</dt><dd><code>{{ previewUpstreamUrl || '请填写上游地址' }}</code><el-button v-if="previewUpstreamUrl" text :icon="DocumentCopy" aria-label="复制上游地址" @click="copyApiValue(previewUpstreamUrl)">复制</el-button></dd></div><div><dt>请求超时</dt><dd><strong>{{ previewTimeoutMs }} ms</strong><span>{{ connectionForm.timeoutMode==='INHERIT' ? '继承数据源' : '单接口覆盖' }}</span></dd></div></dl>
                     </section>
                     <section class="upstream-contract-panel">
@@ -2400,13 +2390,13 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                       <p class="api-field-help">以上是已保存配置的检查提示；可点击返回修正。最终配置合法性以发布前校验结果为准。</p>
                     </div>
                     <div class="release-form">
-                      <label>发布说明</label><el-input v-model="releaseNote" type="textarea" :rows="4" placeholder="例如：新增企业查询接口，完成请求 / 响应映射及完整链路验证" :disabled="detail?.summary.status==='PENDING_APPROVAL'"/>
-                      <div class="release-note">保存草稿 → 完整链路联调 → 提交审批 → 审批通过激活 → 调用系统授权。提交审批不会立即改变线上版本。已发布过的 API 为保留版本、授权和调用日志，不再允许物理删除；停用时应撤销授权并走接口下线流程。</div>
+                      <label>发布说明</label><el-input v-model="releaseNote" type="textarea" :rows="4" placeholder="例如：新增企业查询接口，完成请求 / 响应映射与配置校验" :disabled="detail?.summary.status==='PENDING_APPROVAL'"/>
+                      <div class="release-note">保存草稿 → 配置校验 → 上线 → 调用系统授权。链路测试可在上线前后按需执行，不构成发布条件。已发布过的 API 为保留版本、授权和调用日志，不再允许物理删除；停用时应撤销授权并走接口下线流程。</div>
                       <div class="release-actions"><el-button :icon="DocumentChecked" :disabled="guideBusy" @click="validateConfig">发布前校验</el-button></div>
                       <div v-if="validation" class="validation-result" :class="validation?.valid ? 'valid' : 'invalid'"><el-icon><component :is="validation?.valid ? CircleCheck : Warning"/></el-icon><div><strong>{{ validation?.valid ? '已保存草稿校验通过' : '配置校验未通过，请修正后重试' }}</strong><span v-for="item in [...(validation?.errors ?? []),...(validation?.warnings ?? [])]" :key="item">{{ item }}</span></div></div>
                       <div v-if="detail?.summary.status==='PENDING_APPROVAL'" class="api-release-followup"><strong>已提交，等待审批 · 尚未上线</strong><p>当前草稿 V{{ detail?.summary.currentVersion }} 已进入审批队列{{ publishResult ? '，审批单 ' + publishResult?.id : '' }}。请在审批中心查看处理结果；通过后再为调用系统授权。</p><el-button type="primary" @click="navigate('approvals')">前往审批中心</el-button><el-button :disabled="loading" @click="loadAll">刷新审批状态</el-button></div>
                       <div v-else-if="!hasUnpublishedChanges" class="api-release-followup"><strong>当前版本已发布</strong><p>下一步为机构 / 调用系统配置 API 授权和配额。已有授权无需重复创建；使用正式链路发起请求后，到调用日志核对执行结果。</p><el-button type="primary" @click="navigate('authorization')">前往服务授权</el-button><el-button @click="navigate('logs')">查看调用日志</el-button></div>
-                      <div v-else class="api-release-followup"><strong>草稿准备提交</strong><p>{{ currentE2EVerified ? '当前草稿已在本次会话通过完整链路测试，请确认变更说明后提交。' : '尚无当前草稿的本次会话完整链路通过记录，建议先到联调验证执行。刷新页面或修改配置后需要重新验证。' }}</p><el-button v-if="!currentE2EVerified" @click="openGuideStep('test')">返回联调验证</el-button></div>
+                      <div v-else class="api-release-followup"><strong>草稿准备提交</strong><p>{{ currentPreReleaseVerified ? '当前草稿已完成可选链路测试，可直接上线。' : '尚未执行草稿链路测试；该测试仅用于辅助检查，不影响直接上线。' }}</p><el-button v-if="!currentPreReleaseVerified" @click="openGuideStep('test')">前往可选链路测试</el-button></div>
                     </div>
                   </div>
                   <section id="interface-version-history" class="version-history-panel">
@@ -2436,7 +2426,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                     <el-button v-if="orchestrationStepIndex>0" :disabled="guideBusy || testRunning || connectionSaving" @click="openGuideStep(orchestrationGuideSteps[orchestrationStepIndex-1].key)">上一步</el-button>
                     <el-button :type="activeTab==='test' ? 'primary' : 'default'" :loading="guideBusy || testRunning || connectionSaving" :disabled="resourcePrimaryActionDisabled || deletingApi || detailLoading" @click="runCurrentPrimaryAction">{{ resourcePrimaryActionLabel }}</el-button>
                     <el-button v-if="orchestrationGuideSteps[orchestrationStepIndex+1]" type="primary" :disabled="guideBusy || testRunning || connectionSaving || detailLoading" @click="openGuideStep(orchestrationGuideSteps[orchestrationStepIndex+1].key)">下一步：{{ orchestrationGuideSteps[orchestrationStepIndex+1].title }}<el-icon class="el-icon--right"><ArrowRight/></el-icon></el-button>
-                    <el-tooltip v-else :disabled="currentPreReleaseVerified" content="请先执行发布前链路验证" placement="top"><span><el-button type="primary" :disabled="guideBusy || testRunning || connectionSaving || !currentPreReleaseVerified" @click="selectServiceDevelopmentStage('RELEASE')">进入发布检查<el-icon class="el-icon--right"><ArrowRight/></el-icon></el-button></span></el-tooltip>
+                    <el-button v-else type="primary" :disabled="guideBusy || testRunning || connectionSaving" @click="selectServiceDevelopmentStage('RELEASE')">进入发布检查<el-icon class="el-icon--right"><ArrowRight/></el-icon></el-button>
                   </template>
                 </div>
               </footer>

@@ -237,18 +237,12 @@ test('安全策略默认关闭可以直接继续联调，不触发保存', async
   await s.continueGuide()
   assert.equal(s.activeTab.value, 'test')
 })
-test('发布前验证记录绑定接口、连接和草稿版本；旧凭证不能进入发布', async () => {
+test('草稿链路测试为可选项，没有测试凭证也能进入发布', async () => {
   const s = harness(); s.activeTab.value = 'test'
-  s.lastUpstreamValidation.value = { interfaceId: 11, connectionFingerprint: [s.savedConnectionBaseline.value, s.savedUpstreamRequestBaseline.value, s.savedUpstreamResponseBaseline.value].join('|') }
-  s.lastOrchestrationValidation.value = { interfaceId: 11, version: 1 }
-  await s.continueGuide()
-  assert.equal(s.activeTab.value, 'test')
-  s.lastOrchestrationValidation.value = { interfaceId: 12, version: 2 }
-  assert.equal(s.currentPreReleaseVerified.value, false)
-  s.lastOrchestrationValidation.value = { interfaceId: 11, version: 2 }
   await s.continueGuide()
   assert.equal(s.activeMenu.value, 'releases')
   assert.equal(s.activeTab.value, 'test')
+  assert.equal(s.currentPreReleaseVerified.value, false)
 })
 test('搜索自动展开所有匹配项，清除搜索后恢复折叠偏好', () => {
   const s = harness(); s.setAllSourcesExpanded(false)
@@ -300,13 +294,27 @@ test('完整链路测试会记录版本，后续失败会清除已通过记录',
   assert.equal(await s.runTest(), false)
   assert.equal(s.currentE2EVerified.value, false)
 })
+test('存在新草稿时仍可独立验收当前线上版本', async () => {
+  let latest
+  const s = harness({ detail: async () => latest, esbDiagnostic: async () => ({ ...result(), apiCode: 'ENTERPRISE_QUERY', servicePath: '/api/query', traceId: 'T002', parsedRequest: {}, xmlRequest: '<edspRequest/>', nodes: result().traceNodes }) })
+  s.detail.value.summary.status = 'DRAFT'
+  s.detail.value.summary.currentVersion = 3
+  s.detail.value.summary.publishedVersion = 2
+  latest = JSON.parse(JSON.stringify(s.detail.value))
+  s.clients.value = [{ id: 7, clientCode: 'TEST_CLIENT', status: 'ACTIVE' }]
+  s.authorizations.value = [{ id: 8, clientId: 7, interfaceId: 11, environment: 'TEST', status: 'ACTIVE', validFrom: '2020-01-01', validTo: '2099-12-31' }]
+  s.activeTab.value = 'test'; s.testMode.value = 'E2E'
+  assert.equal(await s.runTest(), true)
+  assert.equal(s.currentE2EVerified.value, true)
+  assert.equal(s.lastE2ETest.value.version, 2)
+})
 test('上游测试成功不会被误判为完整链路通过', async () => {
   const s = harness({ test: async () => result() })
   s.activeTab.value = 'test'; s.testMode.value = 'UPSTREAM'
   assert.equal(await s.runTest(), true)
   assert.equal(s.currentE2EVerified.value, false)
 })
-test('发布前真实验证由后端凭证确认，不要求已发布和授权', async () => {
+test('可选草稿链路测试由后端记录结果，不要求已发布和授权', async () => {
   let submitted
   const s = harness({ test: async (_id, body) => { submitted = body; return result() },
     validationStatus: async () => ({ upstreamVerified: true, orchestrationVerified: true }) })
@@ -355,7 +363,7 @@ test('主页面使用新的三阶段产品名称和运行管理名称', () => {
   assert.match(appText, /标准服务编排/)
   assert.match(appText, /标准服务开发/)
   assert.match(appText, /上游接口验证/)
-  assert.match(appText, /发布前链路验证/)
+  assert.match(appText, /草稿链路测试/)
   assert.match(appText, /链路追踪/)
   assert.match(appText, /运行监控/)
   assert.doesNotMatch(appText, /<span>数据资源服务<\/span>/)

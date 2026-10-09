@@ -1933,7 +1933,6 @@ public class InterfaceService {
         if (!validation.valid()) throw new IllegalStateException(String.join("；", validation.errors()));
         requireDataApplicationRoute(detail.summary());
         validatePublishableServicePath(detail.summary().servicePath());
-        requireValidationRecord(interfaceId, "PRE_RELEASE", checksum(detail), "发布前链路验证（真实调用上游）");
         int version = detail.summary().currentVersion();
         String releaseChecksum = checksum(detail);
         String releasedBy = valueOr(request == null ? null : request.releasedBy(), "平台管理员");
@@ -2002,7 +2001,6 @@ public class InterfaceService {
         ValidationResult validation = validate(interfaceId);
         if (!validation.valid()) throw new IllegalStateException(String.join("；", validation.errors()));
         InterfaceDetail detail = interfaceDetail(interfaceId);
-        requireValidationRecord(interfaceId, "PRE_RELEASE", checksum(detail), "发布前链路验证（真实调用上游）");
         int version = detail.summary().currentVersion();
         Integer pending = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM release_approval WHERE interface_id=? AND release_version=? AND status='PENDING'
@@ -2114,7 +2112,6 @@ public class InterfaceService {
         requireDataApplicationRoute(detail.summary());
         validatePublishableServicePath(detail.summary().servicePath());
         String checksum = checksum(detail);
-        requireValidationRecord(approval.interfaceId(), "PRE_RELEASE", checksum, "发布前链路验证（真实调用上游）");
         jdbc.update("UPDATE api_interface SET status='PUBLISHED',published_version=? WHERE id=?",
                 approval.releaseVersion(), approval.interfaceId());
         upsertPublishedRoute(detail, approval.releaseVersion());
@@ -2306,13 +2303,6 @@ public class InterfaceService {
                 INSERT INTO interface_validation_record(interface_id,validation_type,config_checksum)
                 VALUES(?,?,?) ON DUPLICATE KEY UPDATE config_checksum=VALUES(config_checksum),validated_at=NOW()
                 """, interfaceId, validationType, configChecksum);
-    }
-
-    private void requireValidationRecord(long interfaceId, String validationType,
-                                         String expectedChecksum, String label) {
-        if (!hasValidationRecord(interfaceId, validationType, expectedChecksum)) {
-            throw new IllegalStateException("当前配置尚未通过" + label + "，请验证成功后再上线");
-        }
     }
 
     private boolean hasValidationRecord(long interfaceId, String validationType, String expectedChecksum) {

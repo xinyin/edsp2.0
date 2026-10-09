@@ -47,9 +47,7 @@ class PublicationValidationTest {
     }
 
     @Test
-    void publishesServiceUsingItsVerifiedResourceWithoutDuplicateServiceVerification() throws Exception {
-        resourceVerified();
-        preReleaseVerified();
+    void publishesValidConfigurationWithoutOptionalLinkTest() {
         service.publishDirect(SERVICE_ID, new PublishRequest("管理员", "首次上线"));
         assertThat(plans.size()).isEqualTo(1);
         verify(jdbc).update("UPDATE api_interface SET status='PUBLISHED',published_version=? WHERE id=?", 3, SERVICE_ID);
@@ -58,18 +56,11 @@ class PublicationValidationTest {
     }
 
     @Test
-    void resourceValidationDoesNotReplaceOrchestrationValidation() throws Exception {
-        resourceVerified();
-        assertThatThrownBy(() -> service.publishDirect(SERVICE_ID, new PublishRequest("管理员", "上线")))
-                .hasMessageContaining("发布前链路验证").hasMessageNotContaining("提交审批");
-        assertThat(plans.size()).isZero();
-    }
-
-    @Test
-    void orchestrationAloneDoesNotProveAnUpstreamCallSucceeded() throws Exception {
-        when(jdbc.queryForList(contains("FROM interface_validation_record"), eq(String.class),
-                eq(SERVICE_ID), eq("ORCHESTRATION"))).thenReturn(List.of(configurationFingerprint()));
-        assertThatThrownBy(() -> service.publishDirect(SERVICE_ID, null)).hasMessageContaining("发布前链路验证");
+    void publishingDoesNotReadOptionalLinkTestProof() {
+        service.publishDirect(SERVICE_ID, new PublishRequest("管理员", "上线"));
+        verify(jdbc, never()).queryForList(contains("FROM interface_validation_record"), eq(String.class),
+                eq(SERVICE_ID), anyString());
+        assertThat(plans.size()).isEqualTo(1);
     }
 
     @Test
@@ -129,11 +120,6 @@ class PublicationValidationTest {
     private void resourceVerified() throws Exception {
         when(jdbc.queryForList("SELECT verified_checksum FROM resource_api WHERE id=?", String.class, RESOURCE_ID))
                 .thenReturn(List.of(upstreamFingerprint()));
-    }
-
-    private void preReleaseVerified() throws Exception {
-        when(jdbc.queryForList(contains("FROM interface_validation_record"), eq(String.class),
-                eq(SERVICE_ID), eq("PRE_RELEASE"))).thenReturn(List.of(configurationFingerprint()));
     }
 
     @SuppressWarnings("unchecked")
