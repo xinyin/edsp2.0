@@ -160,7 +160,7 @@ export const api = {
     const query = new URLSearchParams(Object.entries(filters).filter(([,value]) => value).map(([key,value]) => [key, String(value)]))
     return request<UsageRecord[]>(`/api/call-logs${query.size ? `?${query}` : ''}`)
   }
-  ,callTrace: (traceId: string) => request<CallTraceDetail>(`/api/call-logs/${traceId}`)
+  ,callTrace: (traceId: string) => request<CallTraceDetail>(`/api/call-logs/${encodeURIComponent(traceId)}`)
   ,monitorSummary: () => request<MonitorSummary>('/api/monitor/summary')
   ,monitorPoints: () => request<MonitorPoint[]>('/api/monitor/points')
   ,monitorAlerts: () => request<MonitorAlert[]>('/api/monitor/alerts')

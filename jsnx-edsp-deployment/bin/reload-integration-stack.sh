@@ -76,6 +76,7 @@ start_one() {
 }
 
 verify_owner admin 8081
+verify_owner observability 8083
 verify_owner data-enterprise 8181
 verify_owner data-credit 8182
 verify_owner data-antifraud 8183
@@ -85,16 +86,18 @@ verify_owner esb-adapter 8084
 echo "停止旧的联调运行栈..."
 stop_one esb-adapter 8084
 stop_one gateway 8080
+stop_one observability 8083
 stop_one data-antifraud 8183
 stop_one data-lhzx 8191
 stop_one data-credit 8182
 stop_one data-enterprise 8181
 stop_one admin 8081
 
-echo "构建 ESB Adapter、Gateway、Admin、公共 SDK 和数据应用..."
-(cd "$BACKEND_DIR" && mvn -q -pl platform-services/jsnx-edsp-esb-adapter,platform-services/jsnx-edsp-data-gateway,platform-services/jsnx-edsp-data-admin,data-applications/jsnx-edsp-data-enterprise,data-applications/jsnx-edsp-data-credit,data-applications/jsnx-edsp-data-antifraud,data-applications/jsnx-edsp-data-source-lhzx -am package)
+echo "构建 ESB Adapter、Gateway、Admin、Observability、公共 SDK 和数据应用..."
+(cd "$BACKEND_DIR" && mvn -q -pl platform-services/jsnx-edsp-esb-adapter,platform-services/jsnx-edsp-data-gateway,platform-services/jsnx-edsp-data-admin,platform-services/jsnx-edsp-data-observability,data-applications/jsnx-edsp-data-enterprise,data-applications/jsnx-edsp-data-credit,data-applications/jsnx-edsp-data-antifraud,data-applications/jsnx-edsp-data-source-lhzx -am package)
 
 start_one admin 8081 "$BACKEND_DIR/platform-services/jsnx-edsp-data-admin" jsnx-edsp-data-admin-2.0.0-SNAPSHOT.jar
+start_one observability 8083 "$BACKEND_DIR/platform-services/jsnx-edsp-data-observability" jsnx-edsp-data-observability-2.0.0-SNAPSHOT.jar
 start_one data-enterprise 8181 "$BACKEND_DIR/data-applications/jsnx-edsp-data-enterprise" jsnx-edsp-data-enterprise-2.0.0-SNAPSHOT.jar
 start_one data-credit 8182 "$BACKEND_DIR/data-applications/jsnx-edsp-data-credit" jsnx-edsp-data-credit-2.0.0-SNAPSHOT.jar
 start_one data-antifraud 8183 "$BACKEND_DIR/data-applications/jsnx-edsp-data-antifraud" jsnx-edsp-data-antifraud-2.0.0-SNAPSHOT.jar
