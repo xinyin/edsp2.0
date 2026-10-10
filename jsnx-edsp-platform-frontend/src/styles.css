@@ -858,6 +858,82 @@ button, input, textarea { font-family: inherit; }
 @keyframes chart-tooltip-in{from{opacity:0}to{opacity:1}}
 @media(max-width:680px){.chart-tooltip{width:158px}.chart-tooltip>div{gap:6px}.donut-track,.donut-segment{stroke-width:15}.donut-segment:hover,.donut-segment.active,.donut-segment:focus{stroke-width:19}}
 
+/* Compact typography for release and authorization workspaces. */
+.compact-page-heading { margin-bottom: 14px; }
+.compact-page-heading h1 { font-size: 20px; line-height: 1.3; }
+.compact-page-heading p { margin-top: 4px; font-size: 12px; }
+.release-console .release-command { padding: 18px 20px; }
+.release-console .release-command h2 { font-size: 17px; }
+.release-console .release-command p,
+.release-console .release-command p code { font-size: 10px; }
+.release-console .release-state { gap: 11px; padding: 8px 11px; }
+.release-console .release-state span { font-size: 9px; }
+.release-console .release-state strong { font-size: 14px; }
+.release-console .release-lifecycle { padding: 12px 18px; }
+.release-console .release-lifecycle > div strong { font-size: 10px; }
+.release-console .release-lifecycle > div small { font-size: 8px; }
+.release-console .version-history-panel { padding: 17px; }
+.release-console .version-history-panel > header { margin-bottom: 11px; }
+.release-console .version-history-panel > header h3 { font-size: 15px; }
+.release-console .version-history-panel > header p { margin-top: 4px; font-size: 11px; }
+.release-console .version-history-panel > header .el-tag { height: 22px; padding: 0 8px; font-size: 11px; }
+.release-console .version-history-panel .el-table { font-size: 11px; }
+.release-console .version-history-panel .el-table th.el-table__cell { height: 36px; }
+.release-console .version-history-panel .el-table td.el-table__cell { padding: 7px 0; }
+.release-console .version-history-panel .el-table .cell { padding: 0 10px; line-height: 1.45; }
+.release-console .version-history-panel .el-table th .cell { color: #5d7183; font-size: 11px; font-weight: 650; }
+.release-console .version-history-panel .el-table td .cell { color: #41566b; font-size: 11px; }
+.release-console .version-history-panel .el-table .el-tag { height: 21px; padding: 0 7px; font-size: 10px; }
+.release-console .version-active-label,
+.release-console .version-cell-sub { margin-top: 3px; font-size: 10px; line-height: 1.35; }
+.release-console .release-submit-panel strong { font-size: 12px; }
+.release-console .release-submit-panel span { font-size: 10px; }
+
+.authorization-overview .panel-heading,
+.authorization-list-panel .panel-heading { min-height: 52px; padding: 0 14px; }
+.authorization-overview .panel-heading strong,
+.authorization-list-panel .panel-heading strong { font-size: 13px; }
+.authorization-overview .panel-heading span,
+.authorization-list-panel .panel-heading span { font-size: 10px; }
+.authorization-overview .el-table,
+.authorization-list-panel .el-table { font-size: 12px; }
+.authorization-overview .el-table th.el-table__cell,
+.authorization-list-panel .el-table th.el-table__cell { height: 36px; }
+.authorization-overview .el-table td.el-table__cell,
+.authorization-list-panel .el-table td.el-table__cell { padding: 7px 0; }
+.authorization-overview .el-table .cell,
+.authorization-list-panel .el-table .cell { padding: 0 10px; line-height: 1.45; font-size: 12px; }
+.authorization-overview .el-table th .cell,
+.authorization-list-panel .el-table th .cell { color: #5d7183; font-size: 11px; font-weight: 650; }
+.authorization-overview .el-table .el-tag,
+.authorization-list-panel .el-table .el-tag { height: 21px; padding: 0 7px; font-size: 10px; }
+.authorization-overview .auth-summary-panel { min-height: 250px; padding: 24px; }
+.authorization-overview .auth-summary-panel > strong { font-size: 15px; }
+.authorization-overview .auth-summary-panel > span { margin-top: 8px; font-size: 10px; line-height: 1.6; }
+.authorization-overview .auth-summary-panel > div { margin-top: 18px; }
+.authorization-overview .auth-summary-panel b { font-size: 25px; }
+.authorization-overview .auth-summary-panel small { font-size: 10px; }
+.authorization-list-panel .panel-heading-actions .el-button { font-size: 12px; }
+
+.batch-auth-dialog .batch-auth-title strong { font-size: 16px; }
+.batch-auth-dialog .batch-auth-title small { font-size: 10px; }
+.batch-auth-dialog .batch-auth-policy,
+.batch-auth-dialog .batch-auth-picker { padding: 17px; }
+.batch-auth-dialog .batch-auth-policy>header,
+.batch-auth-dialog .batch-auth-picker>header { margin-bottom: 14px; }
+.batch-auth-dialog .batch-auth-policy>header strong,
+.batch-auth-dialog .batch-auth-picker>header strong { font-size: 12px; }
+.batch-auth-dialog .batch-auth-policy>header small,
+.batch-auth-dialog .batch-auth-picker>header small { font-size: 9px; }
+.batch-auth-dialog .batch-auth-selected strong { font-size: 20px; }
+.batch-auth-dialog .batch-auth-table-head { min-height: 34px; font-size: 9px; }
+.batch-auth-dialog .batch-auth-row { min-height: 47px; }
+.batch-auth-dialog .batch-auth-row strong { font-size: 10px; }
+.batch-auth-dialog .batch-auth-row small { font-size: 8px; }
+.batch-auth-dialog .batch-auth-row>span:nth-child(3),
+.batch-auth-dialog .batch-auth-row>span:nth-child(4) { font-size: 9px; }
+.batch-auth-dialog .batch-auth-footer>span { font-size: 9px; }
+
 /* Interactive monitoring operations cockpit */
 .monitor-command{min-height:84px;display:grid;grid-template-columns:minmax(380px,1fr) auto minmax(430px,.9fr);margin-bottom:14px;border:1px solid #2b4c5b;color:#eaf2f4;background:#173746}.monitor-health{display:flex;align-items:center;gap:14px;padding:14px 18px}.monitor-health>span{width:40px;height:40px;display:grid;place-items:center;flex:0 0 40px;border-radius:50%;color:#66c8af;background:#244e53}.monitor-health.warning>span{color:#ffb16e;background:#5a4531}.monitor-health svg{width:21px}.monitor-health small,.monitor-health strong,.monitor-health p{display:block;margin:0}.monitor-health small{color:#6db9c5;font:8px Menlo,Monaco,monospace}.monitor-health strong{margin-top:4px;font-size:14px}.monitor-health p{margin-top:5px;color:#9fb7c0;font-size:9px}.monitor-command-facts{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid #345362;border-width:0 1px}.monitor-command-facts span{min-width:72px;padding:13px;display:flex;flex-direction:column;justify-content:center;color:#8fa9b4;font-size:8px;border-right:1px solid #345362}.monitor-command-facts span:last-child{border:0}.monitor-command-facts b{margin-top:7px;color:#f4f8f9;font-size:15px}.monitor-command-facts b.danger{color:#ff9b9e}.monitor-command-actions{display:grid;grid-template-columns:repeat(3,1fr)}.monitor-command-actions button{min-width:0;padding:12px 10px;display:grid;grid-template-columns:18px 1fr 11px;align-items:center;gap:7px;border:0;border-right:1px solid #345362;color:#e5eef1;background:transparent;text-align:left;cursor:pointer}.monitor-command-actions button:last-child{border:0}.monitor-command-actions button:hover{background:#214754}.monitor-command-actions svg{width:16px;color:#72b8bd}.monitor-command-actions svg:last-child{width:11px;color:#829da7}.monitor-command-actions strong,.monitor-command-actions small{display:block;white-space:nowrap}.monitor-command-actions strong{font-size:9px}.monitor-command-actions small{margin-top:4px;color:#8fa7b0;font-size:7px}
 .monitor-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));margin-bottom:14px;border:1px solid #d7e0e6;background:#fff}.monitor-kpis>div{position:relative;min-width:0;min-height:106px;padding:15px;border-right:1px solid #e1e7eb}.monitor-kpis>div:last-child{border:0}.monitor-kpis span,.monitor-kpis strong,.monitor-kpis small{display:block}.monitor-kpis span{color:#627584;font-size:9px}.monitor-kpis strong{margin-top:9px;color:#1b2d3b;font-size:21px}.monitor-kpis strong em{font-size:10px;font-style:normal}.monitor-kpis small{margin-top:6px;color:#83919d;font-size:8px}.monitor-kpis svg{position:absolute;right:12px;top:14px;width:18px;color:#91a6b2}
