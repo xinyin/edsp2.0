@@ -14,6 +14,21 @@ DB_PORT="${DB_PORT:-3306}"
 DB_USERNAME="${DB_USERNAME:-root}"
 DB_PASSWORD="${DB_PASSWORD:-}"
 DB_URL="${DB_URL:-jdbc:mysql://$DB_HOST:$DB_PORT/edsp_demo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}"
+NACOS_SERVER_ADDR="${NACOS_SERVER_ADDR:-127.0.0.1:8848}"
+NACOS_LOCAL_ENV="$DEPLOY_DIR/var/nacos/local.env"
+[[ -f "$NACOS_LOCAL_ENV" ]] || { echo "未找到 $NACOS_LOCAL_ENV，请先安装 Nacos。" >&2; exit 1; }
+set -a
+source "$NACOS_LOCAL_ENV"
+set +a
+NACOS_USERNAME="${NACOS_USERNAME:-${NACOS_ADMIN_USERNAME:-}}"
+NACOS_PASSWORD="${NACOS_PASSWORD:-${NACOS_ADMIN_PASSWORD:-}}"
+NACOS_CONFIG_USERNAME="${NACOS_CONFIG_USERNAME:-$NACOS_USERNAME}"
+NACOS_CONFIG_PASSWORD="${NACOS_CONFIG_PASSWORD:-$NACOS_PASSWORD}"
+NACOS_DISCOVERY_USERNAME="${NACOS_DISCOVERY_USERNAME:-$NACOS_USERNAME}"
+NACOS_DISCOVERY_PASSWORD="${NACOS_DISCOVERY_PASSWORD:-$NACOS_PASSWORD}"
+export NACOS_SERVER_ADDR NACOS_USERNAME NACOS_PASSWORD
+export NACOS_CONFIG_USERNAME NACOS_CONFIG_PASSWORD
+export NACOS_DISCOVERY_USERNAME NACOS_DISCOVERY_PASSWORD
 mkdir -p "$RUN_DIR" "$LOG_DIR"
 
 for required_command in mysql mvn lsof curl; do
@@ -22,6 +37,7 @@ for required_command in mysql mvn lsof curl; do
     exit 1
   }
 done
+CHECK_ONLY=1 "$DEPLOY_DIR/bin/sync-config-to-nacos.sh"
 
 listener_pid() { lsof -nP -tiTCP:"$1" -sTCP:LISTEN 2>/dev/null | sort -u || true; }
 pid_record_owns_listener() {
@@ -66,9 +82,11 @@ start_one() {
   local name="$1" port="$2" dir="$3" jar="$4"
   (
     cd "$dir"
-    nohup env JAVA_HOME="$JAVA_HOME" SERVER_PORT="$port" DB_URL="$DB_URL" \
-      DB_USERNAME="$DB_USERNAME" DB_PASSWORD="$DB_PASSWORD" ADMIN_URL="http://127.0.0.1:8081" \
-      OBSERVABILITY_URL="http://127.0.0.1:8083" "$JAVA_HOME/bin/java" -jar "target/$jar" \
+    nohup env JAVA_HOME="$JAVA_HOME" NACOS_SERVER_ADDR="$NACOS_SERVER_ADDR" \
+      NACOS_USERNAME="$NACOS_USERNAME" NACOS_PASSWORD="$NACOS_PASSWORD" \
+      NACOS_CONFIG_USERNAME="$NACOS_CONFIG_USERNAME" NACOS_CONFIG_PASSWORD="$NACOS_CONFIG_PASSWORD" \
+      NACOS_DISCOVERY_USERNAME="$NACOS_DISCOVERY_USERNAME" NACOS_DISCOVERY_PASSWORD="$NACOS_DISCOVERY_PASSWORD" \
+      "$JAVA_HOME/bin/java" -jar "target/$jar" \
       >"$LOG_DIR/$name.log" 2>&1 < /dev/null &
     echo $! >"$RUN_DIR/$name.pid"
   )

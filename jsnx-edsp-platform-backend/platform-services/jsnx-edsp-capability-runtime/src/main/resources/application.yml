@@ -1,9 +1,23 @@
-server:
-  port: ${SERVER_PORT:8091}
 spring:
   application:
     name: jsnx-edsp-capability-runtime
-edsp:
-  admin-url: ${ADMIN_URL:http://127.0.0.1:8081}
-management:
-  endpoints.web.exposure.include: health,info,metrics,prometheus
+  config:
+    import: ${SPRING_CONFIG_IMPORT:nacos:jsnx-edsp-capability-runtime.yaml?group=${NACOS_GROUP:DEFAULT_GROUP}&refreshEnabled=true}
+  cloud:
+    nacos:
+      server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+      username: ${NACOS_USERNAME:}
+      password: ${NACOS_PASSWORD:}
+      config:
+        enabled: true
+        namespace: ${NACOS_NAMESPACE:}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        username: ${NACOS_CONFIG_USERNAME:${NACOS_USERNAME:}}
+        password: ${NACOS_CONFIG_PASSWORD:${NACOS_PASSWORD:}}
+      discovery:
+        enabled: true
+        register-enabled: true
+        namespace: ${NACOS_NAMESPACE:}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        username: ${NACOS_DISCOVERY_USERNAME:${NACOS_USERNAME:}}
+        password: ${NACOS_DISCOVERY_PASSWORD:${NACOS_PASSWORD:}}

@@ -1,18 +1,23 @@
-server:
-  port: ${SERVER_PORT:8183}
 spring:
-  application.name: jsnx-edsp-data-antifraud
-  config.import: ${SPRING_CONFIG_IMPORT:optional:nacos:jsnx-edsp-data-antifraud.yaml}
+  application:
+    name: jsnx-edsp-data-antifraud
+  config:
+    import: ${SPRING_CONFIG_IMPORT:nacos:jsnx-edsp-data-antifraud.yaml?group=${NACOS_GROUP:DEFAULT_GROUP}&refreshEnabled=true}
   cloud:
     nacos:
       server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
-      discovery.enabled: ${NACOS_ENABLED:false}
-      discovery.register-enabled: ${NACOS_ENABLED:false}
-      config.enabled: ${NACOS_ENABLED:false}
-    sentinel.enabled: ${SENTINEL_ENABLED:false}
-management:
-  endpoints.web.exposure.include: health,info,metrics,prometheus
-  metrics.tags.application: ${spring.application.name}
-edsp:
-  admin-url: ${ADMIN_URL:http://127.0.0.1:8081}
-  observability-url: ${OBSERVABILITY_URL:http://127.0.0.1:8083}
+      username: ${NACOS_USERNAME:}
+      password: ${NACOS_PASSWORD:}
+      config:
+        enabled: true
+        namespace: ${NACOS_NAMESPACE:}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        username: ${NACOS_CONFIG_USERNAME:${NACOS_USERNAME:}}
+        password: ${NACOS_CONFIG_PASSWORD:${NACOS_PASSWORD:}}
+      discovery:
+        enabled: true
+        register-enabled: true
+        namespace: ${NACOS_NAMESPACE:}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        username: ${NACOS_DISCOVERY_USERNAME:${NACOS_USERNAME:}}
+        password: ${NACOS_DISCOVERY_PASSWORD:${NACOS_PASSWORD:}}

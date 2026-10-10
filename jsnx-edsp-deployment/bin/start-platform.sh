@@ -24,6 +24,36 @@ DB_PORT="${DB_PORT:-3306}"
 DB_USERNAME="${DB_USERNAME:-root}"
 DB_PASSWORD="${DB_PASSWORD:-}"
 DB_URL="${DB_URL:-jdbc:mysql://$DB_HOST:$DB_PORT/edsp_demo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}"
+NACOS_SERVER_ADDR="${NACOS_SERVER_ADDR:-127.0.0.1:8848}"
+
+# Nacos is the source of runtime configuration after this migration. The
+# generated local.env contains only local credentials and is never committed.
+NACOS_LOCAL_ENV="$DEPLOY_DIR/var/nacos/local.env"
+[[ -f "$NACOS_LOCAL_ENV" ]] || {
+  echo "未找到 $NACOS_LOCAL_ENV，请先执行 bin/install-nacos.sh。" >&2
+  exit 1
+}
+set -a
+source "$NACOS_LOCAL_ENV"
+set +a
+NACOS_USERNAME="${NACOS_USERNAME:-${NACOS_ADMIN_USERNAME:-}}"
+NACOS_PASSWORD="${NACOS_PASSWORD:-${NACOS_ADMIN_PASSWORD:-}}"
+NACOS_CONFIG_USERNAME="${NACOS_CONFIG_USERNAME:-$NACOS_USERNAME}"
+NACOS_CONFIG_PASSWORD="${NACOS_CONFIG_PASSWORD:-$NACOS_PASSWORD}"
+NACOS_DISCOVERY_USERNAME="${NACOS_DISCOVERY_USERNAME:-$NACOS_USERNAME}"
+NACOS_DISCOVERY_PASSWORD="${NACOS_DISCOVERY_PASSWORD:-$NACOS_PASSWORD}"
+export NACOS_SERVER_ADDR NACOS_USERNAME NACOS_PASSWORD
+export NACOS_CONFIG_USERNAME NACOS_CONFIG_PASSWORD
+export NACOS_DISCOVERY_USERNAME NACOS_DISCOVERY_PASSWORD
+command -v jq >/dev/null 2>&1 || {
+  echo "平台启动依赖 jq 校验 Nacos 配置，请先安装 jq。" >&2
+  exit 1
+}
+if ! curl -fsS --connect-timeout 1 --max-time 3 "http://$NACOS_SERVER_ADDR/nacos/v1/console/health/readiness" >/dev/null 2>&1; then
+  echo "Nacos 尚未运行，尝试启动本地 Nacos..."
+  "$DEPLOY_DIR/bin/start-nacos.sh"
+fi
+CHECK_ONLY=1 "$DEPLOY_DIR/bin/sync-config-to-nacos.sh"
 mkdir -p "$RUN_DIR" "$LOG_DIR"
 
 for required_command in mysql mvn lsof curl; do
@@ -72,8 +102,10 @@ start_service() {
   rm -f "$RUN_DIR/$name.pid"
   (
     cd "$SERVICES_DIR/$module"
-    nohup env JAVA_HOME="$JAVA_HOME" SERVER_PORT="$port" DB_URL="$DB_URL" DB_USERNAME="$DB_USERNAME" DB_PASSWORD="$DB_PASSWORD" \
-      ADMIN_URL="http://127.0.0.1:8081" OBSERVABILITY_URL="http://127.0.0.1:8083" \
+    nohup env JAVA_HOME="$JAVA_HOME" \
+      NACOS_SERVER_ADDR="$NACOS_SERVER_ADDR" NACOS_USERNAME="${NACOS_USERNAME:-}" NACOS_PASSWORD="${NACOS_PASSWORD:-}" \
+      NACOS_CONFIG_USERNAME="${NACOS_CONFIG_USERNAME:-}" NACOS_CONFIG_PASSWORD="${NACOS_CONFIG_PASSWORD:-}" \
+      NACOS_DISCOVERY_USERNAME="${NACOS_DISCOVERY_USERNAME:-}" NACOS_DISCOVERY_PASSWORD="${NACOS_DISCOVERY_PASSWORD:-}" \
       "$JAVA_HOME/bin/java" -jar "target/$jar" >"$LOG_DIR/$name.log" 2>&1 &
     echo $! >"$RUN_DIR/$name.pid"
   )
@@ -85,8 +117,10 @@ start_application() {
   rm -f "$RUN_DIR/$name.pid"
   (
     cd "$APPLICATIONS_DIR/$module"
-    nohup env JAVA_HOME="$JAVA_HOME" SERVER_PORT="$port" \
-      ADMIN_URL="http://127.0.0.1:8081" OBSERVABILITY_URL="http://127.0.0.1:8083" \
+    nohup env JAVA_HOME="$JAVA_HOME" \
+      NACOS_SERVER_ADDR="$NACOS_SERVER_ADDR" NACOS_USERNAME="${NACOS_USERNAME:-}" NACOS_PASSWORD="${NACOS_PASSWORD:-}" \
+      NACOS_CONFIG_USERNAME="${NACOS_CONFIG_USERNAME:-}" NACOS_CONFIG_PASSWORD="${NACOS_CONFIG_PASSWORD:-}" \
+      NACOS_DISCOVERY_USERNAME="${NACOS_DISCOVERY_USERNAME:-}" NACOS_DISCOVERY_PASSWORD="${NACOS_DISCOVERY_PASSWORD:-}" \
       "$JAVA_HOME/bin/java" -jar "target/$jar" >"$LOG_DIR/$name.log" 2>&1 &
     echo $! >"$RUN_DIR/$name.pid"
   )

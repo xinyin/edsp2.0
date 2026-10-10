@@ -1,0 +1,63 @@
+---
+server:
+  port: "${SERVER_PORT:8080}"
+spring:
+  application:
+    name: jsnx-edsp-data-gateway
+  cloud:
+    sentinel:
+      enabled: "${SENTINEL_ENABLED:false}"
+      eager: "${SENTINEL_ENABLED:false}"
+      transport.dashboard: "${SENTINEL_DASHBOARD:127.0.0.1:8858}"
+    gateway:
+      metrics.enabled: true
+      routes:
+      - id: edsp-observability-logs
+        uri: "${OBSERVABILITY_URI:http://127.0.0.1:8083}"
+        predicates:
+        - Path=/api/call-logs/**,/api/usage-records
+      - id: edsp-observability-monitor
+        uri: "${OBSERVABILITY_URI:http://127.0.0.1:8083}"
+        predicates:
+        - Path=/api/monitor/**
+      - id: edsp-vendor
+        uri: "${VENDOR_URI:http://127.0.0.1:8090}"
+        predicates:
+        - Path=/vendor-api/**
+        filters:
+        - StripPrefix=1
+      - id: edsp-admin
+        uri: "${ADMIN_URI:http://127.0.0.1:8081}"
+        predicates:
+        - Path=/api/auth/**,/api/dashboard,/api/providers/**,/api/data-sources/**,/api/resource-apis/**,/api/platform-services/**,/api/interfaces/**,/api/approvals/**,/api/clients/**,/api/authorizations/**,/api/billing/**,/api/usage-records,/api/security-algorithms
+      - id: edsp-published-api-dynamic
+        uri: http://127.0.0.1:9
+        predicates:
+        - Path=/**
+        - Header=X-Api-Code,.+
+  kafka:
+    bootstrap-servers: "${KAFKA_BOOTSTRAP_SERVERS:127.0.0.1:9092}"
+    admin:
+      fail-fast: false
+    producer:
+      acks: 1
+      retries: 0
+      properties:
+        delivery.timeout.ms: 1500
+        request.timeout.ms: 800
+edsp:
+  admin-url: "${ADMIN_URL:http://127.0.0.1:8081}"
+  route-registry:
+    refresh-ms: "${EDSP_ROUTE_REFRESH_MS:5000}"
+    initial-delay-ms: "${EDSP_ROUTE_INITIAL_DELAY_MS:3000}"
+  auth:
+    bootstrap-api-key: "${EDSP_GATEWAY_API_KEY:demo-secret-key}"
+  log:
+    kafka-topic: "${EDSP_LOG_KAFKA_TOPIC:edsp.api.raw-log}"
+    queue-capacity: "${EDSP_LOG_QUEUE_CAPACITY:10000}"
+    transport: "${EDSP_LOG_TRANSPORT:HTTP}"
+    observability-url: "${OBSERVABILITY_URL:http://127.0.0.1:8083}"
+management:
+  endpoints.web.exposure.include: health,info,prometheus,metrics,gateway
+  endpoint.health.show-details: always
+  metrics.tags.application: "${spring.application.name}"

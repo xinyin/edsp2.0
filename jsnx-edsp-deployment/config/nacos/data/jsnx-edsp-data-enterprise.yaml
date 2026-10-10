@@ -1,0 +1,24 @@
+---
+server:
+  port: "${SERVER_PORT:8181}"
+spring:
+  application:
+    name: jsnx-edsp-data-enterprise
+  cloud:
+    sentinel:
+      enabled: "${SENTINEL_ENABLED:false}"
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    tags:
+      application: "${spring.application.name}"
+edsp:
+  security:
+    keys:
+      enterprise-encryption: "${EDSP_ENTERPRISE_ENCRYPTION_KEY:}"
+      enterprise-signing: "${EDSP_ENTERPRISE_SIGNING_KEY:}"
+  admin-url: "${ADMIN_URL:http://127.0.0.1:8081}"
+  observability-url: "${OBSERVABILITY_URL:http://127.0.0.1:8083}"

@@ -1,0 +1,21 @@
+---
+server.port: "${SERVER_PORT:8084}"
+spring:
+  application.name: jsnx-edsp-esb-adapter
+  cloud:
+    sentinel.enabled: "${SENTINEL_ENABLED:false}"
+  kafka:
+    bootstrap-servers: "${KAFKA_BOOTSTRAP_SERVERS:127.0.0.1:9092}"
+    listener.missing-topics-fatal: false
+edsp:
+  gateway-uri: "${GATEWAY_URI:http://127.0.0.1:8080}"
+  admin-uri: "${ADMIN_URI:http://127.0.0.1:8081}"
+  esb.request-topic: "${ESB_REQUEST_TOPIC:edsp.esb.request}"
+  esb.response-topic: "${ESB_RESPONSE_TOPIC:edsp.esb.response}"
+  esb.mock-queue.capacity: "${ESB_MOCK_QUEUE_CAPACITY:1000}"
+  esb.mock-queue.timeout-ms: "${ESB_MOCK_QUEUE_TIMEOUT_MS:10000}"
+  esb.admin-timeout-ms: "${ESB_ADMIN_TIMEOUT_MS:3000}"
+  esb.gateway-timeout-ms: "${ESB_GATEWAY_TIMEOUT_MS:8000}"
+management:
+  endpoints.web.exposure.include: health,info,prometheus,metrics
+  metrics.tags.application: "${spring.application.name}"

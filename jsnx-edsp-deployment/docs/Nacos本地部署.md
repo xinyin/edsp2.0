@@ -63,26 +63,33 @@ tail -n 60 var/logs/nacos.log
 
 ## 与平台应用的关系
 
-安装并启动 Nacos 后，当前已经运行的业务应用不会自动切换到 Nacos。业务应用默认 `NACOS_ENABLED=false`。在需要接入时，设置连接地址和鉴权凭证，并对需要接入的应用重新启动一次；客户端建立连接后，支持的动态配置变更不需要每次重启。
+平台应用现在以 Nacos 作为运行配置的唯一集中来源。应用内 `application.yml` 只保留应用名、配置 Data ID、Nacos 地址、命名空间、Group 和鉴权参数；服务端口、数据库、Kafka、Redis、依赖服务地址、超时、Gateway 静态路由和日志参数均维护在 Nacos。接口映射、发布版本、授权、动态路由和执行计划仍是平台业务数据，保存在 `edsp_demo`，不迁移到 Nacos。
 
-以下是接入现有整套本地平台的命令，执行停止命令会中断平台业务进程，因此本次安装不自动执行：
+Git 中的基准配置位于 `config/nacos/data/`。首次部署先同步配置：
 
 ```bash
-set -a
-source var/nacos/local.env
-set +a
-export NACOS_ENABLED=true
-export NACOS_SERVER_ADDR=127.0.0.1:8848
-export SPRING_CLOUD_NACOS_CONFIG_USERNAME="$NACOS_ADMIN_USERNAME"
-export SPRING_CLOUD_NACOS_CONFIG_PASSWORD="$NACOS_ADMIN_PASSWORD"
-export SPRING_CLOUD_NACOS_DISCOVERY_USERNAME="$NACOS_ADMIN_USERNAME"
-export SPRING_CLOUD_NACOS_DISCOVERY_PASSWORD="$NACOS_ADMIN_PASSWORD"
+./bin/sync-config-to-nacos.sh
 
+# 仅预览，不写入
+DRY_RUN=1 ./bin/sync-config-to-nacos.sh
+
+# Nacos 已存在不同内容时，明确覆盖
+FORCE=1 ./bin/sync-config-to-nacos.sh
+
+# 启动前只检查 9 个 Data ID 是否存在
+CHECK_ONLY=1 ./bin/sync-config-to-nacos.sh
+```
+
+同步脚本默认不会覆盖控制台中已修改的不同配置，避免误删生产调整。只有 `FORCE=1` 才以 Git 基准覆盖 Nacos；脚本不输出账号、密码或访问令牌。
+
+首次迁移或修改了启动阶段配置后，需要重启业务应用使其建立 Nacos 连接：
+
+```bash
 ./bin/stop-platform.sh
 ./bin/start-platform.sh
 ```
 
-上述示例使用本地管理员供本机开发接入；正式部署应为应用建立最小权限的独立账号。`start-platform.sh` 遇到已经运行的应用会跳过，因此只给启动命令加环境变量不能改变旧进程配置。
+本地脚本从被 Git 忽略的 `var/nacos/local.env` 加载凭证。正式部署应通过进程环境变量或凭证管理系统注入独立的最小权限应用账号，不能使用管理员账号。`start-platform.sh` 遇到已运行应用会跳过，因此切换配置中心或修改启动阶段配置时必须先停止旧进程。
 
 现有应用默认配置命名空间为 `public`，Group 为 `DEFAULT_GROUP`，导入 Data ID 如下，配置格式使用 YAML：
 
@@ -96,13 +103,18 @@ export SPRING_CLOUD_NACOS_DISCOVERY_PASSWORD="$NACOS_ADMIN_PASSWORD"
 | 征信应用 | `jsnx-edsp-data-credit.yaml` |
 | 百融反欺诈应用 | `jsnx-edsp-data-antifraud.yaml` |
 | 联合征信应用 | `jsnx-edsp-data-source-lhzx.yaml` |
+| 可选复杂能力服务 | `jsnx-edsp-capability-runtime.yaml` |
 
-在控制台“配置管理 → 配置列表 → 新建配置”维护这些配置，保存后落入 `edsp_nacos.config_info`，历史进入 `his_config_info`。仅发布需要覆盖的参数，避免复制整份本地配置导致端口等参数被误覆盖。具体参数是否动态生效取决于应用的绑定方式和刷新处理，不是所有参数都能热更新，例如服务监听端口通常需要重启。
+在控制台“配置管理 → 配置列表”维护这些配置，保存后落入 `edsp_nacos.config_info`，历史进入 `his_config_info`。配置导入开启 `refreshEnabled=true`，但是否热更新仍取决于具体 Bean 的绑定方式：服务端口、数据源连接池、Kafka 客户端、构造器注入参数和 Gateway RouteDefinition 等启动阶段对象默认需要重启；平台业务配置仍按现有运行计划发布机制实时生效。不能把“配置已发布”理解为所有 Java 对象都会自动重建。
 
-Nacos 提供应用配置管理和服务注册发现；平台接口映射、发布版本和 `apiCode → 数据源应用` 动态路由仍使用现有平台业务库和运行计划机制。本次部署不改变 Gateway 的路由策略，也不增加 Spring Cloud LoadBalancer。
+Nacos 提供应用配置管理和服务注册发现；平台接口映射、发布版本和 `apiCode → 数据源应用` 动态路由仍使用现有平台业务库和运行计划机制。本次迁移不改变 Gateway 的路由策略，也不增加 Spring Cloud LoadBalancer。
 
 本地单机配置用于开发与联调；行内生产高可用部署需使用独立规划的 Nacos 集群和配置数据库。
 
 ## 本次部署验证
 
 2026-10-10 本机验收：JDK 17、MySQL 9.3.0，健康检查通过，控制台 HTTP 200，实际状态 `auth_enabled=true`；未鉴权配置读取 HTTP 403，管理员登录正常。配置写入后在 `edsp_nacos.config_info` 可查，正常停止与重启后仍可读取；鉴权下服务注册与实例发现通过。测试配置和临时服务实例已清理。重复安装保留已有数据库，重复启动复用已记录且健康的进程，脚本语法和 Git 差异检查通过。
+
+同日运行配置迁移验收：9 个 YAML Data ID 发布到 `public / DEFAULT_GROUP`，内容读取与 Git 基准一致，实际存储在 `edsp_nacos.config_info`，类型为 `yaml`。8 个常用后端应用重载成功，每个应用日志均确认 `Load config[...] success`、配置监听和 Nacos 服务注册完成；Gateway 动态路由快照、算法目录转发、数据应用联调入口和 ESB 模拟队列检查通过。重载构建执行现有测试，49 项通过，无失败。可选复杂能力服务完成构建和配置发布，默认不启动。业务数据库未重新初始化，用户数据保留。
+
+本地启动脚本继续使用既定端口检查和管理进程。因此如在 Nacos 修改 `server.port`，也需同步相应启停脚本中的端口约定；监听端口不能通过配置刷新原地切换。供应商模拟工程和前端构建配置属于独立工程，本次集中管理范围为平台后端 9 个模块。

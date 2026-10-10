@@ -52,7 +52,18 @@ demo/
 
 ## 启停
 
-独立 Nacos 本地部署：[`docs/Nacos本地部署.md`](docs/Nacos本地部署.md)。启停入口为 `bin/start-nacos.sh`、`bin/stop-nacos.sh`，状态检查为 `bin/status-nacos.sh`，与平台启停分开管理。
+独立 Nacos 本地部署：[`docs/Nacos本地部署.md`](docs/Nacos本地部署.md)。启停入口为 `bin/start-nacos.sh`、`bin/stop-nacos.sh`，状态检查为 `bin/status-nacos.sh`。平台运行配置已集中到 Nacos，`start-platform.sh` 会检查 Nacos 和 9 个必需 Data ID；Nacos 或配置缺失时不会启动半套平台。
+
+配置模板位于 `config/nacos/data/`。首次安装或 Git 中配置模板发生变更后执行：
+
+```bash
+./bin/sync-config-to-nacos.sh
+
+# Nacos 已有配置与 Git 模板不同时，明确确认后覆盖
+FORCE=1 ./bin/sync-config-to-nacos.sh
+```
+
+日常配置可在 Nacos 控制台维护。`DRY_RUN=1` 仅预览，`CHECK_ONLY=1` 只检查必需 Data ID 是否存在，不覆盖控制台内容。
 
 ```bash
 cd /Users/tommy/Documents/外部数据/demo/jsnx-edsp-deployment
@@ -142,10 +153,10 @@ npm run build
 ## 技术边界
 
 - MySQL 是当前唯一持久化数据库。
-- 本地 Demo 不要求 Redis、Nacos、Kafka、ES 或容器环境。
+- 平台依赖 Nacos 统一管理运行配置和服务注册；本地不要求真实 Redis、Kafka、ES 或容器环境。
 - ESB 请求/响应队列由 `jsnx-edsp-esb-adapter` 内存队列模拟。
 - Kafka 异步日志由非阻塞 HTTP 事件投递模拟；监控服务不可用时只允许丢日志，不阻断业务请求。
-- Nacos 配置入口保留但默认关闭；Gateway 使用明确 URI，不引入 Spring Cloud LoadBalancer。
+- 各应用的 `application.yml` 只保留 Nacos 启动引导参数；端口、数据库、Kafka、Redis、超时、Gateway 静态路由和平台运行参数由独立 Data ID 管理。Gateway 不引入 Spring Cloud LoadBalancer。
 - 发布计划持久化到 MySQL，数据源应用按接口加载本地 PlanSnapshot，并通过 AtomicReference 原子切换。
 - 公共能力服务仅用于按需复杂处理，普通字段映射、签名、加解密和响应标准化在目标数据源应用内执行。
 - Elasticsearch、GoldenDB、Doris 当前不引入。
