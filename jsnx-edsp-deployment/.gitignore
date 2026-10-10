@@ -3,3 +3,4 @@
 .env
 var/logs/
 var/run/
+var/nacos/

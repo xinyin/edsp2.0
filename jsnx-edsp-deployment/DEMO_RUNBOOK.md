@@ -299,6 +299,7 @@ lsof -nP -iTCP:8080 -sTCP:LISTEN
 当前 Demo 默认关闭 Nacos 注册发现，ESB 队列使用内存模拟，日志事件使用非阻塞 HTTP 模拟 Kafka，因此两者均不是本地演示前置条件。Kafka 或监控服务不可用时不应阻断 Gateway 主请求；如果需要切换真实中间件，可设置：
 
 ```bash
-NACOS_ENABLED=true NACOS_SERVER_ADDR=127.0.0.1:8848 ./bin/start-demo.sh
 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 ./bin/start-demo.sh
 ```
+
+Nacos 已提供独立本地部署脚本，运行 `./bin/start-nacos.sh` 启动。开启应用注册发现与配置管理还需配置 Nacos 鉴权凭证，并重启需要接入的业务应用；完整步骤见 [`docs/Nacos本地部署.md`](docs/Nacos本地部署.md)。仅启动 Nacos 不改变已经运行的业务应用。

@@ -52,6 +52,8 @@ demo/
 
 ## 启停
 
+独立 Nacos 本地部署：[`docs/Nacos本地部署.md`](docs/Nacos本地部署.md)。启停入口为 `bin/start-nacos.sh`、`bin/stop-nacos.sh`，状态检查为 `bin/status-nacos.sh`，与平台启停分开管理。
+
 ```bash
 cd /Users/tommy/Documents/外部数据/demo/jsnx-edsp-deployment
 
