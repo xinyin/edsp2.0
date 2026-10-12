@@ -11,6 +11,7 @@ const guideJS = ts.transpileModule(guideSource, { compilerOptions: { module: ts.
 const guide = await import('data:text/javascript;base64,' + Buffer.from(guideJS).toString('base64'))
 const appText = readFileSync(new URL('../src/App.vue', import.meta.url), 'utf8')
 const apiText = readFileSync(new URL('../src/api.ts', import.meta.url), 'utf8')
+const consoleThemeText = readFileSync(new URL('../src/console-theme.css', import.meta.url), 'utf8')
 const script = parse(appText).descriptor.scriptSetup.content
 const sourceFile = ts.createSourceFile('App.ts', script, ts.ScriptTarget.Latest, true)
 const imports = sourceFile.statements.filter(ts.isImportDeclaration)
@@ -409,6 +410,11 @@ test('主页面使用新的三阶段产品名称和运行管理名称', () => {
   assert.match(appText, /@click\.stop="sidebarCollapsed=!sidebarCollapsed"/)
   assert.match(appText, /:aria-label="sidebarCollapsed\?'展开菜单':'收起菜单'"/)
   assert.doesNotMatch(appText, /<span>数据资源服务<\/span>/)
+})
+test('生效配置和日志检索在窄工作区使用自适应布局', () => {
+  assert.match(consoleThemeText, /\.api-preview-panel dl \{[^}]*minmax\(280px,\.38fr\)/)
+  assert.match(consoleThemeText, /@container \(max-width: 740px\)[\s\S]*?\.api-preview-panel dl \{ grid-template-columns: minmax\(0,1fr\); \}/)
+  assert.match(consoleThemeText, /@media \(max-width: 1100px\)[\s\S]*?\.log-query-grid \{ grid-template-columns: minmax\(0,1fr\) minmax\(0,1fr\); \}/)
 })
 test('已下线接口提供恢复最近线上版本入口并保留更高版本草稿', () => {
   assert.match(apiText, /interfaces\/\$\{id\}\/online/)

@@ -185,10 +185,13 @@ body { background: var(--canvas); }
 .api-preview-panel { margin-top: 10px; background: #f7fafb; }
 .api-preview-panel > header { min-height: 38px; padding: 8px 12px; }
 .api-preview-panel header h3 { color: #616a72; font-size: 11px; }
-.api-preview-panel dl { display: grid; grid-template-columns: minmax(0,1fr) 180px; }
-.api-preview-panel dl > div { grid-template-columns: 92px minmax(0,1fr); padding: 10px 12px; border-bottom: 0; border-right: 1px solid var(--border); }
+.api-preview-panel dl { display: grid; grid-template-columns: minmax(0,1fr) minmax(280px,.38fr); gap: 0; }
+.api-preview-panel dl > div { min-width: 0; grid-template-columns: max-content minmax(0,1fr); align-items: center; gap: 14px; padding: 12px; border-bottom: 0; border-right: 1px solid var(--border); }
 .api-preview-panel dl > div:last-child { border-right: 0; }
-.api-preview-panel dt, .api-preview-panel dd { font-size: 11px; }
+.api-preview-panel dt, .api-preview-panel dd { min-width: 0; font-size: 11px; }
+.api-preview-panel dt, .api-preview-panel dd strong, .api-preview-panel dd > span { white-space: nowrap; }
+.api-preview-panel dd { flex-wrap: wrap; }
+.api-preview-panel dd code { overflow-wrap: anywhere; word-break: break-word; }
 .upstream-contract-panel { margin-top: 0; }
 .upstream-contract-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0; padding: 0; }
 .upstream-contract-grid label { min-width: 0; color: #4d565e; font-size: 11px; font-weight: 600; }
@@ -341,6 +344,9 @@ button:focus-visible { outline: 2px solid #8094a4; outline-offset: 2px; }
 @container (max-width: 740px) {
   .api-config-columns, .upstream-contract-grid { grid-template-columns: minmax(0,1fr); }
   .upstream-contract-grid label + label { border-top: 1px solid var(--border); border-left: 0; }
+  .api-preview-panel dl { grid-template-columns: minmax(0,1fr); }
+  .api-preview-panel dl > div { border-right: 0; border-bottom: 1px solid var(--border); }
+  .api-preview-panel dl > div:last-child { border-bottom: 0; }
   .mapping-board-head { display: none; }
   .mapping-row { grid-template-columns: 22px minmax(0,1fr) 52px; }
   .mapping-row > .field-cell, .mapping-row > .transform-cell { grid-column: 2; }
@@ -356,6 +362,8 @@ button:focus-visible { outline: 2px solid #8094a4; outline-offset: 2px; }
   .resource-workbench { grid-template-columns: 215px minmax(0,1fr); }
   .release-console { grid-template-columns: 240px minmax(0,1fr); }
   .authorization-overview, .split-panels, .monitor-main-grid, .cockpit-analytics { grid-template-columns: minmax(0,1fr); }
+  .log-query-grid { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+  .log-query-grid > :first-child { grid-column: 1 / -1; }
   .auth-summary-panel { padding: 13px; }
   .page-heading { flex-wrap: wrap; }
 }
@@ -368,6 +376,8 @@ button:focus-visible { outline: 2px solid #8094a4; outline-offset: 2px; }
   .developer-tabs button { min-width: 92px; }
   .api-request-bar { grid-template-columns: 60px minmax(0,1fr) auto; margin: 10px 12px 0; }
   .api-request-bar .request-timeout { display: none; }
+  .log-query-grid { grid-template-columns: minmax(0,1fr); }
+  .log-query-grid > :first-child { grid-column: auto; }
   .resource-workbench .resource-action-bar { position: static; }
   .resource-workbench .editor-tabs > .el-tabs__content { padding: 12px; }
   .el-dialog { margin-top: 4vh; }
