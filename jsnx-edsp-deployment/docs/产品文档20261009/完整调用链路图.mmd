@@ -8,9 +8,9 @@ sequenceDiagram
     participant U as 上游供应商
     participant O as Observability
     participant M as MySQL
-    C->>Q: XML与认证信息
-    Q->>E: 消费请求并关联Trace ID
-    E->>A: apiCode解析已发布路径
+    C->>Q: Service XML与认证信息
+    Q->>E: 消费请求并关联service_sn
+    E->>A: service_id解析已发布路径
     A->>M: published_route关联data_source
     M-->>A: 路由记录
     A-->>E: 服务路径
@@ -37,7 +37,8 @@ sequenceDiagram
     end
     G-->>E: JSON响应
     G-->>O: 异步Gateway事件
-    E-->>Q: JSON响应入队
-    Q-->>C: 按请求标识返回JSON
+    E->>E: 标准JSON封装为Service XML
+    E-->>Q: XML响应入队
+    Q-->>C: 按service_sn返回XML
     O->>M: 事件与节点日志和计量记录
-    Note over D,O: 本地HTTP模拟Kafka；部分节点耗时为演示值
+    Note over D,O: Kafka事件保持结构化JSON；部分节点耗时为演示值

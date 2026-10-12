@@ -249,13 +249,13 @@ const esbTraceNodeDefinitions = [
   { key: 'GATEWAY', label: '统一 Gateway', short: 'ROUTE', icon: DataBoard },
   { key: 'DATA_APPLICATION', label: '数据源应用', short: 'ADAPTER', icon: Files },
   { key: 'SUPPLIER', label: '上游服务', short: 'UPSTREAM', icon: OfficeBuilding },
-  { key: 'STANDARD_RESPONSE', label: '标准 JSON 响应', short: 'RESPONSE', icon: DataAnalysis }
+  { key: 'STANDARD_RESPONSE', label: 'ESB XML 响应', short: 'XML REPLY', icon: DataAnalysis }
 ]
 
 const testModes = [
   { value: 'UPSTREAM' as const, index: '01', label: '上游接口验证', path: '数据源应用 → 上游服务', description: '发送真实请求，验证连接、认证和原始响应' },
   { value: 'PLATFORM' as const, index: '02', label: '草稿链路测试（可选）', path: '标准请求 → 转换与安全 → 数据源应用 → 上游 → 标准响应', description: '真实调用上游，辅助检查当前草稿，不影响上线' },
-  { value: 'E2E' as const, index: '03', label: '线上入口验收（可选）', path: 'XML → ESB → Gateway → 上游服务 → JSON', description: '检查当前线上版本的 ESB 入口与调用方授权，与草稿发布相互独立' }
+  { value: 'E2E' as const, index: '03', label: '线上入口验收（可选）', path: 'XML → ESB → Gateway → 上游服务 → XML', description: '检查当前线上版本的 ESB 请求与响应、动态路由和调用方授权' }
 ]
 const orchestrationTestModes = computed(() => testModes.filter(mode => mode.value !== 'UPSTREAM'))
 
@@ -368,13 +368,25 @@ function xmlNode(name: string, value: unknown): string {
   }
   return `<${safeName}>${xmlEscape(value)}</${safeName}>`
 }
-function buildEsbXml(apiCode: string, traceId: string, body: Record<string, unknown>, environment = 'TEST') {
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<edspRequest><apiCode>${xmlEscape(apiCode)}</apiCode><traceId>${xmlEscape(traceId)}</traceId><environment>${xmlEscape(environment)}</environment><body>${Object.entries(body).map(([key, value]) => xmlNode(key, value)).join('')}</body></edspRequest>`
+function esbServiceTime() {
+  const now = new Date()
+  const part = (value: number) => String(value).padStart(2, '0')
+  return `${now.getFullYear()}${part(now.getMonth() + 1)}${part(now.getDate())}${part(now.getHours())}${part(now.getMinutes())}${part(now.getSeconds())}`
+}
+function buildEsbXml(serviceId: string, serviceSn: string, requesterId: string, body: Record<string, unknown>) {
+  const request = Object.entries(body).map(([key, value]) => xmlNode(key, value)).join('')
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<Service>\n  <Service_Header>\n    <service_sn>${xmlEscape(serviceSn)}</service_sn>\n    <service_id>${xmlEscape(serviceId)}</service_id>\n    <requester_id>${xmlEscape(requesterId)}</requester_id>\n    <service_time>${esbServiceTime()}</service_time>\n    <version_id>01</version_id>\n  </Service_Header>\n  <Service_Body>\n    <request>${request}</request>\n  </Service_Body>\n</Service>`
 }
 const esbXmlPreview = computed(() => {
   if (!detail.value) return ''
-  try { return buildEsbXml(detail.value.summary.interfaceCode, 'TRACE_PREVIEW', JSON.parse(requestText.value)) }
+  try { return buildEsbXml(detail.value.summary.interfaceCode, 'TRACE_PREVIEW', activeClients.value[0]?.clientCode ?? 'REQUESTER_ID', JSON.parse(requestText.value)) }
   catch { return '请输入有效 JSON 后生成 XML 入队报文' }
+})
+const esbXmlResponsePreview = computed(() => {
+  const node = testResult.value?.traceNodes.find(item => item.key === 'STANDARD_RESPONSE')
+  const output = node?.output
+  return output && typeof output === 'object' && 'xml' in output
+    ? String((output as Record<string, unknown>).xml ?? '') : ''
 })
 const standardRequestPreview = computed(() => {
   try { return JSON.parse(requestText.value) }
@@ -1715,7 +1727,7 @@ async function runTest() {
     }
     const traceId = `EDSP-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
     const result = testMode.value === 'E2E'
-      ? await api.esbDiagnostic(e2eClient!.clientCode, buildEsbXml(detail.value.summary.interfaceCode, traceId, requestPayload, 'TEST'), traceId,
+      ? await api.esbDiagnostic(e2eClient!.clientCode, buildEsbXml(detail.value.summary.interfaceCode, traceId, e2eClient!.clientCode, requestPayload), traceId,
           { timeoutMs: requestDeadlineMs(previewTimeoutMs.value), signal: controller.signal }).then(diagnostic => ({
             upstreamRequest: diagnostic.parsedRequest,
             upstreamResponse: {},
@@ -2477,16 +2489,16 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                   </div>
                   <div class="test-mode-context"><div><span>{{ activeTestMode.path }}</span><strong>{{ activeTestMode.label }}</strong><small>{{ activeTestMode.description }}</small></div><code>{{ testMode === 'UPSTREAM' ? detail.summary.upstreamUrl : detail.summary.servicePath }}</code></div>
                   <el-alert v-if="resourceContractChanged && testMode==='PLATFORM'" type="warning" :closable="false" show-icon title="来源资源契约已变更。如需采用新入参，请先回到请求转换，点击“同步资源契约”并核对映射。" />
-                  <div v-if="testMode==='E2E'" class="esb-contract-strip"><div><span>真实调用入口</span><strong>行内系统 → XML → 模拟 ESB 队列</strong><small>队列消费后由 apiCode 解析服务路由，不再由调用方传 servicePath。</small></div><el-tag type="success" effect="plain">apiCode：{{ detail.summary.interfaceCode }}</el-tag></div>
+                  <div v-if="testMode==='E2E'" class="esb-contract-strip"><div><span>真实调用入口</span><strong>行内系统 → XML → 模拟 ESB 队列</strong><small>队列消费后由 service_id 解析服务路由，不再由调用方传 servicePath。</small></div><el-tag type="success" effect="plain">service_id：{{ detail.summary.interfaceCode }}</el-tag></div>
                   <div v-if="testMode==='E2E'" class="esb-contract-details">
-                    <div><span>XML 必填元数据</span><strong>apiCode · traceId</strong><small>apiCode 是接口唯一编码；traceId 用于全链路追踪。业务字段放在 body 节点。</small></div>
-                    <div><span>平台处理方向</span><strong>body → 请求转换 → 上游服务</strong><small>平台按当前发布配置转换字段、执行安全策略，再调用上游数据源。</small></div>
-                    <div><span>正式响应格式</span><strong>标准 JSON</strong><small>上游响应经标准化规则转换后直接返回，不将 XML 返回给行内系统。</small></div>
+                    <div><span>XML 必填元数据</span><strong>service_sn · service_id · requester_id</strong><small>分别标识全局流水、平台 API 和调用系统；业务字段放在 Service_Body/request。</small></div>
+                    <div><span>平台处理方向</span><strong>request → 请求转换 → 上游服务</strong><small>平台内部和 Kafka 使用结构化 JSON，协议转换仅由 ESB Adapter 负责。</small></div>
+                    <div><span>正式响应格式</span><strong>标准 XML</strong><small>平台标准响应由 Adapter 封装为 Service XML，并写入 ESB 响应队列。</small></div>
                   </div>
                   <div class="test-grid">
                     <div class="code-pane"><div class="code-title"><span>{{ testMode === 'UPSTREAM' ? '上游请求报文' : testMode === 'E2E' ? '行内 XML 入队报文' : '行内标准请求' }}</span><small>{{ testMode === 'UPSTREAM' ? '数据源应用发送' : testMode === 'E2E' ? 'ESB Adapter 消费并解析' : '用于验证请求转换' }}</small></div><el-input v-if="testMode==='UPSTREAM'" v-model="upstreamRequestText" type="textarea" :autosize="{ minRows: 10, maxRows: 16 }"/><el-input v-else-if="testMode==='PLATFORM'" v-model="requestText" type="textarea" :autosize="{ minRows: 10, maxRows: 16 }"/><pre v-else class="esb-xml-preview">{{ esbXmlPreview }}</pre></div>
                     <div v-if="testMode==='PLATFORM'" class="code-pane readonly"><div class="code-title"><span>{{ testResult ? '上游实际响应' : '上游响应契约参考' }}</span><small>验证会真实访问上游；本步骤不经过 ESB / Gateway</small></div><pre>{{ testResult ? formatJson(testResult.upstreamResponse) : responseText }}</pre></div>
-                    <div v-else-if="testMode==='E2E'" class="code-pane readonly"><div class="code-title"><span>解析后的标准请求</span><small>ESB Adapter 输出给 Gateway</small></div><pre>{{ formatJson(standardRequestPreview) }}</pre></div>
+                    <div v-else-if="testMode==='E2E'" class="code-pane readonly"><div class="code-title"><span>{{ esbXmlResponsePreview ? '写回 ESB 的 XML 响应' : '解析后的标准请求' }}</span><small>{{ esbXmlResponsePreview ? 'ESB Adapter 已完成响应封装' : 'ESB Adapter 输出给 Gateway' }}</small></div><pre>{{ esbXmlResponsePreview || formatJson(standardRequestPreview) }}</pre></div>
                     <div v-else class="connection-target"><span>UPSTREAM TARGET</span><strong>{{ detail.summary.upstreamUrl }}</strong><div><p><b>Method</b>{{ detail.summary.httpMethod }}</p><p><b>Timeout</b>{{ detail.timeoutMs }} ms</p><p><b>Adapter</b>{{ selectedSource.applicationName }}</p></div></div>
                   </div>
                   <div v-if="testRunning || testResult || testError" class="trace-console" :class="{running:testRunning,failed:!!testError}">

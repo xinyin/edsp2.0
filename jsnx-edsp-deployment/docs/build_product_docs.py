@@ -38,10 +38,10 @@ def diagram():
         if label: text((x1+x2)/2+12,(y1+y2)/2-(30 if y1==y2 else 8),label,18)
     text(55,28,'外部数据平台 2.0 完整调用链路',36)
     text(55,82,'当前实现基线 2026-10-09   实线：业务请求与返回   独立分区：控制与异步观测',22)
-    text(55,140,'一  线上业务调用与 JSON 返回',28)
-    box(55,205,430,'01  行内调用系统',['XML：apiCode / environment / body','认证信息与唯一 Trace ID'])
+    text(55,140,'一  线上业务调用与 XML 返回',28)
+    box(55,205,430,'01  行内调用系统',['Service XML：service_id / service_sn / request','认证信息与调用系统 requester_id'])
     box(685,205,430,'02  模拟 ESB 请求队列',['请求入队与 requestReply 关联','本地为内存队列；生产对接行内 ESB'])
-    box(1315,205,430,'03  ESB Adapter  8084',['XML → JSON，解析 apiCode','向 Admin 解析已发布服务路径'])
+    box(1315,205,430,'03  ESB Adapter  8084',['Service XML → JSON，解析 service_id','向 Admin 解析已发布服务路径'])
     arrow(485,267,685,267);arrow(1115,267,1315,267)
     box(1315,440,430,'04  Gateway  8080',['校验凭证；向 Admin 查询 API 授权','本地路由匹配 code + method + path'])
     arrow(1530,330,1530,440,'JSON')
@@ -53,7 +53,7 @@ def diagram():
     arrow(270,565,270,675)
     box(685,675,430,'08  数据应用响应标准化',['提取自定义码值路径 → 统一返回码','供应商字段 → 行内字段；保留同一 Plan'])
     arrow(485,737,685,737,'上游响应')
-    box(1315,675,430,'09  返回调用系统',['JSON → Gateway → Adapter','模拟响应队列 → 调用系统；不转 XML'])
+    box(1315,675,430,'09  返回调用系统',['平台标准 JSON → Adapter → Service XML','ESB 响应队列 → 行内调用系统'])
     arrow(1115,737,1315,737)
     text(55,842,'失败分支：解析失败 / 授权拒绝 / 路由缺失 / 版本不一致 / 上游错误，返回对应错误并关联 Trace ID。',21)
     text(55,912,'二  配置发布与热更新控制链',28)
@@ -80,9 +80,9 @@ def diagram():
     participant U as 上游供应商
     participant O as Observability
     participant M as MySQL
-    C->>Q: XML与认证信息
-    Q->>E: 消费请求并关联Trace ID
-    E->>A: apiCode解析已发布路径
+    C->>Q: Service XML与认证信息
+    Q->>E: 消费请求并关联service_sn
+    E->>A: service_id解析已发布路径
     A->>M: published_route关联data_source
     M-->>A: 路由记录
     A-->>E: 服务路径
@@ -109,10 +109,11 @@ def diagram():
     end
     G-->>E: JSON响应
     G-->>O: 异步Gateway事件
-    E-->>Q: JSON响应入队
-    Q-->>C: 按请求标识返回JSON
+    E->>E: 标准JSON封装为Service XML
+    E-->>Q: XML响应入队
+    Q-->>C: 按service_sn返回XML
     O->>M: 事件与节点日志和计量记录
-    Note over D,O: 本地HTTP模拟Kafka；部分节点耗时为演示值
+    Note over D,O: Kafka事件保持结构化JSON；部分节点耗时为演示值
 ''',encoding='utf-8')
 
 def new(title,intro):
@@ -179,7 +180,7 @@ def product():
     d=new('外部数据平台产品功能介绍','本产品用于将多个外部资源提供商的接口接入、封装为行内标准服务，并向获授权的行内系统提供调用能力。本文面向业务负责人、产品经理和接入团队，说明功能边界、业务流程和交付能力。')
     h(d,'1 产品定位与服务对象')
     p(d,'平台统一管理资源接口与标准接口，降低新增接口及字段变更时的重复开发工作。平台维护对外标准契约，数据源应用在各自独立 JVM 中执行请求映射、签名加密和响应标准化。配置支持发布后动态生效；新增 Java 扩展算法仍需部署代码。')
-    table(d,['角色','工作职责'],[('资源接入人员','维护资源方与上游 API，核对契约并联调'),('服务开发人员','定义行内标准契约，配置映射、安全策略和返回码'),('发布与授权人员','发布、下线、恢复版本，为机构和系统授权'),('运营运维人员','核对调用结果、计量记录和异常链路'),('行内调用系统','按标准接口文档发送 XML 请求至 ESB，消费 JSON 响应')],[1.4,5.6])
+    table(d,['角色','工作职责'],[('资源接入人员','维护资源方与上游 API，核对契约并联调'),('服务开发人员','定义行内标准契约，配置映射、安全策略和返回码'),('发布与授权人员','发布、下线、恢复版本，为机构和系统授权'),('运营运维人员','核对调用结果、计量记录和异常链路'),('行内调用系统','按标准接口文档发送 Service XML 请求至 ESB，并消费 Service XML 响应')],[1.4,5.6])
     h(d,'2 功能模块全景');table(d,['功能模块','能力','使用边界'],modules,[1.25,3.2,2.55])
     h(d,'3 资源与标准服务的关系')
     p(d,'一个资源提供商包含多个数据源，一个数据源包含多个资源 API。标准服务通过 resource_api_id 关联资源 API；该字段没有唯一约束，因此同一资源 API 可被不同标准服务复用。每个标准服务具有唯一 interface_code，调用报文中的 apiCode 使用这个标准服务编码。')
@@ -210,7 +211,7 @@ def manual():
     ('3.4 保存和验证','点击保存上游配置，接口成为 READY，才可在标准服务开发中选择。点击验证上游接口时必须按供应商要求输入参数。若供应商要求 query_key，传 company_code 不会自动替代；标准映射属于下一阶段。'),
     ('3.5 核对真实数据','供应商模拟服务支持按数据库中的企业记录查询，校验失败、命中和未命中应分别验证。新增 API 定义不会自动生成真实企业记录。')]:sub(d,title);p(d,body)
     h(d,'4 创建标准服务')
-    p(d,'进入标准服务开发，选择已保存的资源 API 创建服务，填写唯一服务编码、服务名称、对外路径和 HTTP 方法。ESB 和当前通用执行链使用 POST JSON，其他方法需确认对应运行实现，不应仅凭页面可选就认定支持。')
+    p(d,'进入标准服务开发，选择已保存的资源 API 创建服务，填写唯一服务编码、服务名称、对外路径和 HTTP 方法。行内系统与 ESB 交互采用 Service XML；Adapter 到 Gateway 及数据应用内部执行链使用 JSON。其他供应商方法需确认对应运行实现，不应仅凭页面可选就认定支持。')
     p(d,'明确行内系统调用的标准请求与响应契约。供应商字段本身已符合标准时，保留请求方向和响应方向的无映射状态即可。透传表示业务对象不逐项转换，最终仍有 code、message、resultStatus、traceId、data 的平台统一外层。')
     table(d,['方向','来源','目标','示例'],[('请求','行内标准请求','供应商请求','companyCode → query_key'),('响应','供应商响应','行内标准响应','result.company_name → companyName'),('响应枚举','供应商原始值','行内标准值','sex_code 的 1 → M，2 → F')],[.6,1.4,1.4,3.6])
     sub(d,'4.1 编辑字段映射');p(d,'粘贴标准请求或供应商响应 JSON 样例，使用样例导入字段生成映射行，再确认来源路径与目标路径。请求和响应可独立选择透传或转换。新增行需要填写完整路径；启用映射后只输出配置的目标字段，未配置字段不会自动追加。')
@@ -228,7 +229,7 @@ def manual():
     p(d,'先完成上线、运行地址登记及授权，再使用 POST http://127.0.0.1:8084/esb/queue/request。每次调用使用不同 Trace ID，避免 usage_record 唯一键将多次调用合并。')
     table(d,['请求头','填写内容'],[('Content-Type','application/xml'),('X-App-Id','已授权的 client_code'),('X-Api-Key','当前环境配置的调用凭证'),('X-Trace-Id','POSTMAN-20261009-0001，每次递增或使用 UUID')],[1.6,5.4])
     p(d,'请求示例，替换 apiCode 为已上线的标准服务编码，body 使用该服务标准请求字段：')
-    p(d,'<request>\n  <apiCode>COMPANY_QUERY_SERVICE</apiCode>\n  <environment>TEST</environment>\n  <body>\n    <companyCode>DEMO-001</companyCode>\n  </body>\n</request>')
+    p(d,'<Service>\n  <Service_Header>\n    <service_sn>TRACE-001</service_sn>\n    <service_id>COMPANY_QUERY_SERVICE</service_id>\n    <requester_id>LOAN_APPROVAL</requester_id>\n    <service_time>20261012140000</service_time>\n    <version_id>01</version_id>\n  </Service_Header>\n  <Service_Body>\n    <request><companyCode>DEMO-001</companyCode></request>\n  </Service_Body>\n</Service>')
     p(d,'预期响应结构：{"code":"EXT-SUCCESS","message":"查询成功","resultStatus":"HIT","traceId":"...","data":{...}}。实际标准码和 data 以已发布配置为准；未命中应检查 MISS，不能仅检查 HTTP 状态。')
     h(d,'8 调用追踪与计量核对');p(d,'在链路追踪按 Trace ID 查记录，点击节点查看输入输出。依次确认 ESB 解析参数、Gateway 目标、实际供应商请求和响应转换结果。日志异步入库，短时查不到可稍后刷新；传输故障允许丢日志，不保证每笔都有完整节点。计量管理按接口规则显示单价和金额，最终结算需可靠数据渠道。')
     h(d,'9 常见问题')
@@ -420,13 +421,13 @@ def design():
     h(d,'1 架构约束与技术选型')
     table(d,['层次','当前实现'],[('前端','Vue 3 + TypeScript + Element Plus + Vite；前后端目录独立'),('后端','JDK 17、Spring Boot、Spring Cloud Gateway；Maven 多模块'),('数据','MySQL edsp_demo；供应商独立 vendor_demo'),('部署','独立 JVM 与普通脚本；不引入容器与 Spring Cloud LoadBalancer'),('配置与治理','Nacos 和 Sentinel 接入配置默认关闭；具体上线能力须按环境验证'),('事件','Gateway 有界异步日志；本地 HTTP 模拟 Kafka'),('运行能力','独立数据源应用本地 PlanSnapshot；集中 capability-runtime 为可选项')],[1.3,5.7])
     h(d,'2 独立部署模块与公共组件')
-    table(d,['应用','端口','职责'],[('data-admin','8081','资源、标准服务配置、发布快照、授权、计量规则、草稿测试'),('data-gateway','8080','入口认证与授权、路由匹配、异步入口日志'),('esb-adapter','8084','XML 解析、模拟请求响应队列与 JSON 转发'),('data-observability','8083','接收事件、节点和计量落库、日志及监控查询'),('data-enterprise','8181','企业数据独立执行单元'),('data-credit','8182','征信数据独立执行单元'),('data-antifraud','8183','百融反欺诈独立执行单元'),('data-source-lhzx','8191','联合征信独立执行单元'),('capability-runtime','8091','可选复杂能力服务 普通链路不必经'),('vendor-backend','8090','独立上游模拟系统')],[1.65,.6,4.75])
+    table(d,['应用','端口','职责'],[('data-admin','8081','资源、标准服务配置、发布快照、授权、计量规则、草稿测试'),('data-gateway','8080','入口认证与授权、路由匹配、异步入口日志'),('esb-adapter','8084','Service XML 与内部 JSON 双向转换、模拟请求响应队列'),('data-observability','8083','接收事件、节点和计量落库、日志及监控查询'),('data-enterprise','8181','企业数据独立执行单元'),('data-credit','8182','征信数据独立执行单元'),('data-antifraud','8183','百融反欺诈独立执行单元'),('data-source-lhzx','8191','联合征信独立执行单元'),('capability-runtime','8091','可选复杂能力服务 普通链路不必经'),('vendor-backend','8090','独立上游模拟系统')],[1.65,.6,4.75])
     p(d,'工程模块名均带 jsnx-edsp- 前缀。公共组件包括 contracts、client-sdk、plan-core、transform-core、crypto-core、signature-core、response-core、log-core、platform-core；其中 platform-core 承载管理侧领域逻辑，数据应用通过 SDK 使用本地计划执行能力。现有目录仍为多个 Maven 组件，不能把此前讨论的单一 core 目录方案当成已经落地的结构。')
     p(d,'独立 JVM 提供进程隔离；Admin、MySQL、Gateway 仍为共享依赖，因此不等于全系统绝对故障隔离。公共 JAR 修复需要升级引用它的应用，使用接口和 SPI 可减少业务代码变动，但不能免除部署。')
     h(d,'3 完整线上调用链');d.add_picture(str(OUT/'完整调用链路图.png'),width=Inches(7))
-    sub(d,'3.1 入口解析与路由');p(d,'Adapter 将 XML 解析为 JSON，提取 apiCode、environment 与 body，缺省环境 TEST。没有显式路径时调用 Admin 的 /api/internal/interfaces/resolve，再向 Gateway POST。Gateway 认证 X-App-Id 和 X-Api-Key，并调用 Admin /api/internal/authorizations/check 检查授权。路由过滤器同时校验 X-Api-Code、HTTP 方法和路径。')
+    sub(d,'3.1 入口解析与路由');p(d,'Adapter 校验 Service XML，提取 service_id、service_sn、requester_id 与 Service_Body/request，转换为内部 JSON。service_id 作为平台标准服务编码解析已发布路径，service_sn 贯穿全链路。Adapter 再向 Gateway POST；Gateway 认证 X-App-Id 和 X-Api-Key，并调用 Admin 检查授权。路由过滤器同时校验 X-Api-Code、HTTP 方法和路径。')
     sub(d,'3.2 数据应用执行');p(d,'Gateway 将请求转发至 runtime_url + /internal/adapter/published，并附加 X-Route-Version。LocalPlanRuntime 检查应用归属，加载或复用对应版本的计划。单次调用捕获同一个 PlanSnapshot，依次执行请求映射、安全处理、上游 POST、返回码映射和响应标准化。在途请求继续使用已捕获的快照。')
-    sub(d,'3.3 响应与异常');p(d,'响应外层包含 code、message、resultStatus、traceId、data。HTTP 认证和路由错误可能由 Gateway 直接返回；上游 HTTP 错误或转换失败由数据应用转换为 EXT-PLATFORM-ERROR。业务 ERROR 与 HTTP 状态不能混用，监控应同时记录二者。Adapter 返回 JSON，不再生成 XML 响应。')
+    sub(d,'3.3 响应与异常');p(d,'平台内部响应外层包含 code、message、resultStatus、traceId、data。Adapter 将成功或失败结果统一封装为 Service XML，回显原请求头和请求体后写入 ESB 响应链路。Kafka 日志与事件仍保存结构化 JSON。业务 ERROR 与 HTTP 状态不能混用，监控应同时记录二者。')
     h(d,'4 控制面与数据面数据模型')
     p(d,'data_provider → data_source → resource_api → api_interface 构成业务资源层级。api_interface 的 resource_api_id 可空且非唯一，支持同一资源派生多个标准服务。field_mapping、response_code_mapping、api_security_policy 是标准服务子配置。')
     p(d,'api_interface 保存当前编辑配置；published_route 保存已发布的路径、方法和版本；release_plan_snapshot 保存不可变执行内容。路由目标地址由 data_source.runtime_url 关联获得，因此调整数据源运行地址将影响该数据源全部路由，须作为运维变更管理。')

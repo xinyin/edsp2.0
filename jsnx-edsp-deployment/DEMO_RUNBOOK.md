@@ -149,20 +149,30 @@ curl -X POST 'http://127.0.0.1:8084/esb/queue/request?servicePath=/api/v1/enterp
   --data-binary '@fixtures/esb-enterprise-hit.xml'
 ```
 
-预期结果重点：
+预期响应头为 `Content-Type: application/xml`，结果重点：
 
-```json
-{
-  "code": "EXT-SUCCESS",
-  "resultStatus": "HIT",
-  "data": {
-    "enterpriseName": "昆山模拟科技有限公司",
-    "creditCode": "91320583MA1MOCK01",
-    "legalPerson": "李明",
-    "sex": "MALE"
-  }
-}
+```xml
+<Service>
+  <Service_Header>
+    <service_response>
+      <code>000000</code>
+      <status>COMPLETE</status>
+    </service_response>
+    <service_sn>DEMO-ENTERPRISE-HIT-001</service_sn>
+  </Service_Header>
+  <Service_Body>
+    <request>...</request>
+    <response>
+      <response_code>100</response_code>
+      <data>...</data>
+      <resp_code>EXT-SUCCESS</resp_code>
+      <status>100</status>
+    </response>
+  </Service_Body>
+</Service>
 ```
+
+Adapter 到 Gateway、数据应用内部以及 Kafka 日志事件仍使用结构化 JSON；XML 只位于 ESB 协议边界。
 
 不存在企业的调用：
 

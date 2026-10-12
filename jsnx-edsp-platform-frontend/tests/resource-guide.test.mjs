@@ -412,6 +412,17 @@ test('主页面使用新的三阶段产品名称和运行管理名称', () => {
   assert.match(appText, /:aria-label="sidebarCollapsed\?'展开菜单':'收起菜单'"/)
   assert.doesNotMatch(appText, /<span>数据资源服务<\/span>/)
 })
+test('ESB 联调使用生产 Service XML 且最终响应仍为 XML', () => {
+  assert.match(appText, /<Service_Header>/)
+  assert.match(appText, /<service_sn>/)
+  assert.match(appText, /<service_id>/)
+  assert.match(appText, /<requester_id>/)
+  assert.match(appText, /<Service_Body>/)
+  assert.match(appText, /ESB XML 响应/)
+  assert.match(appText, /平台内部和 Kafka 使用结构化 JSON/)
+  assert.doesNotMatch(appText, /<edspRequest>/)
+  assert.doesNotMatch(appText, /不将 XML 返回给行内系统/)
+})
 test('生效配置和日志检索在窄工作区使用自适应布局', () => {
   assert.match(consoleThemeText, /\.api-preview-panel dl \{[^}]*minmax\(280px,\.38fr\)/)
   assert.match(consoleThemeText, /@container \(max-width: 740px\)[\s\S]*?\.api-preview-panel dl \{ grid-template-columns: minmax\(0,1fr\); \}/)

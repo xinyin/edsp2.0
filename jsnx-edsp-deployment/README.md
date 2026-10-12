@@ -109,6 +109,8 @@ START_CAPABILITY_SERVICE=1 ./bin/start-demo.sh
 
 演示样例报文保存在 `fixtures/`：
 
+ESB 样例统一采用 `Service / Service_Header / Service_Body` 生产 XML 契约；平台内部处理和 Kafka 事件保持结构化 JSON，最终响应由 Adapter 封装为 XML 写回 ESB。
+
 - `vendor-enterprise-hit.json`：直接调用上游且命中企业记录；
 - `vendor-enterprise-miss.json`：直接调用上游但未查得企业；
 - `platform-enterprise-hit.json`：下游标准字段请求；

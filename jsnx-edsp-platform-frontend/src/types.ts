@@ -197,6 +197,7 @@ export interface EsbDiagnosticResult {
   traceId: string
   parsedRequest: Record<string, unknown>
   xmlRequest: string
+  xmlResponse: string
   nodes: TraceNode[]
 }
 

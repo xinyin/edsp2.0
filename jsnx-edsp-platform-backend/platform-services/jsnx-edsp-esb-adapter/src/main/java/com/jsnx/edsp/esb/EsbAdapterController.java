@@ -14,21 +14,36 @@ public class EsbAdapterController {
     private static final TypeReference<Map<String, Object>> MAP = new TypeReference<>() {};
     private final MockEsbQueue queue;
     private final ObjectMapper json;
+    private final EsbXmlProtocol xmlProtocol;
 
-    public EsbAdapterController(MockEsbQueue queue, ObjectMapper json) {
+    public EsbAdapterController(MockEsbQueue queue, ObjectMapper json, EsbXmlProtocol xmlProtocol) {
         this.queue = queue;
         this.json = json;
+        this.xmlProtocol = xmlProtocol;
     }
 
     @PostMapping(value = {"/queue/request", "/forward"},
-            consumes = MediaType.APPLICATION_XML_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-    public Map<String, Object> enqueue(@RequestParam(required = false, defaultValue = "") String servicePath,
-                                       @RequestHeader("X-App-Id") String appId,
-                                       @RequestHeader("X-Api-Key") String apiKey,
+            consumes = MediaType.APPLICATION_XML_VALUE,
+            produces = {MediaType.APPLICATION_XML_VALUE, MediaType.APPLICATION_JSON_VALUE})
+    public ResponseEntity<?> enqueue(@RequestParam(required = false, defaultValue = "") String servicePath,
+                                       @RequestHeader(value = "X-App-Id", required = false, defaultValue = "") String appId,
+                                       @RequestHeader(value = "X-Api-Key", required = false, defaultValue = "") String apiKey,
                                        @RequestHeader(value = "X-Trace-Id", required = false) String traceId,
                                        @RequestParam(defaultValue = "false") boolean diagnostic,
                                        @RequestBody String xml) {
-        return queue.requestReply(servicePath, appId, apiKey, traceId, xml, diagnostic);
+        try {
+            EsbForwardResult result = queue.requestReply(servicePath, appId, apiKey, traceId, xml, diagnostic);
+            if (diagnostic) return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(result.diagnosticResponse());
+            return ResponseEntity.ok().contentType(MediaType.APPLICATION_XML).body(result.xmlResponse());
+        } catch (RuntimeException error) {
+            if (diagnostic) throw error;
+            EsbRequestEnvelope request = xmlProtocol.parseOrFallback(xml, traceId);
+            String code = error instanceof EsbForwardException failure
+                    ? "ESB_FORWARD_" + failure.status().value() : "ESB_ADAPTER_ERROR";
+            return ResponseEntity.ok().contentType(MediaType.APPLICATION_XML)
+                    .body(xmlProtocol.failure(request, code,
+                            error.getMessage() == null ? "ESB 报文处理失败" : error.getMessage()));
+        }
     }
 
     @GetMapping("/queue/status")

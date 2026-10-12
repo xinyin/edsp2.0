@@ -1,4 +1,16 @@
-<request>
-  <companyCode>91320583MA1MOCK01</companyCode>
-  <queryReason>授信准入</queryReason>
-</request>
+<?xml version="1.0" encoding="UTF-8"?>
+<Service>
+  <Service_Header>
+    <service_sn>DEMO-ANTIFRAUD-HIT-001</service_sn>
+    <service_id>ANTIFRAUD_SCORE</service_id>
+    <requester_id>CREDIT_RISK</requester_id>
+    <service_time>20261012140200</service_time>
+    <version_id>01</version_id>
+  </Service_Header>
+  <Service_Body>
+    <request>
+      <companyCode>91320583MA1MOCK01</companyCode>
+      <queryReason>授信准入</queryReason>
+    </request>
+  </Service_Body>
+</Service>

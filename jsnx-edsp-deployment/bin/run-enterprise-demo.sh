@@ -10,8 +10,9 @@ APP_ID="${APP_ID:-CREDIT_RISK}"
 API_KEY="${API_KEY:-demo-secret-key}"
 
 pretty() {
-  if command -v jq >/dev/null 2>&1; then jq .
-  else cat
+  local file="$1"
+  if command -v jq >/dev/null 2>&1 && jq -e . "$file" >/dev/null 2>&1; then jq . "$file"
+  else cat "$file"
   fi
 }
 
@@ -28,7 +29,7 @@ request() {
   if [[ "$curl_status" -ne 0 ]]; then
     echo "curl 执行失败，退出码：$curl_status" >&2
   fi
-  pretty <"$response_file"
+  pretty "$response_file"
   echo "HTTP $http_status"
   rm -f "$response_file"
 }
@@ -51,7 +52,7 @@ request "3. 直接调用上游：不存在的企业返回未查得" \
   --data-binary "@$FIXTURE_DIR/vendor-enterprise-miss.json" \
   "$VENDOR_URL/vendor/api/enterprise-basic"
 
-request "4. 通过模拟 ESB 队列调用：XML -> Adapter -> Gateway -> 企业数据源" \
+request "4. 通过模拟 ESB 队列调用：XML -> Adapter -> Gateway -> 企业数据源 -> XML" \
   -H "X-App-Id: $APP_ID" \
   -H "X-Api-Key: $API_KEY" \
   -H 'X-Trace-Id: DEMO-ENTERPRISE-HIT-001' \
@@ -59,7 +60,7 @@ request "4. 通过模拟 ESB 队列调用：XML -> Adapter -> Gateway -> 企业�
   --data-binary "@$FIXTURE_DIR/esb-enterprise-hit.xml" \
   "$ESB_URL/esb/queue/request?servicePath=/api/v1/enterprise/basic"
 
-request "5. 通过模拟 ESB 队列调用：企业不存在并返回统一未查得码" \
+request "5. 通过模拟 ESB 队列调用：企业不存在并返回统一 XML 未查得码" \
   -H "X-App-Id: $APP_ID" \
   -H "X-Api-Key: $API_KEY" \
   -H 'X-Trace-Id: DEMO-ENTERPRISE-MISS-001' \

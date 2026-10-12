@@ -48,7 +48,7 @@ public class MockEsbQueue {
                     Message message = requests.poll(300, TimeUnit.MILLISECONDS);
                     if (message == null) continue;
                     try {
-                        Map<String, Object> response = adapter.forward(message.servicePath(), message.appId(), message.apiKey(),
+                        EsbForwardResult response = adapter.forward(message.servicePath(), message.appId(), message.apiKey(),
                                 message.xml(), message.traceId(), message.diagnostic());
                         completed.incrementAndGet();
                         message.result().complete(response);
@@ -68,7 +68,7 @@ public class MockEsbQueue {
         worker.start();
     }
 
-    public Map<String, Object> requestReply(String servicePath, String appId, String apiKey,
+    public EsbForwardResult requestReply(String servicePath, String appId, String apiKey,
                                             String traceId, String xml, boolean diagnostic) {
         String currentTrace = traceId == null || traceId.isBlank()
                 ? UUID.randomUUID().toString().replace("-", "") : traceId;
@@ -106,5 +106,5 @@ public class MockEsbQueue {
     }
 
     private record Message(String servicePath, String appId, String apiKey, String traceId,
-                           String xml, boolean diagnostic, CompletableFuture<Map<String, Object>> result) {}
+                           String xml, boolean diagnostic, CompletableFuture<EsbForwardResult> result) {}
 }

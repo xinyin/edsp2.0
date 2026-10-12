@@ -244,9 +244,9 @@ def build():
     p(doc, "本手册中的“配置热更新”指发布后的执行计划和动态路由在运行中刷新，不表示任何 Java 代码修改都无需发布。")
 
     heading(doc, "2 十分钟理解整体架构")
-    p(doc, "EDSP 2.0 是面向全行的外部数据接入与标准服务平台。调用方将 XML 请求发送到 ESB；Adapter 解析 apiCode 和业务体，转换为 JSON 后进入 Gateway；Gateway 完成认证、授权和动态路由；目标数据应用在自身 JVM 内执行字段转换、安全处理、上游调用和响应标准化；最终返回统一 JSON。")
+    p(doc, "EDSP 2.0 是面向全行的外部数据接入与标准服务平台。调用方将 Service XML 请求发送到 ESB；Adapter 解析 service_id、service_sn 和业务体，转换为内部 JSON 后进入 Gateway；Gateway 完成认证、授权和动态路由；目标数据应用在自身 JVM 内执行字段转换、安全处理、上游调用和响应标准化；Adapter 最终将标准 JSON 封装为 Service XML 写回 ESB。Kafka 事件保持结构化 JSON。")
     table(doc, ["层次", "部署模块", "核心职责", "明确不做"], [
-        ("接入层", "jsnx-edsp-esb-adapter", "ESB XML 解析、模拟请求/响应队列、JSON 转发", "不做业务字段映射"),
+        ("接入层", "jsnx-edsp-esb-adapter", "Service XML 与内部 JSON 双向转换、模拟请求/响应队列", "不做业务字段映射"),
         ("统一入口", "jsnx-edsp-data-gateway", "认证、API 授权、入口日志、apiCode+Method+Path 动态路由", "不执行上游业务编排"),
         ("控制面", "jsnx-edsp-data-admin", "资源、接口、映射、发布、授权、计费规则和发布快照", "不承接生产请求转换"),
         ("数据面", "每个 jsnx-edsp-data-* 应用", "本地计划、请求转换、安全、上游调用、响应转换", "数据应用之间不互相依赖"),
@@ -315,14 +315,15 @@ def build():
     ], [1.75, 2.35, 2.65])
 
     heading(doc, "7 主请求执行链")
-    numbered(doc, "调用系统向 ESB 发送 XML，至少携带 apiCode、environment、traceId 和 body。")
-    numbered(doc, "ESB Adapter 将 XML 解析为 JSON；未显式提供路径时，通过 Admin 解析已发布的服务路径。")
+    numbered(doc, "调用系统向 ESB 发送 Service XML，至少携带 service_sn、service_id、requester_id、service_time、version_id 和 Service_Body/request。")
+    numbered(doc, "ESB Adapter 将 XML 解析为内部 JSON；以 service_id 作为平台标准服务编码，通过 Admin 解析已发布的服务路径。")
     numbered(doc, "Adapter 向 Gateway 发送请求，并设置 X-Api-Code、X-App-Id、X-Api-Key、X-Environment 和 Trace 头。")
     numbered(doc, "Gateway 校验本地凭证，再向 Admin 检查调用系统、接口、环境、有效期和日配额授权。")
     numbered(doc, "Gateway 用 X-Api-Code + HTTP Method + URL Path 在本地不可变路由表中精确匹配。")
     numbered(doc, "Gateway 转发到 runtime_url/internal/adapter/published，并附带 X-Route-Version 与 X-Data-Application。")
     numbered(doc, "数据应用选择与 Gateway 版本一致的 PlanSnapshot，完成请求映射和安全处理。")
     numbered(doc, "通用上游客户端按发布计划调用供应商；当前通用执行器以 POST JSON 为主要实现。")
+    numbered(doc, "数据应用返回内部标准 JSON；ESB Adapter 将其封装为 Service XML，并写入 ESB 响应队列。Kafka 事件仍为结构化 JSON。")
     numbered(doc, "数据应用从可配置 vendorCodePath 提取供应商码值，映射统一状态，再执行响应字段转换。")
     numbered(doc, "统一 JSON 经 Gateway、Adapter 和响应队列返回调用系统；不是 XML 响应。")
 
@@ -456,7 +457,7 @@ def build():
         ("应用测试", "expectedVersion、应用归属、上游超时与错误", "旧版本不误执行；错误可追踪"),
         ("Gateway 测试", "认证、授权、三元组路由、Admin 不可用", "拒绝码准确；last-good 路由仍可读"),
         ("集成测试", "Admin+Gateway+数据应用+供应商", "真实 HTTP 调用和落库正确"),
-        ("ESB 全链路", "XML→Adapter→Gateway→应用→供应商→JSON", "traceId 一致且每节点可定位"),
+        ("ESB 全链路", "Service XML→Adapter→Gateway→应用→供应商→Adapter→Service XML", "service_sn 一致且每节点可定位"),
         ("容量与故障", "峰值、并发、慢上游、Kafka/日志服务故障", "主链路 SLA 和隔离策略满足"),
     ], [1.1, 3.25, 2.4], 8)
     code(doc, "# 后端完整测试\ncd jsnx-edsp-platform-backend\nmvn test\n\n# 单模块及依赖测试\nmvn -pl common-components/jsnx-edsp-platform-core -am test\n\n# 前端静态构建\ncd ../jsnx-edsp-platform-frontend\nnpm ci\nnpm run build")

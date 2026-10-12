@@ -1,4 +1,16 @@
-<request>
-  <queryKey>320583199001010011</queryKey>
-  <queryReason>授信审批</queryReason>
-</request>
+<?xml version="1.0" encoding="UTF-8"?>
+<Service>
+  <Service_Header>
+    <service_sn>DEMO-CREDIT-HIT-001</service_sn>
+    <service_id>CREDIT_REPORT_QUERY</service_id>
+    <requester_id>CREDIT_RISK</requester_id>
+    <service_time>20261012140300</service_time>
+    <version_id>01</version_id>
+  </Service_Header>
+  <Service_Body>
+    <request>
+      <queryKey>320583199001010011</queryKey>
+      <queryReason>授信审批</queryReason>
+    </request>
+  </Service_Body>
+</Service>

@@ -1,9 +1,7 @@
 package com.jsnx.edsp.esb;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
@@ -13,56 +11,54 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.Map;
-import java.util.Set;
 import java.time.Duration;
 
 @Service
 public class EsbMessageAdapter {
     private static final TypeReference<Map<String,Object>> MAP = new TypeReference<>() {};
-    private final XmlMapper xml = new XmlMapper();
     private final ObjectMapper json;
+    private final EsbXmlProtocol xmlProtocol;
     private final WebClient gateway;
     private final WebClient admin;
     private final KafkaTemplate<String,String> kafka;
     private final String responseTopic;
     private final Duration adminTimeout;
     private final Duration gatewayTimeout;
+    private final String environment;
 
-    public EsbMessageAdapter(ObjectMapper json, WebClient.Builder builder, KafkaTemplate<String,String> kafka,
+    public EsbMessageAdapter(ObjectMapper json, EsbXmlProtocol xmlProtocol,
+                             WebClient.Builder builder, KafkaTemplate<String,String> kafka,
                              @Value("${edsp.gateway-uri:http://127.0.0.1:8080}") String gatewayUri,
                              @Value("${edsp.admin-uri:http://127.0.0.1:8081}") String adminUri,
                              @Value("${edsp.esb.response-topic:edsp.esb.response}") String responseTopic,
+                             @Value("${edsp.esb.environment:TEST}") String environment,
                              @Value("${edsp.esb.admin-timeout-ms:3000}") long adminTimeoutMs,
                              @Value("${edsp.esb.gateway-timeout-ms:8000}") long gatewayTimeoutMs) {
-        this.json=json; this.gateway=builder.baseUrl(gatewayUri).build(); this.admin=builder.baseUrl(adminUri).build(); this.kafka=kafka; this.responseTopic=responseTopic;
+        this.json=json; this.xmlProtocol=xmlProtocol; this.gateway=builder.baseUrl(gatewayUri).build(); this.admin=builder.baseUrl(adminUri).build(); this.kafka=kafka; this.responseTopic=responseTopic; this.environment=environment;
         this.adminTimeout = Duration.ofMillis(Math.max(500, adminTimeoutMs));
         this.gatewayTimeout = Duration.ofMillis(Math.max(1000, gatewayTimeoutMs));
     }
 
-    public Map<String, Object> forward(String servicePath, String appId, String apiKey, String xmlRequest) {
+    public EsbForwardResult forward(String servicePath, String appId, String apiKey, String xmlRequest) {
         return forward(servicePath, appId, apiKey, xmlRequest,
                 java.util.UUID.randomUUID().toString().replace("-", ""), false);
     }
 
-    public Map<String, Object> forward(String servicePath, String appId, String apiKey,
+    public EsbForwardResult forward(String servicePath, String appId, String apiKey,
                                        String xmlRequest, String traceId) {
         return forward(servicePath, appId, apiKey, xmlRequest, traceId, false);
     }
 
-    public Map<String, Object> forward(String servicePath, String appId, String apiKey,
+    public EsbForwardResult forward(String servicePath, String appId, String apiKey,
                                        String xmlRequest, String traceId, boolean diagnostic) {
         try {
-            JsonNode root = xml.readTree(xmlRequest);
-            String apiCode = firstText(root, "apiCode", "api_code", "serviceId", "service_id", "interfaceCode", "interface_code");
-            String environment = firstText(root, "environment", "env");
-            if (environment == null || environment.isBlank()) environment = "TEST";
-            String messageTraceId = firstText(root, "traceId", "trace_id", "globalSerialNo", "global_serial_no");
-            String effectiveTraceId = traceId == null || traceId.isBlank() ? messageTraceId : traceId;
-            if (effectiveTraceId == null || effectiveTraceId.isBlank()) effectiveTraceId = java.util.UUID.randomUUID().toString().replace("-", "");
-            Map<String, Object> request = extractBody(root);
+            EsbRequestEnvelope envelope = xmlProtocol.parse(xmlRequest);
+            String apiCode = envelope.serviceId();
+            String effectiveTraceId = envelope.serviceSn();
+            Map<String, Object> request = envelope.requestBody();
             String effectiveServicePath = servicePath;
             if (effectiveServicePath == null || effectiveServicePath.isBlank()) {
-                if (apiCode == null || apiCode.isBlank()) throw new IllegalArgumentException("ESB XML 必须包含 apiCode");
+                if (apiCode == null || apiCode.isBlank()) throw new IllegalArgumentException("ESB XML 必须包含 service_id");
                 Map<?, ?> route = admin.get().uri(uriBuilder -> uriBuilder.path("/api/internal/interfaces/resolve")
                                 .queryParam("apiCode", apiCode).build())
                         .retrieve().bodyToMono(Map.class).timeout(adminTimeout).block();
@@ -85,9 +81,10 @@ public class EsbMessageAdapter {
                                             downstreamErrorMessage(clientResponse.statusCode().value(), body), body)))
                     .bodyToMono(Map.class).timeout(gatewayTimeout).block();
             Map<String, Object> standardResponse = response == null ? Map.of() : json.convertValue(response, MAP);
-            if (!diagnostic) return standardResponse;
+            String xmlResponse = xmlProtocol.success(envelope, standardResponse);
             Map<String, Object> diagnosticResponse = new java.util.LinkedHashMap<>();
             diagnosticResponse.put("standardResponse", standardResponse);
+            diagnosticResponse.put("xmlResponse", xmlResponse);
             diagnosticResponse.put("apiCode", apiCode);
             diagnosticResponse.put("servicePath", effectiveServicePath);
             diagnosticResponse.put("traceId", effectiveTraceId);
@@ -101,9 +98,11 @@ public class EsbMessageAdapter {
                     node("GATEWAY", "统一 Gateway", "SUCCESS", Map.of("apiCode", diagnosticApiCode, "body", request), Map.of("route", diagnosticServicePath)),
                     node("DATA_APPLICATION", "数据源应用", "SUCCESS", Map.of("apiCode", diagnosticApiCode, "body", request), Map.of("upstreamCall", true)),
                     node("SUPPLIER", "上游供应商", "SUCCESS", request, Map.of("responseReceived", true)),
-                    node("STANDARD_RESPONSE", "标准 JSON 响应", "SUCCESS", standardResponse, standardResponse)
+                    node("STANDARD_RESPONSE", "ESB XML 响应", "SUCCESS", standardResponse,
+                            Map.of("contentType", MediaType.APPLICATION_XML_VALUE, "xml", xmlResponse))
             ));
-            return diagnosticResponse;
+            return new EsbForwardResult(envelope, standardResponse, xmlResponse,
+                    diagnostic ? diagnosticResponse : Map.of());
         } catch (EsbForwardException e) {
             throw e;
         } catch (Exception e) {
@@ -137,41 +136,10 @@ public class EsbMessageAdapter {
         return node;
     }
 
-    private String firstText(JsonNode root, String... names) {
-        for (String name : names) {
-            JsonNode value = root.get(name);
-            if (value != null && value.isValueNode() && !value.asText().isBlank()) return value.asText();
-            JsonNode request = root.get("request");
-            if (request != null && request.isObject()) {
-                value = request.get(name);
-                if (value != null && value.isValueNode() && !value.asText().isBlank()) return value.asText();
-            }
-        }
-        return null;
-    }
-
-    private Map<String, Object> extractBody(JsonNode root) {
-        for (String name : Set.of("body", "requestBody", "params", "data", "payload")) {
-            JsonNode candidate = root.get(name);
-            if (candidate != null && candidate.isObject()) return json.convertValue(candidate, MAP);
-            JsonNode request = root.get("request");
-            if (request != null && request.isObject()) {
-                candidate = request.get(name);
-                if (candidate != null && candidate.isObject()) return json.convertValue(candidate, MAP);
-            }
-        }
-        Map<String, Object> fallback = json.convertValue(root, MAP);
-        for (String metadata : Set.of("apiCode", "api_code", "serviceId", "service_id", "interfaceCode", "interface_code",
-                "traceId", "trace_id", "globalSerialNo", "global_serial_no")) fallback.remove(metadata);
-        Object nestedRequest = fallback.get("request");
-        if (nestedRequest instanceof Map<?, ?> nested) return json.convertValue(nested, MAP);
-        return fallback;
-    }
-
     @KafkaListener(topics="${edsp.esb.request-topic:edsp.esb.request}", groupId="${spring.application.name}", autoStartup="${KAFKA_ENABLED:false}")
     public void consume(String payload) throws Exception {
         Map<String,Object> envelope=json.readValue(payload,MAP);
-        Map<String,Object> response=forward(String.valueOf(envelope.get("servicePath")),String.valueOf(envelope.get("appId")),String.valueOf(envelope.get("apiKey")),String.valueOf(envelope.get("xml")),String.valueOf(envelope.getOrDefault("requestId",java.util.UUID.randomUUID().toString().replace("-", ""))));
-        kafka.send(responseTopic,String.valueOf(envelope.getOrDefault("requestId","unknown")),json.writeValueAsString(response));
+        EsbForwardResult result=forward(String.valueOf(envelope.get("servicePath")),String.valueOf(envelope.get("appId")),String.valueOf(envelope.get("apiKey")),String.valueOf(envelope.get("xml")),String.valueOf(envelope.getOrDefault("requestId",java.util.UUID.randomUUID().toString().replace("-", ""))));
+        kafka.send(responseTopic,String.valueOf(envelope.getOrDefault("requestId","unknown")),json.writeValueAsString(result.standardResponse()));
     }
 }

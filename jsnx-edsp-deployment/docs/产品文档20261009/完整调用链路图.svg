@@ -1,18 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1600" viewBox="0 0 1800 1600"><rect width="100%" height="100%" fill="white"/>
 <text x="55" y="64" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="36" fill="#172033">外部数据平台 2.0 完整调用链路</text>
 <text x="55" y="104" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="22" fill="#172033">当前实现基线 2026-10-09   实线：业务请求与返回   独立分区：控制与异步观测</text>
-<text x="55" y="168" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="28" fill="#172033">一  线上业务调用与 JSON 返回</text>
+<text x="55" y="168" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="28" fill="#172033">一  线上业务调用与 XML 返回</text>
 <rect x="55" y="205" width="430" height="125" rx="8" fill="#f6f7f9" stroke="#536477" stroke-width="2"/>
 <text x="71" y="242" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="25" fill="#172033">01  行内调用系统</text>
-<text x="71" y="278" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">XML：apiCode / environment / body</text>
-<text x="71" y="307" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">认证信息与唯一 Trace ID</text>
+<text x="71" y="278" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">Service XML：service_id / service_sn / request</text>
+<text x="71" y="307" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">认证信息与调用系统 requester_id</text>
 <rect x="685" y="205" width="430" height="125" rx="8" fill="#f6f7f9" stroke="#536477" stroke-width="2"/>
 <text x="701" y="242" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="25" fill="#172033">02  模拟 ESB 请求队列</text>
 <text x="701" y="278" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">请求入队与 requestReply 关联</text>
 <text x="701" y="307" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">本地为内存队列；生产对接行内 ESB</text>
 <rect x="1315" y="205" width="430" height="125" rx="8" fill="#f6f7f9" stroke="#536477" stroke-width="2"/>
 <text x="1331" y="242" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="25" fill="#172033">03  ESB Adapter  8084</text>
-<text x="1331" y="278" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">XML → JSON，解析 apiCode</text>
+<text x="1331" y="278" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">Service XML → JSON，解析 service_id</text>
 <text x="1331" y="307" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">向 Admin 解析已发布服务路径</text>
 <path d="M485 267 L685 267" stroke="#546879" stroke-width="3" fill="none"/>
 <polygon points="685,267 674.4690092573155,272.75310646325045 674.4690092573155,261.24689353674955" fill="#546879"/>
@@ -52,8 +52,8 @@
 <text x="597.0" y="725.0" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" fill="#172033">上游响应</text>
 <rect x="1315" y="675" width="430" height="125" rx="8" fill="#f6f7f9" stroke="#536477" stroke-width="2"/>
 <text x="1331" y="712" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="25" fill="#172033">09  返回调用系统</text>
-<text x="1331" y="748" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">JSON → Gateway → Adapter</text>
-<text x="1331" y="777" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">模拟响应队列 → 调用系统；不转 XML</text>
+<text x="1331" y="748" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">平台标准 JSON → Adapter → Service XML</text>
+<text x="1331" y="777" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="20" fill="#172033">ESB 响应队列 → 行内调用系统</text>
 <path d="M1115 737 L1315 737" stroke="#546879" stroke-width="3" fill="none"/>
 <polygon points="1315,737 1304.4690092573155,742.7531064632504 1304.4690092573155,731.2468935367496" fill="#546879"/>
 <text x="55" y="863" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="21" fill="#172033">失败分支：解析失败 / 授权拒绝 / 路由缺失 / 版本不一致 / 上游错误，返回对应错误并关联 Trace ID。</text>
