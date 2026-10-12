@@ -24,7 +24,7 @@
 
 ## 前端维护约定
 
-- `src/components/WorkspaceJourney.vue`：四阶段跨模块导航，只表达操作位置，不代表配置或测试已经通过。
+- `src/App.vue`：上游能力接入与标准服务开发采用 API 工作台布局；发布、授权由独立模块承接。
 - `src/console-theme.css`：统一控制台色彩、表单、表格与响应式布局；在历史功能样式之后加载。新增视觉规范集中维护于此。
 - `src/composables/useDisplayPreference.ts`：仅在本地保存菜单和目录折叠偏好，不保存业务草稿或凭据。
 - `src/resource-guide.ts`：步骤状态和校验逻辑；`tests/resource-guide.test.mjs` 覆盖保存失败、透传、未保存导航保护等行为。

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import './resource-workbench.css'
 import { computed, nextTick, ref, watch } from 'vue'
-import WorkspaceJourney from './components/WorkspaceJourney.vue'
 import { useDisplayPreference } from './composables/useDisplayPreference'
 import {
   Bell, Check, CircleCheck, Connection, DataAnalysis, DataBoard, Delete,
@@ -107,9 +106,9 @@ let sourceRequestSequence = 0
 const activeTab = ref('overview')
 const upstreamSection = ref(0)
 const upstreamSections = [
-  { title: '连接配置', hint: '地址与超时' },
-  { title: '请求与响应', hint: '供应商原始报文' },
-  { title: '接入验证', hint: '可选 · 实际调用' }
+  { title: '连接与认证' },
+  { title: '请求与响应' },
+  { title: '接口联调' }
 ]
 watch(selectedInterfaceId, () => { upstreamSection.value = 0 })
 type ServiceDevelopmentStage = 'UPSTREAM' | 'ORCHESTRATION'
@@ -2210,8 +2209,6 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
       <el-main class="main-content">
         <section class="page-heading" :class="{'compact-page-heading': activeMenu === 'releases' || activeMenu === 'authorization'}"><div><h1>{{ pageMeta[0] }}</h1><p>{{ pageMeta[1] }}</p></div><div class="heading-actions"><el-button :icon="Refresh" @click="refreshCurrentWorkspace">刷新</el-button><el-button v-if="activeMenu === 'resource'" type="primary" :icon="Plus" @click="openSourceWizard">接入数据源</el-button><el-button v-if="activeMenu === 'service-development'" type="primary" :icon="Plus" @click="navigate('resource')">从资源 API 创建服务</el-button><el-button v-if="activeMenu === 'authorization'" :icon="Files" @click="openBatchAuthorization">批量授权</el-button><el-button v-if="activeMenu === 'authorization'" type="primary" :icon="Plus" @click="openAuthDialog">新增授权</el-button><el-button v-if="activeMenu === 'billing'" type="primary" :icon="Plus" @click="openBillingDialog()">配置计费</el-button></div></section>
 
-        <WorkspaceJourney v-if="['resource','service-development','releases','authorization'].includes(activeMenu)" :current="activeMenu" :busy="guideBusy || testRunning || connectionSaving" @navigate="navigate"/>
-
         <template v-if="activeMenu === 'overview'">
           <section class="cockpit-command">
             <div class="cockpit-runtime"><span class="live-beacon">运营概况</span><div><strong>服务与调用概览</strong><p>{{ dashboard.dataSourceCount }} 个数据源 · {{ dashboard.publishedCount }} 个已发布 API · {{ clients.length }} 个调用系统</p></div></div>
@@ -2368,17 +2365,24 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                   <el-tooltip v-if="activeMenu!=='resource'" :disabled="canDeleteApi" :content="deleteApiRestriction" placement="bottom"><span><el-button :icon="Delete" type="danger" plain :disabled="!canDeleteApi || detailLoading || sourceSwitching" :loading="deletingApi" @click="deleteCurrentInterface">删除服务</el-button></span></el-tooltip>
                 </div>
               </header>
-              <nav v-if="serviceDevelopmentStage==='UPSTREAM'" class="upstream-steps" aria-label="资源接入步骤">
-                <button v-for="(step,index) in upstreamSections" :key="step.title" type="button" :class="{active:upstreamSection===index}" :aria-current="upstreamSection===index?'step':undefined" @click="upstreamSection=index"><span>{{ index+1 }}</span><div><strong>{{ step.title }}</strong><small>{{ step.hint }}</small></div></button>
+              <nav v-if="serviceDevelopmentStage==='UPSTREAM'" class="developer-tabs" aria-label="资源接口配置">
+                <button v-for="(step,index) in upstreamSections" :key="step.title" type="button" :class="{active:upstreamSection===index}" :aria-current="upstreamSection===index?'page':undefined" @click="upstreamSection=index">{{ step.title }}</button>
               </nav>
-              <nav v-if="serviceDevelopmentStage==='ORCHESTRATION'" class="resource-workflow" aria-label="标准服务编排步骤"><button v-for="step in orchestrationGuideSteps" :key="step.key" :class="{active:activeTab===step.key,done:step.done && !['security','test'].includes(step.key) && !(activeTab===step.key && hasUnsavedChanges)}" :aria-current="activeTab===step.key ? 'step' : undefined" :disabled="guideBusy || testRunning || connectionSaving" @click="openGuideStep(step.key)"><span>{{ step.index }}</span><div><strong>{{ step.title }}</strong><small>{{ step.hint }}</small></div></button></nav>
+              <nav v-if="serviceDevelopmentStage==='ORCHESTRATION'" class="developer-tabs" aria-label="标准服务配置"><button v-for="step in orchestrationGuideSteps" :key="step.key" :class="{active:activeTab===step.key,changed:activeTab===step.key && hasUnsavedChanges}" :aria-current="activeTab===step.key ? 'page' : undefined" :disabled="guideBusy || testRunning || connectionSaving" @click="openGuideStep(step.key)">{{ step.title }}</button></nav>
+              <div class="api-request-bar" :class="{standard:serviceDevelopmentStage==='ORCHESTRATION'}">
+                <span class="request-method">{{ serviceDevelopmentStage==='UPSTREAM' ? detail.summary.httpMethod : standardServiceForm.httpMethod }}</span>
+                <code>{{ serviceDevelopmentStage==='UPSTREAM' ? (previewUpstreamUrl || '尚未配置接口地址') : standardServiceForm.servicePath }}</code>
+                <span v-if="serviceDevelopmentStage==='UPSTREAM'" class="request-timeout">{{ previewTimeoutMs }} ms</span>
+                <el-button v-if="serviceDevelopmentStage==='UPSTREAM'" :loading="testRunning" :disabled="connectionSaving || !previewUpstreamUrl" @click="validateUpstreamCapability">测试接口</el-button>
+                <el-button v-else :disabled="guideBusy || testRunning" @click="activeTab='test';testMode='PLATFORM'">打开联调</el-button>
+              </div>
               <div v-if="guideError" class="api-guide-error compact" role="alert">{{ guideError }}</div>
               <el-tabs v-model="activeTab" class="editor-tabs">
                 <el-tab-pane v-if="serviceDevelopmentStage==='UPSTREAM'" name="overview" label="上游能力配置">
                   <div class="api-connection-workspace">
                     <div v-show="upstreamSection===0" class="api-config-columns">
                     <section class="api-config-card">
-                        <header><span class="api-card-icon"><Connection/></span><div><h3>上游连接</h3><p>配置资源提供商的接口地址</p></div></header>
+                        <header><div><h3>连接设置</h3></div></header>
                         <div class="api-card-body">
                           <span class="api-field-label">地址配置方式</span>
                           <div class="api-mode-options" role="group" aria-label="地址配置方式"><button type="button" :class="{selected:connectionForm.configScope==='INHERIT'}" :aria-pressed="connectionForm.configScope==='INHERIT'" @click="connectionForm.configScope='INHERIT'">继承数据源</button><button type="button" :class="{selected:connectionForm.configScope==='OVERRIDE'}" :aria-pressed="connectionForm.configScope==='OVERRIDE'" @click="connectionForm.configScope='OVERRIDE'">单接口覆盖</button></div>
@@ -2400,25 +2404,24 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                         </div>
                     </section>
                     <section v-show="upstreamSection===0" class="api-preview-panel">
-                      <header><div><h3>当前配置预览</h3><p>保存后进入标准服务开发；链路测试为可选辅助功能。</p></div><el-tag :type="hasUnsavedChanges ? 'warning' : detail.summary.upstreamStatus==='READY' ? 'success' : 'info'" effect="plain">{{ hasUnsavedChanges ? '有未保存修改' : detail.summary.upstreamStatus==='READY' ? '上游能力已保存' : '尚未保存' }}</el-tag></header>
+                      <header><div><h3>生效配置</h3></div><el-tag :type="hasUnsavedChanges ? 'warning' : detail.summary.upstreamStatus==='READY' ? 'success' : 'info'" effect="plain">{{ hasUnsavedChanges ? '待保存' : detail.summary.upstreamStatus==='READY' ? '已保存' : '草稿' }}</el-tag></header>
                       <dl><div><dt>完整上游地址</dt><dd><code>{{ previewUpstreamUrl || '请填写上游地址' }}</code><el-button v-if="previewUpstreamUrl" text :icon="DocumentCopy" aria-label="复制上游地址" @click="copyApiValue(previewUpstreamUrl)">复制</el-button></dd></div><div><dt>请求超时</dt><dd><strong>{{ previewTimeoutMs }} ms</strong><span>{{ connectionForm.timeoutMode==='INHERIT' ? '继承数据源' : '单接口覆盖' }}</span></dd></div></dl>
                     </section>
                     <section v-show="upstreamSection===1" class="upstream-contract-panel">
-                      <header><div><span class="api-card-icon"><DocumentCopy/></span><div><h3>上游接口契约</h3><p>维护资源方接口的真实请求与响应样例，作为上游联调基线。</p></div></div><el-tag size="small" type="info">JSON</el-tag></header>
+                      <header><div><div><h3>供应商原始报文</h3></div></div><el-tag size="small" type="info">JSON</el-tag></header>
                       <div class="upstream-contract-grid">
-                        <label><span>上游请求样例</span><el-input v-model="upstreamRequestText" type="textarea" :autosize="{ minRows: 6, maxRows: 12 }" placeholder="填写资源方接口实际请求报文" /></label>
-                        <label><span>上游响应样例</span><el-input v-model="responseText" type="textarea" :autosize="{ minRows: 6, maxRows: 12 }" placeholder="填写资源方接口实际响应报文" /></label>
+                        <label><span>请求报文</span><el-input v-model="upstreamRequestText" type="textarea" :autosize="{ minRows: 12, maxRows: 20 }" placeholder="填写资源方接口实际请求 JSON" /></label>
+                        <label><span>响应报文</span><el-input v-model="responseText" type="textarea" :autosize="{ minRows: 12, maxRows: 20 }" placeholder="填写资源方接口实际响应 JSON" /></label>
                       </div>
                     </section>
                     <section v-show="upstreamSection===2" class="upstream-validation-panel" :class="{'has-error':!!testError && !currentUpstreamVerified}">
-                      <div class="upstream-validation-copy"><div class="upstream-validation-icon"><Connection/></div><div><h3>上游能力验证</h3><p>仅验证当前资源提供方接口的连接、认证和原始响应，不执行平台标准化。</p></div></div>
+                      <div class="upstream-validation-copy"><div><h3>接口联调</h3></div></div>
                       <el-button class="upstream-validation-action" type="primary" :icon="Promotion" :loading="testRunning" :disabled="testRunning || connectionSaving" @click="validateUpstreamCapability">验证上游接口</el-button>
                       <div class="upstream-validation-result success" v-if="currentUpstreamVerified"><span class="status-dot"></span><strong>当前连接验证通过</strong><small>已收到上游原始响应</small></div>
                       <div class="upstream-validation-result error" v-else-if="testError" role="alert"><span class="status-dot offline"></span><div><strong>验证失败</strong><small>{{ testError }}</small></div></div>
                     </section>
                     <div v-if="upstreamSection===2" class="upstream-handoff">
-                      <h3>保存后，继续开发平台标准服务</h3>
-                      <p>当前请求与响应将作为标准服务的初始契约。字段一致时可直接透传，也可配置转换规则。</p>
+                      <h3>标准服务</h3>
                       <div><span>上游接口</span><code>{{ previewUpstreamUrl }}</code></div>
                       <div><span>接入状态</span><strong>{{ upstreamSaveRequired ? '有待保存的配置' : '已保存，可创建标准服务' }}</strong></div>
                       <p v-if="!selectedSource.runtimeUrl" class="route-notice">处理应用运行地址尚未配置，服务上线前需补充。<el-button text type="primary" @click="openSourceRuntimeEditor">配置运行路由</el-button></p>
@@ -2538,16 +2541,13 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                 <div><span class="resource-action-dot" :class="resourceEditorState.key"></span><div class="api-save-state"><strong>{{ resourceEditorState.label }}</strong><small>{{ resourceEditorState.hint }}</small></div></div>
                 <div class="api-footer-actions">
                   <template v-if="serviceDevelopmentStage==='UPSTREAM'">
-                    <el-button v-if="upstreamSection>0" @click="upstreamSection--">上一步</el-button>
-                    <el-button :loading="connectionSaving" :disabled="testRunning || detailLoading" @click="saveConnectionConfig">保存上游配置</el-button>
-                    <el-button v-if="upstreamSection<2" type="primary" @click="upstreamSection++">下一步：{{ upstreamSections[upstreamSection+1].title }}<el-icon class="el-icon--right"><ArrowRight/></el-icon></el-button>
-                    <el-tooltip v-else :disabled="!upstreamSaveRequired" content="请先保存当前上游配置" placement="top"><span><el-button type="primary" :disabled="testRunning || connectionSaving || upstreamSaveRequired" @click="openPlatformServiceDialog">创建标准服务<el-icon class="el-icon--right"><ArrowRight/></el-icon></el-button></span></el-tooltip>
+                    <el-button :loading="connectionSaving" :disabled="testRunning || detailLoading" @click="saveConnectionConfig">保存配置</el-button>
+                    <el-button :loading="testRunning" :disabled="connectionSaving || !previewUpstreamUrl" @click="validateUpstreamCapability">测试接口</el-button>
+                    <el-tooltip :disabled="!upstreamSaveRequired" content="请先保存当前配置" placement="top"><span><el-button type="primary" :disabled="testRunning || connectionSaving || upstreamSaveRequired" @click="openPlatformServiceDialog">创建标准服务</el-button></span></el-tooltip>
                   </template>
                   <template v-else>
-                    <el-button v-if="orchestrationStepIndex>0" :disabled="guideBusy || testRunning || connectionSaving" @click="openGuideStep(orchestrationGuideSteps[orchestrationStepIndex-1].key)">上一步</el-button>
                     <el-button :type="activeTab==='test' ? 'primary' : 'default'" :loading="guideBusy || testRunning || connectionSaving" :disabled="resourcePrimaryActionDisabled || deletingApi || detailLoading" @click="runCurrentPrimaryAction">{{ resourcePrimaryActionLabel }}</el-button>
-                    <el-button v-if="orchestrationGuideSteps[orchestrationStepIndex+1]" type="primary" :disabled="guideBusy || testRunning || connectionSaving || detailLoading" @click="continueGuide">{{ hasUnsavedChanges ? '保存并继续' : '下一步：'+orchestrationGuideSteps[orchestrationStepIndex+1].title }}<el-icon class="el-icon--right"><ArrowRight/></el-icon></el-button>
-                    <el-button v-else type="primary" :disabled="guideBusy || testRunning || connectionSaving" @click="selectServiceDevelopmentStage('RELEASE')">进入发布检查<el-icon class="el-icon--right"><ArrowRight/></el-icon></el-button>
+                    <el-button v-if="activeTab==='test'" type="primary" :disabled="guideBusy || testRunning || connectionSaving" @click="selectServiceDevelopmentStage('RELEASE')">进入发布</el-button>
                   </template>
                 </div>
               </footer>
@@ -2560,7 +2560,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
         </template>
 
         <template v-else-if="activeMenu === 'authorization'">
-          <section class="split-panels authorization-overview"><div class="plain-panel"><div class="panel-heading"><div><strong>调用系统</strong><span>机构及外围系统身份</span></div><el-button :icon="Plus" @click="openClientRegistration()">登记系统</el-button></div><template v-if="clients.length"><el-table :data="clients"><el-table-column prop="clientName" label="系统名称" min-width="160"/><el-table-column prop="clientCode" label="系统编码" min-width="130"/><el-table-column prop="institutionName" label="所属机构" min-width="160"/><el-table-column prop="ownerName" label="负责人" width="90"/><el-table-column label="状态" width="90"><template #default="{row}"><el-tag :type="row.status === 'ACTIVE' ? 'success' : 'info'">{{ row.status === 'ACTIVE' ? '有效' : '停用' }}</el-tag></template></el-table-column></el-table></template><div v-else class="authorization-empty"><div class="authorization-empty-icon"><UserIcon /></div><strong>暂无调用系统</strong><span>先登记行内系统，才能为 API 配置访问授权。</span><el-button type="primary" plain :icon="Plus" @click="openClientRegistration()">登记第一个调用系统</el-button></div></div><div class="auth-summary-panel"><Key /><strong>授权控制位于统一 Gateway</strong><span>鉴权、API 权限、日配额和有效期在请求进入数据源应用前完成校验。</span><div><b>{{ validAuthorizations.length }}</b><small>有效授权</small></div></div></section>
+          <section class="authorization-overview"><div class="plain-panel"><div class="panel-heading"><div><strong>调用系统</strong><span>{{ clients.length }} 个系统 · {{ validAuthorizations.length }} 条有效授权</span></div><el-button :icon="Plus" @click="openClientRegistration()">登记系统</el-button></div><template v-if="clients.length"><el-table :data="clients"><el-table-column prop="clientName" label="系统名称" min-width="160"/><el-table-column prop="clientCode" label="系统编码" min-width="130"/><el-table-column prop="institutionName" label="所属机构" min-width="160"/><el-table-column prop="ownerName" label="负责人" width="90"/><el-table-column label="状态" width="90"><template #default="{row}"><el-tag :type="row.status === 'ACTIVE' ? 'success' : 'info'">{{ row.status === 'ACTIVE' ? '有效' : '停用' }}</el-tag></template></el-table-column></el-table></template><div v-else class="authorization-empty"><div class="authorization-empty-icon"><UserIcon /></div><strong>暂无调用系统</strong><span>先登记行内系统，才能为 API 配置访问授权。</span><el-button type="primary" plain :icon="Plus" @click="openClientRegistration()">登记第一个调用系统</el-button></div></div></section>
           <section class="plain-panel table-panel authorization-list-panel"><div class="panel-heading"><div><strong>API 授权清单</strong><span>授权即时生效，无需重启 Gateway 或数据源应用</span></div><div class="panel-heading-actions"><el-button :icon="Plus" @click="openBatchAuthorization">批量授权</el-button><el-button type="primary" :icon="Plus" @click="openAuthDialog">新增授权</el-button></div></div><div class="list-filter-bar"><el-input v-model="authorizationSearch" :prefix-icon="Search" clearable placeholder="搜索系统、API 名称或编码" aria-label="搜索授权"/><el-select v-model="authorizationClient" filterable aria-label="按调用系统筛选"><el-option label="全部调用系统" :value="0"/><el-option v-for="client in clients" :key="client.id" :label="client.clientName" :value="client.id"/></el-select><span>{{ filteredAuthorizations.length }} 条授权</span></div><el-table :data="pagedAuthorizations" border empty-text="暂无匹配的授权记录"><el-table-column prop="clientName" label="调用系统" min-width="160"/><el-table-column prop="interfaceName" label="授权 API" min-width="170"/><el-table-column prop="interfaceCode" label="接口编码" min-width="150"/><el-table-column prop="environment" label="环境" width="90"><template #default="{ row }"><el-tag :type="row.environment==='PROD'?'danger':'info'">{{ row.environment }}</el-tag></template></el-table-column><el-table-column prop="dailyQuota" label="日配额" width="110"/><el-table-column label="有效期" min-width="190"><template #default="{ row }">{{ row.validFrom }} 至 {{ row.validTo }}</template></el-table-column><el-table-column label="状态" width="90"><template #default="{ row }"><el-tag :type="authorizationStatus(row).type">{{ authorizationStatus(row).text }}</el-tag></template></el-table-column></el-table><el-pagination v-if="filteredAuthorizations.length>20" class="list-pagination" v-model:current-page="authorizationPage" :page-size="20" :total="filteredAuthorizations.length" layout="total, prev, pager, next"/></section>
         </template>
 

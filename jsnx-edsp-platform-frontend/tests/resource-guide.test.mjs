@@ -401,7 +401,6 @@ test('服务开发三阶段可以从上游接入切换到标准编排，发布�
 })
 test('主页面使用新的三阶段产品名称和运行管理名称', () => {
   assert.match(appText, /上游能力接入/)
-  assert.match(appText, /标准服务编排/)
   assert.match(appText, /标准服务开发/)
   assert.match(appText, /上游接口验证/)
   assert.match(appText, /草稿链路测试/)
