@@ -2177,7 +2177,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
 
   <el-container v-else class="app-shell" :class="{'sidebar-collapsed':sidebarCollapsed}" v-loading="loading">
     <el-aside :width="sidebarCollapsed ? '68px' : '224px'" class="sidebar" :class="{collapsed:sidebarCollapsed}">
-      <div class="brand"><div class="brand-mark">ED</div><div class="brand-copy"><div class="brand-name">外部数据平台</div><div class="brand-sub">External Data Service</div></div><button class="sidebar-collapse-button" type="button" :title="sidebarCollapsed?'展开菜单':'收起菜单'" @click="sidebarCollapsed=!sidebarCollapsed"><component :is="sidebarCollapsed?Expand:Fold"/></button></div>
+      <div class="brand"><div class="brand-mark">ED</div><div class="brand-copy"><div class="brand-name">外部数据平台</div><div class="brand-sub">External Data Service</div></div><button class="sidebar-collapse-button" type="button" :title="sidebarCollapsed?'展开菜单':'收起菜单'" :aria-label="sidebarCollapsed?'展开菜单':'收起菜单'" :aria-expanded="!sidebarCollapsed" @click.stop="sidebarCollapsed=!sidebarCollapsed"><component :is="sidebarCollapsed?Expand:Fold"/></button></div>
       <el-menu :default-active="activeMenu" :collapse="sidebarCollapsed" :collapse-transition="false" class="side-menu">
         <button v-if="!sidebarCollapsed" class="menu-section-label" type="button" @click="menuGroups.global=!menuGroups.global"><span>全局视图</span><ArrowRight :class="{expanded:menuGroups.global}"/></button>
         <el-menu-item aria-label="运营总览" v-show="menuGroups.global||sidebarCollapsed" index="overview" @click="navigate('overview')"><el-icon><DataBoard /></el-icon><template #title>运营总览</template></el-menu-item>

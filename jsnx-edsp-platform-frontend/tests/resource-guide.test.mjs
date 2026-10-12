@@ -406,6 +406,8 @@ test('主页面使用新的三阶段产品名称和运行管理名称', () => {
   assert.match(appText, /草稿链路测试/)
   assert.match(appText, /链路追踪/)
   assert.match(appText, /运行监控/)
+  assert.match(appText, /@click\.stop="sidebarCollapsed=!sidebarCollapsed"/)
+  assert.match(appText, /:aria-label="sidebarCollapsed\?'展开菜单':'收起菜单'"/)
   assert.doesNotMatch(appText, /<span>数据资源服务<\/span>/)
 })
 test('已下线接口提供恢复最近线上版本入口并保留更高版本草稿', () => {
