@@ -417,6 +417,11 @@ test('生效配置和日志检索在窄工作区使用自适应布局', () => {
   assert.match(consoleThemeText, /@container \(max-width: 740px\)[\s\S]*?\.api-preview-panel dl \{ grid-template-columns: minmax\(0,1fr\); \}/)
   assert.match(consoleThemeText, /@media \(max-width: 1100px\)[\s\S]*?\.log-query-grid \{ grid-template-columns: minmax\(0,1fr\) minmax\(0,1fr\); \}/)
 })
+test('标准服务链路测试模式使用完整内容列并在窄编辑区纵向排列', () => {
+  assert.match(consoleThemeText, /\.test-mode-selector\.orchestration-modes button \{[^}]*grid-template-columns: minmax\(0,1fr\)/)
+  assert.match(consoleThemeText, /\.test-mode-selector\.orchestration-modes button > div \{ width: 100%; min-width: 0; \}/)
+  assert.match(consoleThemeText, /@container \(max-width: 740px\)[\s\S]*?\.test-mode-selector\.orchestration-modes \{ grid-template-columns: minmax\(0,1fr\); \}/)
+})
 test('状态标签文字继承语义前景色且调用链标题样式不污染标签内容', () => {
   assert.match(consoleThemeText, /\.el-tag \.el-tag__content \{ color: inherit; \}/)
   assert.match(consoleThemeText, /--el-color-success: #24725f;/)

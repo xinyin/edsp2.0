@@ -250,9 +250,12 @@ body { background: var(--canvas); }
 .trace-workbench-head > div > span, .trace-workbench-head small { display: none; }
 .trace-workbench-head strong { font-size: 13px; }
 .test-mode-selector.orchestration-modes { gap: 0; margin: 10px 0; border: 1px solid var(--border); }
-.test-mode-selector.orchestration-modes button { border: 0; border-right: 1px solid var(--border); border-radius: 0; box-shadow: none; }
+.test-mode-selector.orchestration-modes button { min-height: 78px; padding: 14px 42px 14px 16px; display: grid; grid-template-columns: minmax(0,1fr); align-content: center; gap: 0; border: 0; border-right: 1px solid var(--border); border-radius: 0; box-shadow: none; }
 .test-mode-selector.orchestration-modes button:last-child { border-right: 0; }
 .test-mode-selector.orchestration-modes button > span, .test-mode-selector.orchestration-modes button small { display: none; }
+.test-mode-selector.orchestration-modes button > div { width: 100%; min-width: 0; }
+.test-mode-selector.orchestration-modes strong { line-height: 1.5; word-break: normal; overflow-wrap: break-word; }
+.test-mode-selector.orchestration-modes b { max-width: 100%; line-height: 1.5; }
 .test-mode-context { border-radius: 2px; }
 .test-mode-context small { display: none; }
 .test-grid { gap: 0; border: 1px solid var(--border); }
@@ -357,6 +360,9 @@ button:focus-visible { outline: 2px solid #8094a4; outline-offset: 2px; }
   .standard-contract-strip > div:first-child { grid-column: 1 / -1; }
   .upstream-validation-panel { grid-template-columns: minmax(0,1fr); }
   .upstream-validation-action { justify-self: start; }
+  .test-mode-selector.orchestration-modes { grid-template-columns: minmax(0,1fr); }
+  .test-mode-selector.orchestration-modes button { min-height: 68px; border-right: 0; border-bottom: 1px solid var(--border); }
+  .test-mode-selector.orchestration-modes button:last-child { border-bottom: 0; }
 }
 
 @media (max-width: 1100px) {
