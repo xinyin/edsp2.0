@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import ts from 'typescript'
 import { parse } from '@vue/compiler-sfc'
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 
 const guideSource = readFileSync(new URL('../src/resource-guide.ts', import.meta.url), 'utf8')
 const guideJS = ts.transpileModule(guideSource, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 } }).outputText
@@ -29,7 +29,7 @@ function harness(overrides = {}, confirm = async () => true) {
   for (const entry of imports) {
     for (const element of entry.importClause?.namedBindings?.elements ?? []) deps[element.name.text] = {}
   }
-  Object.assign(deps, guide, { ref, computed, nextTick, URL, AbortController, structuredClone,
+  Object.assign(deps, guide, { ref, computed, nextTick, watch, useDisplayPreference: (_key, initial = false) => ref(initial), URL, AbortController, structuredClone,
     setInterval: () => 1, clearInterval: () => {}, setTimeout: callback => { callback(); return 1 },
     document: { querySelector: () => null }, navigator: {},
     ElMessage: Object.fromEntries(['error', 'warning', 'success', 'info'].map(kind => [kind, message => messages.push({ kind, message })])),
@@ -39,7 +39,7 @@ function harness(overrides = {}, confirm = async () => true) {
       resourceValidationStatus: async () => ({ upstreamVerified: false }), ...overrides },
       { get: (target, name) => target[name] ?? (() => { throw new Error('Unexpected API call: ' + String(name)) }) })
   })
-  const state = vm.runInNewContext('(() => { ' + appJS + ' return { activeMenu, activeTab, detail, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, sourceExpansion, isSourceExpanded, sourceInterfaces, filteredSources, setAllSourcesExpanded, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, currentPreReleaseVerified, currentE2EVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, bringVendorApiToPlatform, vendorImportingKey, apiForm, apiDialog, mappingDirection, mappingIsPassThrough, mappingModeLabel, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
+  const state = vm.runInNewContext('(() => { ' + appJS + ' return { navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, activeMenu, activeTab, detail, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, sourceExpansion, isSourceExpanded, sourceInterfaces, filteredSources, setAllSourcesExpanded, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, currentPreReleaseVerified, currentE2EVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, bringVendorApiToPlatform, vendorImportingKey, apiForm, apiDialog, mappingDirection, mappingIsPassThrough, mappingModeLabel, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
   state.selectedSourceId.value = 1
   state.activeMenu.value = 'resource'
   state.selectedInterfaceId.value = 11
@@ -58,6 +58,46 @@ function harness(overrides = {}, confirm = async () => true) {
   state.savedStandardServiceBaseline.value = JSON.stringify(state.standardServiceForm.value)
   return { ...state, messages }
 }
+
+test('跨模块导航取消时保留未保存报文，确认放弃后才能离开', async () => {
+  const blocked = harness({}, async () => { throw 'cancel' })
+  blocked.responseText.value = '{"edited":true}'
+  await blocked.navigate('billing')
+  assert.equal(blocked.activeMenu.value, 'resource')
+  assert.equal(blocked.responseText.value, '{"edited":true}')
+  const accepted = harness()
+  accepted.responseText.value = '{"edited":true}'
+  await accepted.navigate('billing')
+  assert.equal(accepted.activeMenu.value, 'billing')
+  assert.equal(accepted.responseText.value, accepted.savedUpstreamResponseBaseline.value)
+})
+
+test('接入向导阻止空基础信息和无效地址，不发起创建请求', async () => {
+  let calls = 0
+  const s = harness({ createDataSource: async () => { calls++; throw new Error('不应调用') } })
+  s.advanceSourceWizard()
+  assert.equal(s.sourceStep.value, 0)
+  assert.match(s.sourceError.value, /资源提供商/)
+  Object.assign(s.sourceForm.value, { providerId: 1, sourceCode: 'NEW_SOURCE', sourceName: '新数据源' })
+  s.advanceSourceWizard()
+  assert.equal(s.sourceStep.value, 1)
+  s.sourceForm.value.endpoint = 'not-an-address'
+  await s.createSource()
+  assert.equal(calls, 0)
+  assert.match(s.sourceError.value, /有效的资源提供商基础地址/)
+  assert.equal(s.sourceSaving.value, false)
+})
+
+test('授权清单同时按调用系统与接口关键词过滤，单页最多20条', () => {
+  const s = harness()
+  s.authorizations.value = Array.from({ length: 45 }, (_, i) => ({ id: i, clientId: i < 30 ? 1 : 2, clientName: '系统'+i, interfaceName: '企业查询', interfaceCode: 'ENTERPRISE_'+i }))
+  assert.equal(s.pagedAuthorizations.value.length, 20)
+  s.authorizationClient.value = 2
+  assert.equal(s.filteredAuthorizations.value.length, 15)
+  s.authorizationSearch.value = 'enterprise_44'
+  assert.equal(s.filteredAuthorizations.value.length, 1)
+  assert.equal(s.filteredAuthorizations.value[0].id, 44)
+})
 
 test('请求和响应可以独立选择映射或原报文透传；关闭安全策略是可跳过项', () => {
   const steps = guide.buildResourceGuide({ ...baseGuide, mappings: [mapping('REQUEST')] })
@@ -376,6 +416,7 @@ test('已下线接口提供恢复最近线上版本入口并保留更高版本�
 })
 test('已下线接口仍可编辑保存，并可选择上线新草稿或恢复旧线上版本', () => {
   const s = harness()
+  s.activeMenu.value = 'service-development'
   s.detail.value.summary.status = 'OFFLINE'
   s.detail.value.summary.currentVersion = 2
   s.detail.value.summary.publishedVersion = 2

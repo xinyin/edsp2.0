@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import './resource-workbench.css'
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
+import WorkspaceJourney from './components/WorkspaceJourney.vue'
+import { useDisplayPreference } from './composables/useDisplayPreference'
 import {
   Bell, Check, CircleCheck, Connection, DataAnalysis, DataBoard, Delete,
   DocumentChecked, DocumentCopy, Files, Key, Lock, Monitor, Plus, Promotion, Refresh,
@@ -24,9 +26,9 @@ const loginLoading = ref(false)
 const loginForm = ref({ username: 'admin', password: 'admin123' })
 const user = ref<LoginResult | null>(null)
 const activeMenu = ref('overview')
-const sidebarCollapsed = ref(false)
-const resourceCatalogCollapsed = ref(false)
-const releaseCatalogCollapsed = ref(false)
+const sidebarCollapsed = useDisplayPreference('sidebar-collapsed')
+const resourceCatalogCollapsed = useDisplayPreference('resource-catalog-collapsed')
+const releaseCatalogCollapsed = useDisplayPreference('release-catalog-collapsed')
 const menuGroups = ref({ global: true, service: true, operations: true })
 const loading = ref(false)
 const demo = ref(false)
@@ -49,6 +51,16 @@ const allInterfaces = ref<InterfaceSummary[]>([])
 const allResourceApis = ref<ResourceApiSummary[]>([])
 const clients = ref<ClientApp[]>([])
 const authorizations = ref<AuthorizationRecord[]>([])
+const authorizationSearch = ref('')
+const authorizationClient = ref(0)
+const authorizationPage = ref(1)
+const filteredAuthorizations = computed(() => {
+  const keyword = authorizationSearch.value.trim().toLowerCase()
+  return authorizations.value.filter(item => (!authorizationClient.value || item.clientId === authorizationClient.value)
+    && (!keyword || `${item.clientName} ${item.interfaceName} ${item.interfaceCode}`.toLowerCase().includes(keyword)))
+})
+const pagedAuthorizations = computed(() => filteredAuthorizations.value.slice((authorizationPage.value - 1) * 20, authorizationPage.value * 20))
+watch([authorizationSearch, authorizationClient, authorizations], () => { authorizationPage.value = 1 })
 const billingRules = ref<BillingRule[]>([])
 const billingSummary = ref<BillingSummary>({ totalCalls: 0, billableCalls: 0, totalAmount: 0, hitCalls: 0, missCalls: 0, errorCalls: 0 })
 const usageRecords = ref<UsageRecord[]>([])
@@ -93,6 +105,13 @@ const selectedInterfaceBySource = new Map<number, number>()
 const selectedResourceApiBySource = new Map<number, number>()
 let sourceRequestSequence = 0
 const activeTab = ref('overview')
+const upstreamSection = ref(0)
+const upstreamSections = [
+  { title: '连接配置', hint: '地址与超时' },
+  { title: '请求与响应', hint: '供应商原始报文' },
+  { title: '接入验证', hint: '可选 · 实际调用' }
+]
+watch(selectedInterfaceId, () => { upstreamSection.value = 0 })
 type ServiceDevelopmentStage = 'UPSTREAM' | 'ORCHESTRATION'
 const serviceDevelopmentStage = ref<ServiceDevelopmentStage>('UPSTREAM')
 // The platform's primary product output is the standardized response returned
@@ -104,7 +123,7 @@ const sourceExpansion = ref<Record<number, boolean>>({})
 const timeoutExpanded = ref(false)
 const guideBusy = ref(false)
 const guideError = ref('')
-const guideHelpExpanded = ref(true)
+const guideHelpExpanded = ref(false)
 const lastUpstreamValidation = ref<{ interfaceId: number; connectionFingerprint: string } | null>(null)
 const lastOrchestrationValidation = ref<{ interfaceId: number; version: number } | null>(null)
 const lastE2ETest = ref<{ interfaceId: number; version: number } | null>(null)
@@ -153,10 +172,11 @@ const sourceDialog = ref(false)
 const sourceRuntimeDialog = ref(false)
 const sourceRuntimeSaving = ref(false)
 const sourceStep = ref(0)
-const connectionChecked = ref(false)
+const sourceSaving = ref(false)
+const sourceError = ref('')
 // Deployment environment and instance count are intentionally not part of the
 // onboarding form until deployment orchestration is connected to the platform.
-const sourceForm = ref({ providerId: 1, sourceCode: 'CREDIT_REPORT', sourceName: '征信报告数据源', applicationName: '', runtimeUrl: '', protocolType: 'HTTP_JSON', endpoint: 'https://sandbox.provider.example.com/open', defaultTimeoutMs: 3000 })
+const sourceForm = ref({ providerId: 0, sourceCode: '', sourceName: '', applicationName: '', runtimeUrl: '', protocolType: 'HTTP_JSON', endpoint: '', defaultTimeoutMs: 3000 })
 const sourceRuntimeForm = ref({ applicationName: '', runtimeUrl: '' })
 const apiDialog = ref(false)
 const apiCreating = ref(false)
@@ -268,7 +288,7 @@ async function openGuideStep(key: string) {
   activeTab.value = key
   guideError.value = ''
   await nextTick()
-  document.querySelector('.api-guide-panel')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  document.querySelector('.resource-workflow')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
 }
 
 const selectedTraceNode = computed(() => testResult.value?.traceNodes.find(node => node.key === selectedTraceKey.value)
@@ -596,7 +616,9 @@ const apiGuideSteps = computed(() => buildResourceGuide({
 }))
 const activeGuideIndex = computed(() => Math.max(0, apiGuideSteps.value.findIndex(item => item.key === activeTab.value)))
 const activeGuideStep = computed(() => apiGuideSteps.value[activeGuideIndex.value])
-const orchestrationGuideSteps = computed(() => apiGuideSteps.value.filter(item => ['request', 'codes', 'security', 'test'].includes(item.key)))
+const orchestrationGuideSteps = computed(() => apiGuideSteps.value
+  .filter(item => ['request', 'codes', 'security', 'test'].includes(item.key))
+  .map((item, index) => ({ ...item, index: String(index + 1).padStart(2, '0') })))
 const orchestrationStepIndex = computed(() => Math.max(0, orchestrationGuideSteps.value.findIndex(item => item.key === activeTab.value)))
 const activeGuideAdvice = computed(() => guideAdvice[activeTab.value] ?? guideAdvice.overview)
 const nextGuideStep = computed(() => apiGuideSteps.value[activeGuideIndex.value + 1])
@@ -619,6 +641,9 @@ const upstreamSaveRequired = computed(() => hasUnsavedChanges.value
   || (activeMenu.value === 'resource' && detail.value?.summary.upstreamStatus !== 'READY'))
 const resourceEditorState = computed(() => {
   if (hasUnsavedChanges.value) return { key: 'unsaved', label: '未保存修改', hint: '仅保留在当前浏览器页面' }
+  if (activeMenu.value === 'resource') return detail.value?.summary.upstreamStatus === 'READY'
+    ? { key: 'published', label: '上游配置已保存', hint: '可基于此资源创建标准服务' }
+    : { key: 'draft', label: '接入草稿', hint: '保存后可用于标准服务开发' }
   if (detail.value?.summary.status === 'OFFLINE') return { key: 'offline', label: '线上已下线', hint: `草稿 V${detail.value.summary.currentVersion} 可继续编辑` }
   if (detail.value?.summary.status === 'PENDING_APPROVAL') return { key: 'pending', label: '审批中', hint: `草稿 V${detail.value.summary.currentVersion} 已提交审批` }
   if (detail.value && detail.value.summary.publishedVersion === detail.value.summary.currentVersion) return { key: 'published', label: '已发布', hint: `线上生效 V${detail.value.summary.currentVersion}` }
@@ -918,10 +943,14 @@ async function selectServiceDevelopmentStage(stage: 'UPSTREAM' | 'ORCHESTRATION'
     if (ready) { selectedSourceId.value = ready.dataSourceId; selectedInterfaceId.value = ready.id; void loadInterfaces(false) }
   }
 }
-function navigate(menu: string) {
+async function navigate(menu: string) {
+  if (menu === activeMenu.value) return
+  if (guideBusy.value || testRunning.value || connectionSaving.value) return
+  if (['resource', 'service-development'].includes(activeMenu.value) && !await confirmDiscardUnsaved()) return
   const originatingResourceApiId = activeMenu.value === 'resource' ? selectedInterfaceId.value : undefined
   activeMenu.value = menu
   if (menu === 'resource') {
+    upstreamSection.value = 0
     serviceDevelopmentStage.value = 'UPSTREAM'
     activeTab.value = 'overview'
     testMode.value = 'UPSTREAM'
@@ -946,6 +975,24 @@ function navigate(menu: string) {
   if (menu === 'providers' && selectedProviderId.value) void loadProviderAccounts()
   if (menu === 'approvals') void refreshApprovals()
   if (menu === 'releases') void loadReleaseManagement(releaseInterfaceId.value || selectedInterfaceId.value || allInterfaces.value[0]?.id)
+  await nextTick()
+  document.querySelector('.page-heading')?.scrollIntoView({ block: 'start' })
+}
+async function refreshCurrentWorkspace() {
+  if (guideBusy.value || testRunning.value || connectionSaving.value) return
+  if (['resource', 'service-development'].includes(activeMenu.value) && !await confirmDiscardUnsaved()) return
+  try {
+    if (activeMenu.value === 'discovery') await loadVendorCatalog()
+    else if (activeMenu.value === 'monitor') await refreshMonitor()
+    else if (activeMenu.value === 'logs') await searchCallLogs()
+    else if (activeMenu.value === 'releases') await loadReleaseManagement()
+    else await loadAll()
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '刷新失败，请重试') }
+}
+function editReleaseRuntime() {
+  if (!releaseDetail.value) return
+  selectedSourceId.value = releaseDetail.value.summary.dataSourceId
+  openSourceRuntimeEditor()
 }
 const releaseFilteredSources = computed(() => {
   const keyword = releaseSearch.value.trim().toLowerCase()
@@ -1119,16 +1166,38 @@ function logout() { loggedIn.value = false; user.value = null; activeMenu.value 
 
 function openSourceWizard() {
   sourceStep.value = 0
-  connectionChecked.value = false
-  sourceForm.value.providerId = providers.value[0]?.id ?? 1
+  sourceError.value = ''
+  sourceForm.value = { providerId: providers.value[0]?.id ?? 0, sourceCode: '', sourceName: '', applicationName: '', runtimeUrl: '', protocolType: 'HTTP_JSON', endpoint: '', defaultTimeoutMs: 3000 }
   sourceDialog.value = true
 }
-function testConnection() { connectionChecked.value = true; ElMessage.success('连通性和 TLS 证书校验通过') }
+function advanceSourceWizard() {
+  if (!sourceForm.value.providerId || !sourceForm.value.sourceName.trim() || !sourceForm.value.sourceCode.trim()) {
+    sourceError.value = '请先选择资源提供商，并填写数据源名称和编码。'
+    return
+  }
+  if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(sourceForm.value.sourceCode.trim())) {
+    sourceError.value = '数据源编码以字母开头，可包含字母、数字、下划线和连字符。'
+    return
+  }
+  sourceError.value = ''
+  sourceStep.value = 1
+}
 async function createSource() {
-  // Keep the current backend contract stable while the deployment settings are
-  // managed by the deployment layer rather than by this wizard.
+  if (sourceSaving.value) return
+  if (sourceForm.value.protocolType !== 'LOCAL_SQL' && !isHttpEndpoint(sourceForm.value.endpoint.trim())) {
+    sourceError.value = '请填写有效的资源提供商基础地址，以 http:// 或 https:// 开头。'
+    return
+  }
+  if (sourceForm.value.runtimeUrl.trim() && !isHttpEndpoint(sourceForm.value.runtimeUrl.trim())) {
+    sourceError.value = '处理应用运行地址应以 http:// 或 https:// 开头。'
+    return
+  }
+  sourceError.value = ''
+  sourceSaving.value = true
+  try {
   const sourceCode = sourceForm.value.sourceCode.trim().toLowerCase().replace(/_/g, '-')
   const created = await api.createDataSource({ ...sourceForm.value,
+    sourceCode: sourceForm.value.sourceCode.trim(), sourceName: sourceForm.value.sourceName.trim(), endpoint: sourceForm.value.endpoint.trim(),
     applicationName: sourceForm.value.applicationName.trim() || `jsnx-edsp-data-source-${sourceCode}`,
     runtimeUrl: sourceForm.value.runtimeUrl.trim() || null, environment: 'TEST', instanceCount: 1 })
   sourceDialog.value = false
@@ -1136,6 +1205,9 @@ async function createSource() {
   await loadAll()
   ElMessage.success(`数据源 ${created.sourceName} 已创建，可继续开发 API`)
   openApiDialog()
+  } catch (error) {
+    sourceError.value = error instanceof Error ? error.message : '数据源创建失败，请重试'
+  } finally { sourceSaving.value = false }
 }
 
 function openSourceRuntimeEditor() {
@@ -2090,7 +2162,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
     <section class="login-brand-panel">
       <div class="login-brand"><span>ED</span><div><strong>外部数据平台</strong><small>EXTERNAL DATA SERVICE PLATFORM</small></div></div>
       <div class="login-message"><p>江苏农信</p><h1>外部数据统一接入与服务运营</h1><span>统一接入、标准化、授权、计量与审计</span></div>
-      <div class="login-system-status"><i></i><span>平台服务正常</span><b>TEST 环境</b></div>
+      <div class="login-system-status"><span>外部数据服务管理控制台</span><b>TEST 环境</b></div>
     </section>
     <section class="login-form-panel">
       <form class="login-box" @submit.prevent="login">
@@ -2107,40 +2179,42 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
   <el-container v-else class="app-shell" :class="{'sidebar-collapsed':sidebarCollapsed}" v-loading="loading">
     <el-aside :width="sidebarCollapsed ? '68px' : '224px'" class="sidebar" :class="{collapsed:sidebarCollapsed}">
       <div class="brand"><div class="brand-mark">ED</div><div class="brand-copy"><div class="brand-name">外部数据平台</div><div class="brand-sub">External Data Service</div></div><button class="sidebar-collapse-button" type="button" :title="sidebarCollapsed?'展开菜单':'收起菜单'" @click="sidebarCollapsed=!sidebarCollapsed"><component :is="sidebarCollapsed?Expand:Fold"/></button></div>
-      <el-menu :default-active="activeMenu" :key="activeMenu" :collapse="sidebarCollapsed" :collapse-transition="false" class="side-menu">
+      <el-menu :default-active="activeMenu" :collapse="sidebarCollapsed" :collapse-transition="false" class="side-menu">
         <button v-if="!sidebarCollapsed" class="menu-section-label" type="button" @click="menuGroups.global=!menuGroups.global"><span>全局视图</span><ArrowRight :class="{expanded:menuGroups.global}"/></button>
-        <el-menu-item v-show="menuGroups.global||sidebarCollapsed" index="overview" @click="navigate('overview')"><el-icon><DataBoard /></el-icon><template #title>运营总览</template></el-menu-item>
+        <el-menu-item aria-label="运营总览" v-show="menuGroups.global||sidebarCollapsed" index="overview" @click="navigate('overview')"><el-icon><DataBoard /></el-icon><template #title>运营总览</template></el-menu-item>
         <button v-if="!sidebarCollapsed" class="menu-section-label" type="button" @click="menuGroups.service=!menuGroups.service"><span>数据服务</span><ArrowRight :class="{expanded:menuGroups.service}"/></button>
         <template v-if="menuGroups.service||sidebarCollapsed">
-          <el-menu-item index="discovery" @click="navigate('discovery')"><el-icon><OfficeBuilding /></el-icon><template #title>资源目录</template></el-menu-item>
-          <el-menu-item index="providers" @click="navigate('providers')"><el-icon><UserIcon /></el-icon><template #title>资源方管理</template></el-menu-item>
-          <el-menu-item index="resource" @click="navigate('resource')"><el-icon><Connection /></el-icon><template #title>上游能力接入</template></el-menu-item>
-          <el-menu-item index="service-development" @click="navigate('service-development')"><el-icon><Setting /></el-icon><template #title>标准服务开发</template></el-menu-item>
-          <el-menu-item index="releases" @click="navigate('releases')"><el-icon><Promotion /></el-icon><template #title>服务发布</template></el-menu-item>
-          <el-menu-item index="authorization" @click="navigate('authorization')"><el-icon><Key /></el-icon><template #title>API 访问授权</template></el-menu-item>
+          <el-menu-item aria-label="资源目录" index="discovery" @click="navigate('discovery')"><el-icon><OfficeBuilding /></el-icon><template #title>资源目录</template></el-menu-item>
+          <el-menu-item aria-label="资源方管理" index="providers" @click="navigate('providers')"><el-icon><UserIcon /></el-icon><template #title>资源方管理</template></el-menu-item>
+          <el-menu-item aria-label="上游能力接入" index="resource" @click="navigate('resource')"><el-icon><Connection /></el-icon><template #title>上游能力接入</template></el-menu-item>
+          <el-menu-item aria-label="标准服务开发" index="service-development" @click="navigate('service-development')"><el-icon><Setting /></el-icon><template #title>标准服务开发</template></el-menu-item>
+          <el-menu-item aria-label="服务发布" index="releases" @click="navigate('releases')"><el-icon><Promotion /></el-icon><template #title>服务发布</template></el-menu-item>
+          <el-menu-item aria-label="API 访问授权" index="authorization" @click="navigate('authorization')"><el-icon><Key /></el-icon><template #title>API 访问授权</template></el-menu-item>
         </template>
         <button v-if="!sidebarCollapsed" class="menu-section-label" type="button" @click="menuGroups.operations=!menuGroups.operations"><span>运行管理</span><ArrowRight :class="{expanded:menuGroups.operations}"/></button>
         <template v-if="menuGroups.operations||sidebarCollapsed">
-          <el-menu-item index="billing" @click="navigate('billing')"><el-icon><Tickets /></el-icon><template #title>计量管理</template></el-menu-item>
-          <el-menu-item index="logs" @click="navigate('logs')"><el-icon><DataAnalysis /></el-icon><template #title>链路追踪</template></el-menu-item>
-          <el-menu-item index="monitor" @click="navigate('monitor')"><el-icon><Monitor /></el-icon><template #title>运行监控</template></el-menu-item>
+          <el-menu-item aria-label="计量管理" index="billing" @click="navigate('billing')"><el-icon><Tickets /></el-icon><template #title>计量管理</template></el-menu-item>
+          <el-menu-item aria-label="链路追踪" index="logs" @click="navigate('logs')"><el-icon><DataAnalysis /></el-icon><template #title>链路追踪</template></el-menu-item>
+          <el-menu-item aria-label="运行监控" index="monitor" @click="navigate('monitor')"><el-icon><Monitor /></el-icon><template #title>运行监控</template></el-menu-item>
         </template>
       </el-menu>
-      <div class="sidebar-footer"><div class="runtime-dot"></div><div><strong>Gateway 集群正常</strong><span>2 / 2 实例在线</span></div></div>
+      <div class="sidebar-footer"><div><strong>外部数据服务管理</strong><span>资源接入 · 开发 · 运营</span></div></div>
     </el-aside>
 
     <el-container>
       <el-header class="topbar">
         <div class="crumbs"><span>外部数据平台</span><b>/</b><span>{{ pageMeta[0] }}</span></div>
-        <div class="top-actions"><el-tag v-if="demo" type="warning" effect="plain">演示数据模式</el-tag><el-tag type="danger" effect="dark">TEST</el-tag><el-button :icon="Bell" circle aria-label="通知" /><el-dropdown><div class="user"><span>{{ user?.displayName }}</span><b>管</b></div><template #dropdown><el-dropdown-menu><el-dropdown-item @click="logout"><el-icon><SwitchButton /></el-icon>退出登录</el-dropdown-item></el-dropdown-menu></template></el-dropdown></div>
+        <div class="top-actions"><el-tag v-if="demo" type="warning" effect="plain">演示数据模式</el-tag><el-tag type="info" effect="plain">TEST 环境</el-tag><el-dropdown><div class="user"><span>{{ user?.displayName }}</span><b>管</b></div><template #dropdown><el-dropdown-menu><el-dropdown-item @click="logout"><el-icon><SwitchButton /></el-icon>退出登录</el-dropdown-item></el-dropdown-menu></template></el-dropdown></div>
       </el-header>
 
       <el-main class="main-content">
-        <section class="page-heading" :class="{'compact-page-heading': activeMenu === 'releases' || activeMenu === 'authorization'}"><div><h1>{{ pageMeta[0] }}</h1><p>{{ pageMeta[1] }}</p></div><div class="heading-actions"><el-button :icon="Refresh" @click="activeMenu === 'discovery' ? loadVendorCatalog() : activeMenu === 'monitor' ? refreshMonitor() : activeMenu === 'logs' ? searchCallLogs() : activeMenu === 'releases' ? loadReleaseManagement() : loadAll()">刷新</el-button><el-button v-if="activeMenu === 'resource'" type="primary" :icon="Plus" @click="openSourceWizard">接入数据源</el-button><el-button v-if="activeMenu === 'service-development'" type="primary" :icon="Plus" @click="navigate('resource')">从资源 API 创建服务</el-button><el-button v-if="activeMenu === 'authorization'" :icon="Files" @click="openBatchAuthorization">批量授权</el-button><el-button v-if="activeMenu === 'authorization'" type="primary" :icon="Plus" @click="openAuthDialog">新增授权</el-button><el-button v-if="activeMenu === 'billing'" type="primary" :icon="Plus" @click="openBillingDialog()">配置计费</el-button></div></section>
+        <section class="page-heading" :class="{'compact-page-heading': activeMenu === 'releases' || activeMenu === 'authorization'}"><div><h1>{{ pageMeta[0] }}</h1><p>{{ pageMeta[1] }}</p></div><div class="heading-actions"><el-button :icon="Refresh" @click="refreshCurrentWorkspace">刷新</el-button><el-button v-if="activeMenu === 'resource'" type="primary" :icon="Plus" @click="openSourceWizard">接入数据源</el-button><el-button v-if="activeMenu === 'service-development'" type="primary" :icon="Plus" @click="navigate('resource')">从资源 API 创建服务</el-button><el-button v-if="activeMenu === 'authorization'" :icon="Files" @click="openBatchAuthorization">批量授权</el-button><el-button v-if="activeMenu === 'authorization'" type="primary" :icon="Plus" @click="openAuthDialog">新增授权</el-button><el-button v-if="activeMenu === 'billing'" type="primary" :icon="Plus" @click="openBillingDialog()">配置计费</el-button></div></section>
+
+        <WorkspaceJourney v-if="['resource','service-development','releases','authorization'].includes(activeMenu)" :current="activeMenu" :busy="guideBusy || testRunning || connectionSaving" @navigate="navigate"/>
 
         <template v-if="activeMenu === 'overview'">
           <section class="cockpit-command">
-            <div class="cockpit-runtime"><span class="live-beacon"><i></i>PLATFORM LIVE</span><div><strong>平台核心服务在线</strong><p>Gateway、配置中心及 {{ overviewHealthySources }} 个数据源应用正常运行</p></div></div>
+            <div class="cockpit-runtime"><span class="live-beacon">运营概况</span><div><strong>服务与调用概览</strong><p>{{ dashboard.dataSourceCount }} 个数据源 · {{ dashboard.publishedCount }} 个已发布 API · {{ clients.length }} 个调用系统</p></div></div>
             <div class="cockpit-context"><span>运行环境<b>TEST</b></span><span>数据源实例<b>{{ overviewTotalInstances }}</b></span><span>当前告警<b :class="{ danger: monitorSummary.activeAlerts > 0 }">{{ monitorSummary.activeAlerts }}</b></span></div>
             <div class="cockpit-actions"><button @click="navigate('logs')"><Search/><span><strong>链路追踪</strong><small>检索 Trace ID</small></span><ArrowRight/></button><button @click="navigate('monitor')"><Monitor/><span><strong>运行监控</strong><small>查看节点耗时</small></span><ArrowRight/></button></div>
           </section>
@@ -2156,7 +2230,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
 
           <section class="cockpit-analytics">
             <div class="cockpit-panel trend-panel">
-              <header><div><span>TRAFFIC OBSERVATORY</span><strong>平台调用趋势</strong></div><div class="chart-legend"><i class="success"></i>成功<i class="error"></i>异常</div></header>
+              <header><div><span aria-hidden="true" class="decorative-eyebrow"></span><strong>平台调用趋势</strong></div><div class="chart-legend"><i class="success"></i>成功<i class="error"></i>异常</div></header>
               <div class="traffic-chart" :class="{ inspecting: activeTrendIndex !== null }">
                 <div class="chart-grid"><i></i><i></i><i></i><i></i></div>
                 <button v-for="(point,index) in monitorPoints" :key="point.timeLabel" type="button" class="traffic-column" :class="{ active: activeTrendIndex === index }" :aria-label="`${point.timeLabel}，调用 ${point.calls} 次，异常 ${point.errorCalls} 次`" @mouseenter="activeTrendIndex=index" @mouseleave="activeTrendIndex=null" @focus="activeTrendIndex=index" @blur="activeTrendIndex=null">
@@ -2169,7 +2243,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
               <footer><span>峰值调用<b>{{ overviewMaxCalls }}</b></span><span>平均响应<b>{{ monitorSummary.avgDurationMs }} ms</b></span><span>上游平均耗时<b>{{ monitorSummary.avgUpstreamDurationMs }} ms</b></span></footer>
             </div>
             <div class="cockpit-panel result-panel">
-              <header><div><span>RESULT DISTRIBUTION</span><strong>调用结果分布</strong></div><b>{{ billingSummary.totalCalls }} 次</b></header>
+              <header><div><span aria-hidden="true" class="decorative-eyebrow"></span><strong>调用结果分布</strong></div><b>{{ billingSummary.totalCalls }} 次</b></header>
               <div class="result-visual"><div class="result-donut" :class="{ inspecting: activeResultItem }"><svg viewBox="0 0 100 100" role="img" aria-label="调用结果分布环形图"><circle class="donut-track" cx="50" cy="50" r="40" pathLength="100"/><circle v-for="item in overviewResultSegments" :key="item.key" class="donut-segment" :class="{ active: activeResultKey === item.key, muted: activeResultKey && activeResultKey !== item.key }" cx="50" cy="50" r="40" pathLength="100" fill="none" :stroke="item.color" :stroke-dasharray="`${item.percentage} ${100-item.percentage}`" :stroke-dashoffset="-item.offset" tabindex="0" :aria-label="`${item.label} ${item.value} 次，占比 ${item.percentage}%`" @mouseenter="activeResultKey=item.key" @mouseleave="activeResultKey=null" @focus="activeResultKey=item.key" @blur="activeResultKey=null"/></svg><span><strong>{{ activeResultItem ? activeResultItem.value : `${overviewSuccessRate.toFixed(1)}%` }}</strong><small>{{ activeResultItem ? activeResultItem.label : '成功率' }}</small><em v-if="activeResultItem">{{ activeResultItem.percentage }}%</em></span></div><div class="result-list"><div v-for="item in overviewResultMix" :key="item.key" :class="{ active: activeResultKey === item.key, muted: activeResultKey && activeResultKey !== item.key }" tabindex="0" @mouseenter="activeResultKey=item.key" @mouseleave="activeResultKey=null" @focus="activeResultKey=item.key" @blur="activeResultKey=null"><i :style="{background:item.color}"></i><span>{{ item.label }}</span><strong>{{ item.value }}</strong><small>{{ item.percentage }}%</small></div></div></div>
               <button class="panel-link" @click="navigate('logs')">查看全部链路记录<ArrowRight/></button>
             </div>
@@ -2178,9 +2252,9 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
           <section class="cockpit-alerts" :class="{ clear: monitorSummary.activeAlerts === 0 }"><span><Warning v-if="monitorSummary.activeAlerts"/><CircleCheck v-else/></span><div><strong>{{ monitorSummary.activeAlerts ? `${monitorSummary.activeAlerts} 项运行告警待处理` : '当前无活动告警' }}</strong><small>{{ monitorSummary.activeAlerts ? monitorAlerts[0]?.detail || '请进入运行监控查看告警详情' : 'Gateway、数据源应用和上游服务链路均处于正常状态' }}</small></div><button @click="navigate('monitor')">告警中心<ArrowRight/></button></section>
 
           <section class="cockpit-operations">
-            <div class="cockpit-panel source-health-panel"><header><div><span>RESOURCE HEALTH</span><strong>数据源资源健康</strong></div><b>{{ overviewHealthySources }}/{{ sources.length }} 正常</b></header><div class="source-health-list"><div v-for="source in sources.slice(0,5)" :key="source.id"><span :class="source.status.toLowerCase()"><i></i></span><div><strong>{{ source.sourceName }}</strong><small>{{ source.applicationName }}</small></div><b>{{ source.instanceCount }}/{{ source.instanceCount }}</b><em>V{{ source.configVersion }}</em></div></div><button class="panel-link" @click="navigate('resource')">管理数据源与 API<ArrowRight/></button></div>
-            <div class="cockpit-panel ranking-panel"><header><div><span>API RANKING</span><strong>API 调用排行</strong></div><span>最近 {{ usageRecords.length }} 笔</span></header><div class="ranking-list"><div v-for="(item,index) in overviewTopInterfaces" :key="item.code"><b>{{ String(index + 1).padStart(2, '0') }}</b><div><strong>{{ item.name }}</strong><small>{{ item.code }}</small></div><span>{{ item.calls }} 次</span><em>{{ item.avgDuration }} ms</em><i :class="{warning:item.successRate<99}">{{ item.successRate }}%</i></div><div v-if="!overviewTopInterfaces.length" class="panel-empty">暂无 API 调用数据</div></div></div>
-            <div class="cockpit-panel failure-panel"><header><div><span>EXCEPTION WATCH</span><strong>近期异常调用</strong></div><button @click="navigate('logs')">全部</button></header><div class="failure-list"><button v-for="item in overviewRecentFailures" :key="item.id" @click="navigate('logs')"><span>ERROR</span><div><strong>{{ item.interfaceName }}</strong><small>{{ item.nodeName || item.standardCode }}</small></div><time>{{ formatDateTime(item.calledAt) }}</time><ArrowRight/></button><div v-if="!overviewRecentFailures.length" class="panel-empty success"><CircleCheck/><span>暂无异常调用</span></div></div></div>
+            <div class="cockpit-panel source-health-panel"><header><div><span aria-hidden="true" class="decorative-eyebrow"></span><strong>数据源登记状态</strong></div><b>{{ sources.length }} 个数据源</b></header><div class="source-health-list"><div v-for="source in sources.slice(0,5)" :key="source.id"><span :class="source.status.toLowerCase()"><i></i></span><div><strong>{{ source.sourceName }}</strong><small>{{ source.applicationName }}</small></div><b>{{ source.runtimeUrl ? '已配路由' : '待配路由' }}</b><em>V{{ source.configVersion }}</em></div></div><button class="panel-link" @click="navigate('resource')">管理数据源与 API<ArrowRight/></button></div>
+            <div class="cockpit-panel ranking-panel"><header><div><span aria-hidden="true" class="decorative-eyebrow"></span><strong>API 调用排行</strong></div><span>最近 {{ usageRecords.length }} 笔</span></header><div class="ranking-list"><div v-for="(item,index) in overviewTopInterfaces" :key="item.code"><b>{{ String(index + 1).padStart(2, '0') }}</b><div><strong>{{ item.name }}</strong><small>{{ item.code }}</small></div><span>{{ item.calls }} 次</span><em>{{ item.avgDuration }} ms</em><i :class="{warning:item.successRate<99}">{{ item.successRate }}%</i></div><div v-if="!overviewTopInterfaces.length" class="panel-empty">暂无 API 调用数据</div></div></div>
+            <div class="cockpit-panel failure-panel"><header><div><span aria-hidden="true" class="decorative-eyebrow"></span><strong>近期异常调用</strong></div><button @click="navigate('logs')">全部</button></header><div class="failure-list"><button v-for="item in overviewRecentFailures" :key="item.id" @click="navigate('logs')"><span>ERROR</span><div><strong>{{ item.interfaceName }}</strong><small>{{ item.nodeName || item.standardCode }}</small></div><time>{{ formatDateTime(item.calledAt) }}</time><ArrowRight/></button><div v-if="!overviewRecentFailures.length" class="panel-empty success"><CircleCheck/><span>暂无异常调用</span></div></div></div>
           </section>
 
           <section class="cockpit-shortcuts"><span>快速治理</span><button @click="openSourceWizard"><Connection/>接入数据源</button><button @click="navigate('resource')"><Files/>服务开发</button><button @click="navigate('releases')"><Promotion/>服务上线</button><button @click="navigate('authorization')"><Key/>访问控制</button><button @click="navigate('billing')"><Wallet/>计量规则</button></section>
@@ -2217,7 +2291,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
             </aside>
             <div v-if="releaseDetail" class="release-console-main" :class="{'is-refreshing':releaseLoading}" aria-live="polite">
               <section class="release-command plain-panel">
-                <div class="release-command-title"><span class="release-command-icon"><Promotion/></span><div><small>RELEASE CONTROL</small><h2>{{ releaseDetail.summary.interfaceName }}</h2><p><code>{{ releaseDetail.summary.interfaceCode }}</code><i></i>{{ releaseDetail.summary.servicePath }}</p></div></div>
+                <div class="release-command-title"><span class="release-command-icon"><Promotion/></span><div><small aria-hidden="true" class="decorative-eyebrow"></small><h2>{{ releaseDetail.summary.interfaceName }}</h2><p><code>{{ releaseDetail.summary.interfaceCode }}</code><i></i>{{ releaseDetail.summary.servicePath }}</p></div></div>
                 <div class="release-state"><span>当前草稿<strong>V{{ releaseDetail.summary.currentVersion }}</strong></span><b></b><span>线上生效<strong>{{ releaseDetail.summary.publishedVersion == null ? '-' : 'V'+releaseDetail.summary.publishedVersion }}</strong></span><el-tag effect="plain" :type="releaseDetail.summary.status==='OFFLINE'?'danger':releaseDetail.summary.status==='PENDING_APPROVAL'?'warning':releaseDetail.summary.publishedVersion!=null?'success':'info'">{{ releaseDetail.summary.status==='OFFLINE'?'已下线':releaseDetail.summary.status==='PENDING_APPROVAL'?'审批中':releaseDetail.summary.publishedVersion!=null?'运行中':'未上线' }}</el-tag></div>
                 <div class="release-command-actions">
                   <el-button v-if="releaseDetail.summary.status!=='PENDING_APPROVAL' && releaseDetail.summary.currentVersion!==releaseDetail.summary.publishedVersion" type="primary" :icon="Promotion" @click="submitReleaseFromManagement">{{ releaseDetail.summary.status==='OFFLINE' ? `上线草稿 V${releaseDetail.summary.currentVersion}` : '直接上线' }}</el-button>
@@ -2228,10 +2302,11 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                   <el-button v-if="releaseDetail.summary.status==='OFFLINE' || releaseDetail.summary.publishedVersion==null" type="danger" plain :icon="Delete" @click="archiveRelease">归档删除</el-button>
                 </div>
               </section>
+              <div v-if="!sources.find(source=>source.id===releaseDetail?.summary.dataSourceId)?.runtimeUrl" class="release-routing-warning" role="status"><div><strong>上线前需配置处理应用路由</strong><span>当前数据源尚未登记运行地址。补充后即可继续发布。</span></div><el-button @click="editReleaseRuntime">配置运行路由</el-button></div>
               <section class="release-lifecycle plain-panel"><div class="done"><span><CircleCheck/></span><strong>配置完成</strong><small>草稿已持久化</small></div><i></i><div :class="{done:releaseDetail.summary.publishedVersion!=null && releaseDetail.summary.status!=='OFFLINE'}"><span><Promotion/></span><strong>服务上线</strong><small>{{ releaseDetail.summary.publishedVersion==null?'等待上线':'生效 V'+releaseDetail.summary.publishedVersion }}</small></div><i></i><div :class="{done:releaseHasAuthorization}"><span><Key/></span><strong>访问授权</strong><small>{{ releaseHasAuthorization?'已有有效授权':'上线后配置' }}</small></div><i></i><div :class="{done:releaseDetail.summary.status==='OFFLINE'}"><span><Delete/></span><strong>下线归档</strong><small>{{ releaseDetail.summary.status==='OFFLINE'?'已停止服务':'按需执行' }}</small></div></section>
               <section v-if="releaseDetail.summary.currentVersion!==releaseDetail.summary.publishedVersion && releaseDetail.summary.status!=='PENDING_APPROVAL'" class="release-submit-panel plain-panel"><div><strong>待上线版本 V{{ releaseDetail.summary.currentVersion }}</strong><span>{{ releaseDetail.summary.status==='OFFLINE' ? `线上流量已停止；可上线草稿 V${releaseDetail.summary.currentVersion}，或恢复原线上 V${releaseDetail.summary.publishedVersion}。` : '保存线上版本的新配置时生成下一草稿版本；同一草稿反复保存不递增，上线也不额外加版本。' }}</span></div><el-input v-model="releaseNoteManagement" type="textarea" :rows="2" placeholder="填写本次变更内容"/></section>
               <section id="interface-version-history" class="version-history-panel plain-panel">
-                <header><div><span>VERSION ARCHIVE</span><h3>接口版本历史</h3><p>集中保存草稿、发布记录和执行计划快照。</p></div><el-tag type="info">{{ releaseVersions.length }} 个版本</el-tag></header>
+                <header><div><span aria-hidden="true" class="decorative-eyebrow"></span><h3>接口版本历史</h3><p>集中保存草稿、发布记录和执行计划快照。</p></div><el-tag type="info">{{ releaseVersions.length }} 个版本</el-tag></header>
                 <el-alert v-if="releaseVersions.some(item => !item.historyComplete)" title="检测到旧版本记录不完整" type="warning" :closable="false" description="接口主表保留了已发布版本号，但旧审批单、发布记录或执行计划快照缺失；版本仍保留并阻止未经下线的删除。"/>
                 <el-table :data="releaseVersions" border scrollbar-always-on :row-class-name="versionRowClass">
                   <el-table-column label="版本" width="92"><template #default="{row}"><strong>V{{ row.version }}</strong></template></el-table-column>
@@ -2252,7 +2327,6 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
           <section class="plain-panel table-panel"><div class="panel-heading"><div><strong>接口发布审批</strong><span>只有审批通过才会写入发布记录并激活 PublishedPlan</span></div><el-button :icon="Refresh" @click="refreshApprovals">刷新</el-button></div><el-table :data="approvals" border><el-table-column prop="interfaceName" label="接口" min-width="220"/><el-table-column prop="interfaceCode" label="接口编码" width="180"/><el-table-column label="申请版本" width="100"><template #default="{row}">V{{ row.releaseVersion }}</template></el-table-column><el-table-column prop="applicant" label="申请人" width="120"/><el-table-column prop="approvalNode" label="当前节点" width="120"/><el-table-column prop="submittedAt" label="提交时间" width="180"/><el-table-column label="状态" width="110"><template #default="{row}"><el-tag :type="row.status==='APPROVED'?'success':row.status==='REJECTED'?'danger':'warning'">{{ row.status==='PENDING'?'待审批':row.status==='APPROVED'?'已通过':'已驳回' }}</el-tag></template></el-table-column><el-table-column label="操作" width="100"><template #default="{row}"><el-button v-if="row.status==='PENDING'" text type="primary" @click="openApproval(row)">处理</el-button></template></el-table-column></el-table></section>
         </template>
         <template v-else-if="activeMenu === 'resource' || activeMenu === 'service-development'">
-          <section class="resource-summary"><div><span>资源方</span><strong>{{ dashboard.providerCount }}</strong></div><div><span>数据源应用</span><strong>{{ dashboard.dataSourceCount }}</strong></div><div><span>标准服务</span><strong>{{ dashboard.interfaceCount }}</strong></div><div><span>线上服务</span><strong class="success-text">{{ dashboard.publishedCount }}</strong></div><div><span>草稿</span><strong class="warning-text">{{ dashboard.draftCount }}</strong></div></section>
           <section class="workbench resource-workbench" :class="{ 'source-switching': sourceSwitching, 'catalog-collapsed':resourceCatalogCollapsed }">
             <aside class="resource-tree-panel" :class="{collapsed:resourceCatalogCollapsed}">
               <button v-if="resourceCatalogCollapsed" class="api-catalog-rail" type="button" title="展开 API 资源目录" aria-label="展开 API 资源目录" @click="resourceCatalogCollapsed=false"><Expand/><span>API</span></button>
@@ -2277,15 +2351,15 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                 </div>
                 <div v-if="!filteredSources.length" class="resource-tree-empty"><Files/><strong>未找到匹配资源</strong><span>尝试名称、编码或服务路径</span><el-button text @click="sourceSearch=''">清空搜索</el-button></div>
               </div>
-              <div class="resource-tree-footer">目录随页面完整展开，不再截断；可收起暂不使用的数据源。</div>
+              <div class="resource-tree-footer">{{ workspaceInterfaceRows.length }} 个{{ activeMenu==='resource' ? '资源 API' : '标准服务' }} · 按数据源分组</div>
               </template>
             </aside>
             <div class="editor-panel" v-if="detail && selectedSource" :class="{ 'is-loading': detailLoading || sourceSwitching }" aria-live="polite">
               <header class="context-bar api-context-header">
                 <div class="context-main">
                   <div class="api-breadcrumb">{{ selectedSource.providerName }}<span>/</span>{{ selectedSource.sourceName }}<span>/</span>{{ serviceDevelopmentStage === 'UPSTREAM' ? '上游能力' : '标准服务' }}</div>
-                  <div class="context-title"><span class="method">{{ detail.summary.httpMethod }}</span><h2>{{ detail.summary.interfaceName }}</h2><el-tag :type="detail.summary.status === 'OFFLINE' ? 'danger' : detail.summary.status === 'PUBLISHED' ? 'success' : detail.summary.status === 'PENDING_APPROVAL' ? 'warning' : 'info'" size="small">{{ detail.summary.status === 'OFFLINE' ? '已下线' : detail.summary.status === 'PUBLISHED' ? '已发布' : detail.summary.status === 'PENDING_APPROVAL' ? '审批中' : '草稿' }}</el-tag></div>
-                  <div class="api-context-meta"><code>{{ detail.summary.interfaceCode }}</code><span>草稿 V{{ detail.summary.currentVersion }}</span><span v-if="detail.summary.publishedVersion == null">尚未发布</span><button v-else class="version-history-link" type="button" @click="openVersionHistory(detail.summary.publishedVersion)">已发布 V{{ detail.summary.publishedVersion }}</button></div>
+                  <div class="context-title"><span class="method">{{ detail.summary.httpMethod }}</span><h2>{{ detail.summary.interfaceName }}</h2><el-tag v-if="activeMenu==='resource'" :type="detail.summary.upstreamStatus==='READY'?'success':'info'" size="small">{{ detail.summary.upstreamStatus==='READY'?'已接入':'接入草稿' }}</el-tag><el-tag v-else :type="detail.summary.status === 'OFFLINE' ? 'danger' : detail.summary.status === 'PUBLISHED' ? 'success' : 'info'" size="small">{{ detail.summary.status === 'OFFLINE' ? '线上已下线' : detail.summary.status === 'PUBLISHED' ? '已发布' : '开发中' }}</el-tag></div>
+                  <div class="api-context-meta"><code>{{ detail.summary.interfaceCode }}</code><template v-if="activeMenu!=='resource'"><span>草稿 V{{ detail.summary.currentVersion }}</span><span v-if="detail.summary.publishedVersion == null">尚未发布</span><button v-else class="version-history-link" type="button" @click="openVersionHistory(detail.summary.publishedVersion)">已发布 V{{ detail.summary.publishedVersion }}</button></template><span v-else>供应商原始接口</span></div>
                 </div>
                 <div class="api-context-actions">
                   <el-button v-if="activeMenu==='resource'" :icon="Connection" @click="openSourceRuntimeEditor">运行路由</el-button>
@@ -2294,12 +2368,15 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                   <el-tooltip v-if="activeMenu!=='resource'" :disabled="canDeleteApi" :content="deleteApiRestriction" placement="bottom"><span><el-button :icon="Delete" type="danger" plain :disabled="!canDeleteApi || detailLoading || sourceSwitching" :loading="deletingApi" @click="deleteCurrentInterface">删除服务</el-button></span></el-tooltip>
                 </div>
               </header>
-              <nav v-if="serviceDevelopmentStage==='ORCHESTRATION'" class="resource-workflow" aria-label="标准服务编排步骤"><button v-for="step in orchestrationGuideSteps" :key="step.key" :class="{active:activeTab===step.key,done:step.done && !(activeTab===step.key && hasUnsavedChanges)}" :aria-current="activeTab===step.key ? 'step' : undefined" :disabled="guideBusy || testRunning || connectionSaving" @click="openGuideStep(step.key)"><span>{{ step.done && !(activeTab===step.key && hasUnsavedChanges) ? '✓' : step.index }}</span><div><strong>{{ step.title }}</strong><small>{{ step.hint }}</small></div></button></nav>
+              <nav v-if="serviceDevelopmentStage==='UPSTREAM'" class="upstream-steps" aria-label="资源接入步骤">
+                <button v-for="(step,index) in upstreamSections" :key="step.title" type="button" :class="{active:upstreamSection===index}" :aria-current="upstreamSection===index?'step':undefined" @click="upstreamSection=index"><span>{{ index+1 }}</span><div><strong>{{ step.title }}</strong><small>{{ step.hint }}</small></div></button>
+              </nav>
+              <nav v-if="serviceDevelopmentStage==='ORCHESTRATION'" class="resource-workflow" aria-label="标准服务编排步骤"><button v-for="step in orchestrationGuideSteps" :key="step.key" :class="{active:activeTab===step.key,done:step.done && !['security','test'].includes(step.key) && !(activeTab===step.key && hasUnsavedChanges)}" :aria-current="activeTab===step.key ? 'step' : undefined" :disabled="guideBusy || testRunning || connectionSaving" @click="openGuideStep(step.key)"><span>{{ step.index }}</span><div><strong>{{ step.title }}</strong><small>{{ step.hint }}</small></div></button></nav>
               <div v-if="guideError" class="api-guide-error compact" role="alert">{{ guideError }}</div>
               <el-tabs v-model="activeTab" class="editor-tabs">
                 <el-tab-pane v-if="serviceDevelopmentStage==='UPSTREAM'" name="overview" label="上游能力配置">
                   <div class="api-connection-workspace">
-                    <div class="api-config-columns">
+                    <div v-show="upstreamSection===0" class="api-config-columns">
                     <section class="api-config-card">
                         <header><span class="api-card-icon"><Connection/></span><div><h3>上游连接</h3><p>配置资源提供商的接口地址</p></div></header>
                         <div class="api-card-body">
@@ -2311,7 +2388,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                         </div>
                       </section>
                     </div>
-                    <section class="api-timeout-disclosure" :class="{overridden:connectionForm.timeoutMode==='OVERRIDE'}">
+                    <section v-show="upstreamSection===0" class="api-timeout-disclosure" :class="{overridden:connectionForm.timeoutMode==='OVERRIDE'}">
                       <button class="api-timeout-toggle" :aria-expanded="timeoutExpanded" aria-controls="api-timeout-options" @click="timeoutExpanded=!timeoutExpanded">
                         <Setting/><span><strong>请求超时 <em>可选配置</em></strong><small>{{ connectionForm.timeoutMode==='INHERIT' ? '继承数据源默认配置' : '已设置单接口覆盖，不影响其他接口' }} · {{ previewTimeoutMs }} ms</small></span><b>{{ timeoutExpanded ? '收起设置' : '按需调整' }}</b><ArrowRight :class="{expanded:timeoutExpanded}"/>
                       </button>
@@ -2322,23 +2399,30 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                           <el-form label-position="top"><el-form-item label="超时时间"><div class="api-timeout-input"><el-input-number :model-value="previewTimeoutMs" @update:model-value="(value: number | undefined) => { if (value != null) connectionForm.timeoutMs = value }" :disabled="connectionForm.timeoutMode==='INHERIT'" :min="100" :max="120000" :step="500" controls-position="right"/><span>毫秒（ms）</span></div></el-form-item></el-form>
                         </div>
                     </section>
-                    <section class="api-preview-panel">
+                    <section v-show="upstreamSection===0" class="api-preview-panel">
                       <header><div><h3>当前配置预览</h3><p>保存后进入标准服务开发；链路测试为可选辅助功能。</p></div><el-tag :type="hasUnsavedChanges ? 'warning' : detail.summary.upstreamStatus==='READY' ? 'success' : 'info'" effect="plain">{{ hasUnsavedChanges ? '有未保存修改' : detail.summary.upstreamStatus==='READY' ? '上游能力已保存' : '尚未保存' }}</el-tag></header>
                       <dl><div><dt>完整上游地址</dt><dd><code>{{ previewUpstreamUrl || '请填写上游地址' }}</code><el-button v-if="previewUpstreamUrl" text :icon="DocumentCopy" aria-label="复制上游地址" @click="copyApiValue(previewUpstreamUrl)">复制</el-button></dd></div><div><dt>请求超时</dt><dd><strong>{{ previewTimeoutMs }} ms</strong><span>{{ connectionForm.timeoutMode==='INHERIT' ? '继承数据源' : '单接口覆盖' }}</span></dd></div></dl>
                     </section>
-                    <section class="upstream-contract-panel">
+                    <section v-show="upstreamSection===1" class="upstream-contract-panel">
                       <header><div><span class="api-card-icon"><DocumentCopy/></span><div><h3>上游接口契约</h3><p>维护资源方接口的真实请求与响应样例，作为上游联调基线。</p></div></div><el-tag size="small" type="info">JSON</el-tag></header>
                       <div class="upstream-contract-grid">
                         <label><span>上游请求样例</span><el-input v-model="upstreamRequestText" type="textarea" :autosize="{ minRows: 6, maxRows: 12 }" placeholder="填写资源方接口实际请求报文" /></label>
                         <label><span>上游响应样例</span><el-input v-model="responseText" type="textarea" :autosize="{ minRows: 6, maxRows: 12 }" placeholder="填写资源方接口实际响应报文" /></label>
                       </div>
                     </section>
-                    <section class="upstream-validation-panel" :class="{'has-error':!!testError && !currentUpstreamVerified}">
+                    <section v-show="upstreamSection===2" class="upstream-validation-panel" :class="{'has-error':!!testError && !currentUpstreamVerified}">
                       <div class="upstream-validation-copy"><div class="upstream-validation-icon"><Connection/></div><div><h3>上游能力验证</h3><p>仅验证当前资源提供方接口的连接、认证和原始响应，不执行平台标准化。</p></div></div>
                       <el-button class="upstream-validation-action" type="primary" :icon="Promotion" :loading="testRunning" :disabled="testRunning || connectionSaving" @click="validateUpstreamCapability">验证上游接口</el-button>
                       <div class="upstream-validation-result success" v-if="currentUpstreamVerified"><span class="status-dot"></span><strong>当前连接验证通过</strong><small>已收到上游原始响应</small></div>
                       <div class="upstream-validation-result error" v-else-if="testError" role="alert"><span class="status-dot offline"></span><div><strong>验证失败</strong><small>{{ testError }}</small></div></div>
                     </section>
+                    <div v-if="upstreamSection===2" class="upstream-handoff">
+                      <h3>保存后，继续开发平台标准服务</h3>
+                      <p>当前请求与响应将作为标准服务的初始契约。字段一致时可直接透传，也可配置转换规则。</p>
+                      <div><span>上游接口</span><code>{{ previewUpstreamUrl }}</code></div>
+                      <div><span>接入状态</span><strong>{{ upstreamSaveRequired ? '有待保存的配置' : '已保存，可创建标准服务' }}</strong></div>
+                      <p v-if="!selectedSource.runtimeUrl" class="route-notice">处理应用运行地址尚未配置，服务上线前需补充。<el-button text type="primary" @click="openSourceRuntimeEditor">配置运行路由</el-button></p>
+                    </div>
                   </div>
                 </el-tab-pane>
                 <el-tab-pane v-if="serviceDevelopmentStage==='ORCHESTRATION'" name="request" label="请求转换">
@@ -2377,7 +2461,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                   <div class="security-config-panel">
                     <div class="section-toolbar"><div><strong>接口级安全策略</strong><span>按接口配置加密、签名和密钥引用</span></div></div>
                     <div class="security-status" :class="{enabled: securityPolicy.enabled}"><Lock/><div><strong>{{ securityPolicy.enabled ? '已启用安全处理' : '未启用安全处理' }}</strong><span>{{ securityPolicy.enabled ? '新请求会按当前草稿策略执行加密和签名' : '适用于纯透传接口；后续可随时配置并发布' }}</span></div></div>
-                    <el-form label-position="top" class="security-form"><div class="form-grid"><el-form-item label="启用安全策略"><el-switch v-model="securityPolicy.enabled" active-text="启用" inactive-text="关闭"/></el-form-item><el-form-item label="请求字段"><el-input v-model="securityPolicy.requestFields" placeholder="例如：credit_code,customer_id；支持点号路径"/></el-form-item><el-form-item label="加密方式"><el-select v-model="securityPolicy.encryptMode" filterable><el-option label="不加密" value="NONE"/><el-option v-for="item in securityAlgorithms.filter(value=>value.kind==='ENCRYPT')" :key="item.code" :label="`${item.name} · ${item.category}`" :value="item.code"/></el-select></el-form-item><el-form-item label="加密密钥引用"><el-input v-model="securityPolicy.encryptionKeyReference" placeholder="config://edsp.security.keys.vendor-encryption"/><small>仅保存引用；不得填写明文密钥。</small></el-form-item><el-form-item label="签名方式"><el-select v-model="securityPolicy.signatureMode" filterable><el-option label="不签名" value="NONE"/><el-option v-for="item in securityAlgorithms.filter(value=>value.kind==='SIGN')" :key="item.code" :label="`${item.name} · ${item.category}`" :value="item.code"/></el-select></el-form-item><el-form-item label="签名密钥引用"><el-input v-model="securityPolicy.signingKeyReference" placeholder="config://edsp.security.keys.vendor-signing"/></el-form-item><el-form-item label="签名输出字段"><el-input v-model="securityPolicy.signatureField" placeholder="signature"/></el-form-item><el-form-item label="策略说明"><el-input v-model="securityPolicy.description" placeholder="记录策略用途和供应商要求"/></el-form-item></div></el-form>
+                    <el-form label-position="top" class="security-form" :class="{'policy-disabled':!securityPolicy.enabled}"><div class="form-grid"><el-form-item label="启用安全策略"><el-switch v-model="securityPolicy.enabled" active-text="启用" inactive-text="关闭"/></el-form-item><el-form-item label="请求字段"><el-input v-model="securityPolicy.requestFields" placeholder="例如：credit_code,customer_id；支持点号路径"/></el-form-item><el-form-item label="加密方式"><el-select v-model="securityPolicy.encryptMode" filterable><el-option label="不加密" value="NONE"/><el-option v-for="item in securityAlgorithms.filter(value=>value.kind==='ENCRYPT')" :key="item.code" :label="`${item.name} · ${item.category}`" :value="item.code"/></el-select></el-form-item><el-form-item label="加密密钥引用"><el-input v-model="securityPolicy.encryptionKeyReference" placeholder="config://edsp.security.keys.vendor-encryption"/><small>仅保存引用；不得填写明文密钥。</small></el-form-item><el-form-item label="签名方式"><el-select v-model="securityPolicy.signatureMode" filterable><el-option label="不签名" value="NONE"/><el-option v-for="item in securityAlgorithms.filter(value=>value.kind==='SIGN')" :key="item.code" :label="`${item.name} · ${item.category}`" :value="item.code"/></el-select></el-form-item><el-form-item label="签名密钥引用"><el-input v-model="securityPolicy.signingKeyReference" placeholder="config://edsp.security.keys.vendor-signing"/></el-form-item><el-form-item label="签名输出字段"><el-input v-model="securityPolicy.signatureField" placeholder="signature"/></el-form-item><el-form-item label="策略说明"><el-input v-model="securityPolicy.description" placeholder="记录策略用途和供应商要求"/></el-form-item></div></el-form>
                     <div class="security-execution-note"><span>运行方式</span><strong>标准请求 → 字段映射 → 加密 → 签名 → 上游调用</strong><small>密钥只保存引用，联调链路会展示安全节点的输入输出摘要。</small></div>
                   </div>
                 </el-tab-pane>
@@ -2436,7 +2520,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                     </div>
                   </div>
                   <section id="interface-version-history" class="version-history-panel">
-                    <header><div><span>VERSION ARCHIVE</span><h3>接口版本历史</h3><p>发布管理保存接口的草稿、审批和线上版本；审批中心仅负责处理审批待办。</p></div><el-tag type="info">{{ interfaceVersions.length }} 个版本</el-tag></header>
+                    <header><div><span aria-hidden="true" class="decorative-eyebrow"></span><h3>接口版本历史</h3><p>发布管理保存接口的草稿、审批和线上版本；审批中心仅负责处理审批待办。</p></div><el-tag type="info">{{ interfaceVersions.length }} 个版本</el-tag></header>
                     <el-alert v-if="interfaceVersions.some(item => !item.historyComplete)" title="检测到旧版本记录不完整" type="warning" :closable="false" description="接口表保留了已发布版本号，但旧审批单、发布记录或执行计划快照缺失。版本仍展示并阻止物理删除，建议后续补录历史档案。"/>
                     <el-table :data="interfaceVersions" border :row-class-name="versionRowClass">
                       <el-table-column label="版本" width="92"><template #default="{row}"><strong>V{{ row.version }}</strong></template></el-table-column>
@@ -2454,14 +2538,15 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                 <div><span class="resource-action-dot" :class="resourceEditorState.key"></span><div class="api-save-state"><strong>{{ resourceEditorState.label }}</strong><small>{{ resourceEditorState.hint }}</small></div></div>
                 <div class="api-footer-actions">
                   <template v-if="serviceDevelopmentStage==='UPSTREAM'">
-                    <el-button :type="upstreamSaveRequired ? 'primary' : 'success'" plain :loading="connectionSaving" :disabled="testRunning || detailLoading" @click="saveConnectionConfig">{{ upstreamSaveRequired ? '保存上游配置' : '配置已保存' }}</el-button>
-                    <el-button type="primary" :icon="Promotion" :loading="testRunning" :disabled="connectionSaving || detailLoading" @click="validateUpstreamCapability">验证上游接口</el-button>
-                    <el-button :disabled="testRunning || connectionSaving || detail.summary.upstreamStatus!=='READY'" @click="openPlatformServiceDialog">基于此资源创建标准服务<el-icon class="el-icon--right"><ArrowRight/></el-icon></el-button>
+                    <el-button v-if="upstreamSection>0" @click="upstreamSection--">上一步</el-button>
+                    <el-button :loading="connectionSaving" :disabled="testRunning || detailLoading" @click="saveConnectionConfig">保存上游配置</el-button>
+                    <el-button v-if="upstreamSection<2" type="primary" @click="upstreamSection++">下一步：{{ upstreamSections[upstreamSection+1].title }}<el-icon class="el-icon--right"><ArrowRight/></el-icon></el-button>
+                    <el-tooltip v-else :disabled="!upstreamSaveRequired" content="请先保存当前上游配置" placement="top"><span><el-button type="primary" :disabled="testRunning || connectionSaving || upstreamSaveRequired" @click="openPlatformServiceDialog">创建标准服务<el-icon class="el-icon--right"><ArrowRight/></el-icon></el-button></span></el-tooltip>
                   </template>
                   <template v-else>
                     <el-button v-if="orchestrationStepIndex>0" :disabled="guideBusy || testRunning || connectionSaving" @click="openGuideStep(orchestrationGuideSteps[orchestrationStepIndex-1].key)">上一步</el-button>
                     <el-button :type="activeTab==='test' ? 'primary' : 'default'" :loading="guideBusy || testRunning || connectionSaving" :disabled="resourcePrimaryActionDisabled || deletingApi || detailLoading" @click="runCurrentPrimaryAction">{{ resourcePrimaryActionLabel }}</el-button>
-                    <el-button v-if="orchestrationGuideSteps[orchestrationStepIndex+1]" type="primary" :disabled="guideBusy || testRunning || connectionSaving || detailLoading" @click="openGuideStep(orchestrationGuideSteps[orchestrationStepIndex+1].key)">下一步：{{ orchestrationGuideSteps[orchestrationStepIndex+1].title }}<el-icon class="el-icon--right"><ArrowRight/></el-icon></el-button>
+                    <el-button v-if="orchestrationGuideSteps[orchestrationStepIndex+1]" type="primary" :disabled="guideBusy || testRunning || connectionSaving || detailLoading" @click="continueGuide">{{ hasUnsavedChanges ? '保存并继续' : '下一步：'+orchestrationGuideSteps[orchestrationStepIndex+1].title }}<el-icon class="el-icon--right"><ArrowRight/></el-icon></el-button>
                     <el-button v-else type="primary" :disabled="guideBusy || testRunning || connectionSaving" @click="selectServiceDevelopmentStage('RELEASE')">进入发布检查<el-icon class="el-icon--right"><ArrowRight/></el-icon></el-button>
                   </template>
                 </div>
@@ -2476,7 +2561,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
 
         <template v-else-if="activeMenu === 'authorization'">
           <section class="split-panels authorization-overview"><div class="plain-panel"><div class="panel-heading"><div><strong>调用系统</strong><span>机构及外围系统身份</span></div><el-button :icon="Plus" @click="openClientRegistration()">登记系统</el-button></div><template v-if="clients.length"><el-table :data="clients"><el-table-column prop="clientName" label="系统名称" min-width="160"/><el-table-column prop="clientCode" label="系统编码" min-width="130"/><el-table-column prop="institutionName" label="所属机构" min-width="160"/><el-table-column prop="ownerName" label="负责人" width="90"/><el-table-column label="状态" width="90"><template #default="{row}"><el-tag :type="row.status === 'ACTIVE' ? 'success' : 'info'">{{ row.status === 'ACTIVE' ? '有效' : '停用' }}</el-tag></template></el-table-column></el-table></template><div v-else class="authorization-empty"><div class="authorization-empty-icon"><UserIcon /></div><strong>暂无调用系统</strong><span>先登记行内系统，才能为 API 配置访问授权。</span><el-button type="primary" plain :icon="Plus" @click="openClientRegistration()">登记第一个调用系统</el-button></div></div><div class="auth-summary-panel"><Key /><strong>授权控制位于统一 Gateway</strong><span>鉴权、API 权限、日配额和有效期在请求进入数据源应用前完成校验。</span><div><b>{{ validAuthorizations.length }}</b><small>有效授权</small></div></div></section>
-          <section class="plain-panel table-panel authorization-list-panel"><div class="panel-heading"><div><strong>API 授权清单</strong><span>授权即时生效，无需重启 Gateway 或数据源应用</span></div><div class="panel-heading-actions"><el-button :icon="Plus" @click="openBatchAuthorization">批量授权</el-button><el-button type="primary" :icon="Plus" @click="openAuthDialog">新增授权</el-button></div></div><el-table :data="authorizations" border><el-table-column prop="clientName" label="调用系统" min-width="160"/><el-table-column prop="interfaceName" label="授权 API" min-width="170"/><el-table-column prop="interfaceCode" label="接口编码" min-width="150"/><el-table-column prop="environment" label="环境" width="90"><template #default="{ row }"><el-tag :type="row.environment==='PROD'?'danger':'info'">{{ row.environment }}</el-tag></template></el-table-column><el-table-column prop="dailyQuota" label="日配额" width="110"/><el-table-column label="有效期" min-width="190"><template #default="{ row }">{{ row.validFrom }} 至 {{ row.validTo }}</template></el-table-column><el-table-column label="状态" width="90"><template #default="{ row }"><el-tag :type="authorizationStatus(row).type">{{ authorizationStatus(row).text }}</el-tag></template></el-table-column></el-table></section>
+          <section class="plain-panel table-panel authorization-list-panel"><div class="panel-heading"><div><strong>API 授权清单</strong><span>授权即时生效，无需重启 Gateway 或数据源应用</span></div><div class="panel-heading-actions"><el-button :icon="Plus" @click="openBatchAuthorization">批量授权</el-button><el-button type="primary" :icon="Plus" @click="openAuthDialog">新增授权</el-button></div></div><div class="list-filter-bar"><el-input v-model="authorizationSearch" :prefix-icon="Search" clearable placeholder="搜索系统、API 名称或编码" aria-label="搜索授权"/><el-select v-model="authorizationClient" filterable aria-label="按调用系统筛选"><el-option label="全部调用系统" :value="0"/><el-option v-for="client in clients" :key="client.id" :label="client.clientName" :value="client.id"/></el-select><span>{{ filteredAuthorizations.length }} 条授权</span></div><el-table :data="pagedAuthorizations" border empty-text="暂无匹配的授权记录"><el-table-column prop="clientName" label="调用系统" min-width="160"/><el-table-column prop="interfaceName" label="授权 API" min-width="170"/><el-table-column prop="interfaceCode" label="接口编码" min-width="150"/><el-table-column prop="environment" label="环境" width="90"><template #default="{ row }"><el-tag :type="row.environment==='PROD'?'danger':'info'">{{ row.environment }}</el-tag></template></el-table-column><el-table-column prop="dailyQuota" label="日配额" width="110"/><el-table-column label="有效期" min-width="190"><template #default="{ row }">{{ row.validFrom }} 至 {{ row.validTo }}</template></el-table-column><el-table-column label="状态" width="90"><template #default="{ row }"><el-tag :type="authorizationStatus(row).type">{{ authorizationStatus(row).text }}</el-tag></template></el-table-column></el-table><el-pagination v-if="filteredAuthorizations.length>20" class="list-pagination" v-model:current-page="authorizationPage" :page-size="20" :total="filteredAuthorizations.length" layout="total, prev, pager, next"/></section>
         </template>
 
         <template v-else-if="activeMenu === 'billing'">
@@ -2491,7 +2576,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
         </template>
 
         <template v-else-if="activeMenu === 'monitor'">
-          <section class="monitor-command"><div class="monitor-health" :class="{warning:monitorSummary.activeAlerts>0}"><span><CircleCheck v-if="!monitorSummary.activeAlerts"/><Warning v-else/></span><div><small>REAL-TIME OPERATIONS</small><strong>{{ monitorSummary.activeAlerts ? '平台服务在线，存在质量告警' : '全链路运行在服务目标内' }}</strong><p>Gateway、数据源应用、上游供应商与调用日志采集均正常</p></div></div><div class="monitor-command-facts"><span>采集点<b>{{ monitorPoints.length }}</b></span><span>链路节点<b>3</b></span><span>活动告警<b :class="{danger:monitorSummary.activeAlerts}">{{ monitorSummary.activeAlerts }}</b></span></div><div class="monitor-command-actions"><button @click="openFailedLogs"><Warning/><span><strong>排查失败调用</strong><small>{{ monitorSummary.errorCalls }} 条待分析</small></span><ArrowRight/></button><button @click="navigate('logs')"><Search/><span><strong>检索 Trace ID</strong><small>进入调用日志</small></span><ArrowRight/></button><button @click="refreshMonitor"><Refresh/><span><strong>刷新快照</strong><small>更新全部指标</small></span></button></div></section>
+          <section class="monitor-command"><div class="monitor-health" :class="{warning:monitorSummary.activeAlerts>0}"><span><CircleCheck v-if="!monitorSummary.activeAlerts"/><Warning v-else/></span><div><small>REAL-TIME OPERATIONS</small><strong>{{ monitorSummary.activeAlerts ? '存在调用质量告警' : '当前暂无活动告警' }}</strong><p>基于已采集调用记录，查看耗时、异常与节点分布</p></div></div><div class="monitor-command-facts"><span>采集点<b>{{ monitorPoints.length }}</b></span><span>链路节点<b>3</b></span><span>活动告警<b :class="{danger:monitorSummary.activeAlerts}">{{ monitorSummary.activeAlerts }}</b></span></div><div class="monitor-command-actions"><button @click="openFailedLogs"><Warning/><span><strong>排查失败调用</strong><small>{{ monitorSummary.errorCalls }} 条待分析</small></span><ArrowRight/></button><button @click="navigate('logs')"><Search/><span><strong>检索 Trace ID</strong><small>进入调用日志</small></span><ArrowRight/></button><button @click="refreshMonitor"><Refresh/><span><strong>刷新快照</strong><small>更新全部指标</small></span></button></div></section>
 
           <section class="monitor-kpis"><div><span>近24小时调用</span><strong>{{ monitorSummary.totalCalls }}</strong><small>全链路请求</small><DataAnalysis/></div><div><span>调用成功率</span><strong :class="monitorSummary.successRate<99?'danger-text':'success-text'">{{ monitorSummary.successRate }}%</strong><small>{{ monitorSummary.errorCalls }} 次异常</small><CircleCheck/></div><div><span>端到端平均耗时</span><strong>{{ monitorSummary.avgDurationMs }}<em> ms</em></strong><small>平台 + 供应商</small><Connection/></div><div><span>P95 响应耗时</span><strong :class="monitorSummary.p95DurationMs>1000?'warning-text':''">{{ monitorSummary.p95DurationMs }}<em> ms</em></strong><small>SLA &lt; 1000 ms</small><DataAnalysis/></div><div><span>上游平均耗时</span><strong>{{ monitorSummary.avgUpstreamDurationMs }}<em> ms</em></strong><small>占比 {{ Math.round(monitorSummary.avgUpstreamDurationMs*100/Math.max(1,monitorSummary.avgDurationMs)) }}%</small><OfficeBuilding/></div><div><span>活动告警</span><strong :class="monitorSummary.activeAlerts?'danger-text':'success-text'">{{ monitorSummary.activeAlerts }}</strong><small>实时阈值检测</small><Warning/></div></section>
 
@@ -2532,7 +2617,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
 
   <el-drawer v-model="callTraceDrawer" size="78%" class="call-trace-drawer" destroy-on-close><template #header><div class="drawer-trace-title"><div><span>TRACE DETAIL</span><strong>{{ callTrace?.summary.interfaceName || activeCallTraceRecord?.interfaceName || '调用链路详情' }}</strong><code>{{ callTrace?.summary.traceId || activeCallTraceRecord?.traceId || '-' }}</code></div><el-tag v-if="callTrace" :type="callTrace.summary.requestStatus==='SUCCESS'&&callTrace.summary.resultStatus!=='ERROR'?'success':'danger'" effect="dark">{{ callTrace.summary.requestStatus==='SUCCESS'&&callTrace.summary.resultStatus!=='ERROR'?'调用成功':'调用失败' }}</el-tag></div></template><div v-loading="callTraceLoading" class="persisted-trace"><template v-if="callTrace"><section class="trace-facts"><div><span>调用系统</span><strong>{{ callTrace.summary.clientName || '联调工作台' }}</strong></div><div><span>标准返回码</span><strong>{{ callTrace.summary.standardCode }}</strong></div><div><span>端到端耗时</span><strong>{{ callTrace.summary.durationMs }} ms</strong></div><div><span>调用时间</span><strong>{{ callTrace.summary.calledAt }}</strong></div></section><section class="persisted-trace-track"><template v-for="(node,index) in callTrace.nodes" :key="node.key"><button class="persisted-node" :class="[node.status.toLowerCase(),{active:selectedLogNodeKey===node.key}]" @click="selectedLogNodeKey=node.key"><span><CircleCheck v-if="node.status==='SUCCESS'"/><Warning v-else/></span><strong>{{ node.name }}</strong><small>{{ node.durationMs }} ms</small></button><div v-if="index<callTrace.nodes.length-1" class="trace-channel" :class="{failed:node.status!=='SUCCESS'}"><i></i></div></template></section><section v-if="logSelectedNode" class="persisted-node-detail"><header><div><span>{{ logSelectedNode.category }} / {{ logSelectedNode.key }}</span><strong>{{ logSelectedNode.name }}</strong><small>{{ logSelectedNode.detail }}</small></div><div><el-tag :type="logSelectedNode.status==='SUCCESS'?'success':'danger'">{{ logSelectedNode.status }}</el-tag><strong>{{ logSelectedNode.durationMs }} ms</strong></div></header><div><section><label>节点输入</label><pre>{{ formatJson(logSelectedNode.input) }}</pre></section><section><label>节点输出</label><pre>{{ formatJson(logSelectedNode.output) }}</pre></section></div></section></template><el-result v-else-if="callTraceError" icon="error" title="链路详情加载失败" :sub-title="callTraceError"><template #extra><el-button v-if="activeCallTraceRecord" type="primary" @click="openCallTrace(activeCallTraceRecord)">重新加载</el-button></template></el-result><el-empty v-else-if="!callTraceLoading" description="暂无可展示的链路详情"/></div></el-drawer>
 
-  <el-dialog v-model="sourceDialog" title="接入外部数据源" width="680px" destroy-on-close><el-steps :active="sourceStep" finish-status="success" simple><el-step title="基本信息"/><el-step title="连接配置"/></el-steps><div class="wizard-body" v-if="sourceStep===0"><el-form label-position="top"><div class="form-grid"><el-form-item label="资源提供商"><el-select v-model="sourceForm.providerId"><el-option v-for="item in providers" :key="item.id" :label="item.providerName" :value="item.id"/></el-select></el-form-item><el-form-item label="数据源名称"><el-input v-model="sourceForm.sourceName"/></el-form-item><el-form-item label="数据源编码"><el-input v-model="sourceForm.sourceCode"/></el-form-item><el-form-item label="协议类型"><el-select v-model="sourceForm.protocolType"><el-option label="HTTP JSON" value="HTTP_JSON"/><el-option label="WebService" value="SOAP"/><el-option label="本地数据集" value="LOCAL_SQL"/></el-select></el-form-item></div></el-form></div><div class="wizard-body" v-else><el-form label-position="top"><el-form-item label="资源提供商基础地址"><el-input v-model="sourceForm.endpoint" placeholder="https://provider.example.com"/><small class="form-hint">接口默认复用该基础地址；特殊接口可以单独覆盖</small></el-form-item><el-form-item label="数据源默认超时"><el-input-number v-model="sourceForm.defaultTimeoutMs" :min="100" :max="120000" :step="500"/><small class="form-hint">该数据源下新接口默认继承此值</small></el-form-item><el-divider content-position="left">数据处理应用路由</el-divider><div class="form-grid"><el-form-item label="处理应用标识"><el-input v-model="sourceForm.applicationName" :placeholder="`默认 jsnx-edsp-data-source-${sourceForm.sourceCode.toLowerCase().replace(/_/g,'-')}`"/></el-form-item><el-form-item label="运行地址 / 行内 VIP"><el-input v-model="sourceForm.runtimeUrl" placeholder="http://127.0.0.1:8185"/></el-form-item></div><small class="form-hint">允许接入阶段暂不填写；平台服务上线前必须完成配置。生产环境填写该数据应用的行内 VIP，不填写单实例地址。</small><div class="connection-check" :class="{checked:connectionChecked}"><div><strong>{{ connectionChecked?'连接校验通过':'等待连接校验' }}</strong><span>TLS、地址可达性和响应格式检查</span></div><el-button :type="connectionChecked?'success':'primary'" @click="testConnection">{{ connectionChecked?'重新检查':'测试连接' }}</el-button></div></el-form></div><template #footer><el-button @click="sourceDialog=false">取消</el-button><el-button v-if="sourceStep>0" @click="sourceStep--">上一步</el-button><el-button v-if="sourceStep<1" type="primary" @click="sourceStep++">下一步</el-button><el-button v-else type="primary" :disabled="!connectionChecked" @click="createSource">创建并继续开发 API</el-button></template></el-dialog>
+  <el-dialog v-model="sourceDialog" title="接入数据源" width="680px" class="source-wizard" :close-on-click-modal="false" :close-on-press-escape="!sourceSaving" :show-close="!sourceSaving" destroy-on-close><el-steps :active="sourceStep" finish-status="success" simple><el-step title="基本信息"/><el-step title="连接配置"/></el-steps><el-alert v-if="sourceError" :title="sourceError" type="error" :closable="false" show-icon/><div class="wizard-body" v-if="sourceStep===0"><el-form label-position="top"><div class="form-grid"><el-form-item label="资源提供商" required><el-select v-model="sourceForm.providerId"><el-option v-for="item in providers" :key="item.id" :label="item.providerName" :value="item.id"/></el-select></el-form-item><el-form-item label="数据源名称" required><el-input v-model="sourceForm.sourceName" placeholder="例如：企业工商信息" maxlength="100"/></el-form-item><el-form-item label="数据源编码" required><el-input v-model="sourceForm.sourceCode" placeholder="例如：ENTERPRISE_INFO" maxlength="64"/></el-form-item><el-form-item label="协议类型"><el-select v-model="sourceForm.protocolType"><el-option label="HTTP JSON" value="HTTP_JSON"/><el-option label="WebService" value="SOAP"/><el-option label="本地数据集" value="LOCAL_SQL"/></el-select></el-form-item></div></el-form></div><div class="wizard-body" v-else><el-form label-position="top"><el-form-item label="资源提供商基础地址"><el-input v-model="sourceForm.endpoint" placeholder="https://provider.example.com"/><small class="form-hint">接口默认复用该基础地址；特殊接口可以单独覆盖</small></el-form-item><el-form-item label="数据源默认超时"><el-input-number v-model="sourceForm.defaultTimeoutMs" :min="100" :max="120000" :step="500"/><small class="form-hint">该数据源下新接口默认继承此值</small></el-form-item><details class="advanced-settings"><summary>处理应用路由 <span>可稍后配置，上线前必填</span></summary><div class="form-grid"><el-form-item label="处理应用标识"><el-input v-model="sourceForm.applicationName" :placeholder="`默认 jsnx-edsp-data-source-${sourceForm.sourceCode.toLowerCase().replace(/_/g,'-')}`"/></el-form-item><el-form-item label="运行地址 / 行内 VIP"><el-input v-model="sourceForm.runtimeUrl" placeholder="http://127.0.0.1:8185"/></el-form-item></div><small class="form-hint">允许接入阶段暂不填写；平台服务上线前必须完成配置。生产环境填写该数据应用的行内 VIP，不填写单实例地址。</small></details><p class="quiet-note">创建后配置具体接口及报文，通过“接入验证”发起真实调用。</p></el-form></div><template #footer><el-button :disabled="sourceSaving" @click="sourceDialog=false">取消</el-button><el-button :disabled="sourceSaving" v-if="sourceStep>0" @click="sourceStep--">上一步</el-button><el-button v-if="sourceStep<1" type="primary" @click="advanceSourceWizard">下一步</el-button><el-button v-else type="primary" :loading="sourceSaving" @click="createSource">创建并配置接口</el-button></template></el-dialog>
   <el-dialog v-model="sourceRuntimeDialog" title="数据处理应用路由" width="580px"><el-alert title="Gateway 根据 API 编码从发布路由表选择该处理应用；生产环境请填写行内 VIP。修改后无需重启 Gateway。" type="info" :closable="false"/><el-form label-position="top" style="margin-top:18px"><el-form-item label="处理应用标识" required><el-input v-model="sourceRuntimeForm.applicationName" placeholder="jsnx-edsp-data-source-example"/></el-form-item><el-form-item label="运行地址 / 行内 VIP" required><el-input v-model="sourceRuntimeForm.runtimeUrl" placeholder="http://data-app-vip.internal:8180"/></el-form-item></el-form><template #footer><el-button @click="sourceRuntimeDialog=false">取消</el-button><el-button type="primary" :loading="sourceRuntimeSaving" @click="saveSourceRuntime">保存并刷新路由</el-button></template></el-dialog>
   <el-dialog v-model="apiDialog" title="新增资源 API" width="660px">
     <el-form label-position="top"><div class="form-grid"><el-form-item label="所属数据源"><el-select v-model="apiForm.dataSourceId"><el-option v-for="item in sources" :key="item.id" :label="`${item.sourceName} · 默认 ${item.defaultTimeoutMs ?? 3000}ms`" :value="item.id"/></el-select></el-form-item><el-form-item label="上游 HTTP 方法"><el-select v-model="apiForm.httpMethod"><el-option label="POST" value="POST"/><el-option label="GET" value="GET"/></el-select></el-form-item><el-form-item label="资源 API 名称" required><el-input v-model="apiForm.interfaceName"/></el-form-item><el-form-item label="资源 API 编码" required><el-input v-model="apiForm.interfaceCode"/><small class="form-hint">用于唯一标识资源提供商的原始接口</small></el-form-item></div><section class="api-policy-section"><header><strong>上游连接策略</strong><span>资源 API 只描述供应商原始契约，不在此定义平台服务路径</span></header><el-segmented v-model="apiForm.configScope" :options="[{label:'继承数据源',value:'INHERIT'},{label:'单接口覆盖',value:'OVERRIDE'}]"/><div class="source-default-facts"><span>基础地址<b>{{ selectedApiSource?.endpointUrl || '未配置' }}</b></span><span>默认超时<b>{{ selectedApiSource?.defaultTimeoutMs ?? 3000 }} ms</b></span><span>服务封装<b>保存后单独创建</b></span></div><el-form-item v-if="apiForm.configScope==='INHERIT'" label="供应商接口相对路径" required><el-input v-model="apiForm.upstreamPath" placeholder="/vendor/api/query"/></el-form-item><el-form-item v-else label="接口独立完整地址" required><el-input v-model="apiForm.upstreamUrl" placeholder="https://provider.example.com/vendor/api/query"/></el-form-item><div class="timeout-policy"><div class="timeout-policy-choice"><label>超时策略</label><div class="timeout-choice-group" role="radiogroup" aria-label="超时策略"><button type="button" role="radio" :aria-checked="apiForm.timeoutMode==='INHERIT'" :class="{selected:apiForm.timeoutMode==='INHERIT'}" @click="apiForm.timeoutMode='INHERIT'"><span class="timeout-choice-radio"/><span><strong>继承数据源默认</strong><small>使用当前数据源的 {{ selectedApiSource?.defaultTimeoutMs ?? 3000 }} ms</small></span></button><button type="button" role="radio" :aria-checked="apiForm.timeoutMode==='OVERRIDE'" :class="{selected:apiForm.timeoutMode==='OVERRIDE'}" @click="apiForm.timeoutMode='OVERRIDE'"><span class="timeout-choice-radio"/><span><strong>当前接口覆盖</strong><small>仅修改此资源 API</small></span></button></div></div><div class="timeout-policy-value"><label>接口超时（毫秒）</label><el-input-number v-model="apiForm.timeoutMs" :disabled="apiForm.timeoutMode==='INHERIT'" :min="100" :max="120000" :step="500"/><small>{{ apiForm.timeoutMode==='INHERIT' ? '当前生效值：' + (selectedApiSource?.defaultTimeoutMs ?? 3000) + ' ms' : '设置后仅对此接口生效' }}</small></div></div></section></el-form>

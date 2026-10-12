@@ -4,5 +4,6 @@ import 'element-plus/dist/index.css'
 import './styles.css'
 import App from './App.vue'
 import './typography.css'
+import './console-theme.css'
 
 createApp(App).use(ElementPlus).mount('#app')
