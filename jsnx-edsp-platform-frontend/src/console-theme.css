@@ -5,10 +5,10 @@
   --nav-active: #214b65;
   --brand: #286f91;
   --brand-dark: #1f5874;
-  --accent: #2f8b78;
+  --accent: #24725f;
   --info: #5672b5;
-  --warning: #b7792b;
-  --danger: #bf5159;
+  --warning: #94611f;
+  --danger: #ac3f48;
   --border: #d8e1e8;
   --muted: #687888;
   --surface: #fff;
@@ -21,10 +21,10 @@
   --el-color-primary-light-8: #d7e3e9;
   --el-color-primary-light-9: #edf3f6;
   --el-color-primary-dark-2: #1f5874;
-  --el-color-success: #2f8b78;
-  --el-color-warning: #b7792b;
-  --el-color-danger: #bf5159;
-  --el-color-info: #64778a;
+  --el-color-success: #24725f;
+  --el-color-warning: #94611f;
+  --el-color-danger: #ac3f48;
+  --el-color-info: #516679;
   --el-text-color-primary: #20303d;
   --el-text-color-regular: #445563;
   --el-text-color-secondary: #687888;
@@ -92,6 +92,8 @@ body { background: var(--canvas); }
 .el-button--primary:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled):hover { background: var(--brand-dark); border-color: var(--brand-dark); }
 .el-button.is-text, .el-button.is-link { min-height: 26px; padding: 4px 7px; }
 .el-tag { height: 22px; border-radius: 2px; font-weight: 500; }
+/* Nested page typography must never override the semantic tag foreground. */
+.el-tag .el-tag__content { color: inherit; }
 .el-input__wrapper, .el-select__wrapper { min-height: 33px; border-radius: 3px; box-shadow: 0 0 0 1px #d9dde1 inset; }
 .el-input__wrapper:hover, .el-select__wrapper:hover { box-shadow: 0 0 0 1px #aeb8c0 inset; }
 .el-form-item__label { color: #505961; font-size: 12px; font-weight: 500; line-height: 1.5; }
