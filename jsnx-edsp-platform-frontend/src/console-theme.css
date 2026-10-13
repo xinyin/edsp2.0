@@ -1,34 +1,37 @@
 /* EDSP commercial console theme: restrained enterprise shell + API workbench. */
 :root {
   font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
-  --nav: #e8f1fb;
-  --nav-active: #cfe4fb;
-  --nav-hover: #dcebf9;
-  --brand: #1677e8;
-  --brand-dark: #0f65c6;
-  --brand-soft: #eaf4ff;
-  --accent: #5a8198;
-  --info: #5f73a8;
-  --warning: #94611f;
-  --danger: #ac3f48;
-  --border: #dce4ed;
-  --muted: #748292;
+  --nav: #edf3f8;
+  --nav-active: #dce8f3;
+  --nav-hover: #e5edf5;
+  --brand: #477ba7;
+  --brand-dark: #386689;
+  --brand-soft: #edf3f8;
+  --accent: #708b9d;
+  --info: #6d7f90;
+  --warning: #987744;
+  --danger: #a45d63;
+  --border: #dce3e9;
+  --muted: #75818c;
   --text-primary: #20262d;
   --text-regular: #46515d;
   --surface: #fff;
-  --canvas: #edf3fa;
-  --soft: #f7f9fc;
-  --el-color-primary: #1677e8;
-  --el-color-primary-light-3: #5ca0ef;
-  --el-color-primary-light-5: #8fbcf3;
-  --el-color-primary-light-7: #bdd7f7;
-  --el-color-primary-light-8: #d5e7fa;
-  --el-color-primary-light-9: #eaf4ff;
-  --el-color-primary-dark-2: #0f65c6;
-  --el-color-success: #3f806d;
-  --el-color-warning: #94611f;
-  --el-color-danger: #ac3f48;
-  --el-color-info: #516679;
+  --canvas: #f0f4f7;
+  --soft: #f7f9fa;
+  --workspace-aside: #f4f7fa;
+  --workspace-chrome: #f7f9fb;
+  --selection: #e6eef6;
+  --el-color-primary: #477ba7;
+  --el-color-primary-light-3: #7c9fbc;
+  --el-color-primary-light-5: #a3bacd;
+  --el-color-primary-light-7: #c8d6e1;
+  --el-color-primary-light-8: #dbe5ed;
+  --el-color-primary-light-9: #edf3f8;
+  --el-color-primary-dark-2: #386689;
+  --el-color-success: #658575;
+  --el-color-warning: #987744;
+  --el-color-danger: #a45d63;
+  --el-color-info: #667989;
   --el-text-color-primary: #20262d;
   --el-text-color-regular: #46515d;
   --el-text-color-secondary: #748292;
@@ -46,7 +49,7 @@ body { background: var(--canvas); }
 .main-content { min-width: 0; padding: 20px 24px 30px; background: var(--canvas); }
 
 /* Keep login and console on the same visual system. */
-.login-brand-panel { background: #176fcf; }
+.login-brand-panel { background: #386689; }
 .login-brand-panel::after { display: none; }
 .login-message p { color: #d9ecff; }
 .login-message span, .login-brand small { color: #d1e5f8; }
@@ -58,7 +61,7 @@ body { background: var(--canvas); }
 /* Shell */
 .sidebar { color: var(--text-regular); background: var(--nav); border-right: 1px solid #d3dfec; }
 .brand { height: 60px; padding: 12px; gap: 9px; border-bottom: 1px solid #d3dfec; }
-.brand .brand-mark { width: 32px; height: 32px; border: 1px solid #a9c9ee; border-radius: 4px; color: #fff; background: var(--brand); font-size: 11px; }
+.brand .brand-mark { width: 32px; height: 32px; border: 1px solid #b9cbd9; border-radius: 4px; color: #fff; background: var(--brand); font-size: 11px; }
 .brand .brand-name { color: #1f3850; font-size: 14px; font-weight: 600; white-space: nowrap; }
 .brand .brand-sub { margin-top: 2px; color: #71869a; font-size: 9px; }
 .sidebar-collapse-button { color: #5e7387; background: rgba(255,255,255,.62); }
@@ -66,8 +69,8 @@ body { background: var(--canvas); }
 .sidebar.collapsed .sidebar-collapse-button { position: absolute; top: 62px; right: 18px; left: auto; z-index: 20; width: 32px; height: 32px; color: var(--brand); background: #fff; box-shadow: 0 0 0 1px #bed3e9, 0 4px 10px rgba(55,91,125,.14); }
 .side-menu { background: transparent; border: 0; }
 .side-menu .el-menu-item { height: 40px; margin: 2px 8px; border-radius: 4px; color: #485d70; font-size: 13px; }
-.side-menu .el-menu-item:hover { color: #155fae; background: var(--nav-hover); }
-.side-menu .el-menu-item.is-active { color: #0d63c5; background: var(--nav-active); box-shadow: inset 3px 0 var(--brand); font-weight: 600; }
+.side-menu .el-menu-item:hover { color: var(--brand-dark); background: var(--nav-hover); }
+.side-menu .el-menu-item.is-active { color: var(--brand-dark); background: var(--nav-active); box-shadow: inset 3px 0 var(--brand); font-weight: 600; }
 .side-menu .el-menu-item .el-icon { color: #6f8498; }
 .side-menu .el-menu-item.is-active .el-icon { color: var(--brand); }
 .menu-section-label { margin-top: 10px; color: #7f91a3; font-size: 10px; }
@@ -372,6 +375,204 @@ body { background: var(--canvas); }
 .resource-action-dot.published { background: #5f927f; }
 .api-method,
 .api-name-cell > span { color: #356b91; background: #e8f2fb; }
+
+/* Unified product surfaces: pale navigation zones, white working areas. */
+.topbar { background: #f7f9fb; }
+.main-content { color: var(--text-regular); background: var(--canvas); }
+.plain-panel,
+.cockpit-panel,
+.monitor-panel,
+.monitor-alert-workspace,
+.resource-workbench,
+.provider-detail,
+.release-console-main,
+.authorization-list-panel,
+.table-panel,
+.log-query { background: var(--surface); }
+.provider-management { gap: 12px; }
+.provider-list,
+.release-api-list,
+.resource-workbench .resource-tree-panel { background: var(--workspace-aside); }
+.provider-list .panel-heading,
+.release-api-list .panel-heading,
+.resource-workbench .panel-title { background: transparent; }
+.provider-item.active,
+.resource-workbench .resource-api-item.active,
+.release-source-apis > button.active { color: var(--text-primary); background: var(--selection); box-shadow: inset 3px 0 var(--brand); }
+.provider-item:hover,
+.resource-workbench .resource-source-head:hover,
+.resource-workbench .resource-api-item:hover,
+.release-source-apis > button:hover { background: #eaf0f5; }
+.provider-avatar,
+.source-icon { color: var(--brand-dark); background: #e1ebf3; }
+.vendor-app-banner,
+.catalog-source,
+.resource-workbench .editor-panel,
+.resource-workbench .api-context-header,
+.release-command,
+.version-history-panel { background: #fff; }
+.vendor-flow,
+.developer-tabs,
+.resource-workflow,
+.api-config-card > header,
+.upstream-contract-panel > header,
+.mapping-sample-head,
+.mapping-summary,
+.code-title,
+.cockpit-panel > header,
+.monitor-panel > header,
+.monitor-alert-workspace > header,
+.el-table th.el-table__cell { background: var(--workspace-chrome); }
+.developer-tabs button:hover { color: var(--brand-dark); background: var(--brand-soft); }
+.developer-tabs button.active { color: var(--brand-dark); background: #fff; }
+.mapping-board-head { color: #596a78; background: var(--workspace-chrome); }
+.service-origin-strip,
+.standard-contract-strip,
+.vendor-code-path-panel,
+.upstream-validation-panel,
+.auth-summary-panel,
+.monitor-node-inspector,
+.trace-facts { color: var(--text-regular); background: #f8fafb; }
+.resource-workbench .el-segmented { border: 1px solid var(--border); background: #eef2f5; }
+.resource-workbench .el-segmented__item.is-selected { color: var(--brand-dark); }
+.resource-workbench .el-segmented__item-selected { background: #fff; box-shadow: 0 0 0 1px #b8c9d7; }
+.resource-workbench .api-mode-options button.selected { color: var(--brand-dark); background: #fff; box-shadow: 0 0 0 1px #afc2d2; }
+
+/* Keep interaction colors restrained; semantic colors are used only for state. */
+.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled) { background: var(--brand); border-color: var(--brand); }
+.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled):hover,
+.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled):focus-visible { background: var(--brand-dark); border-color: var(--brand-dark); }
+.api-method,
+.method,
+.api-name-cell > span,
+.release-api-method,
+.api-request-bar .request-method { color: #466f90; background: #e9f0f6; }
+.cockpit-kpi,
+.monitor-kpis > div,
+.cockpit-kpi:nth-child(2),
+.monitor-kpis > div:nth-child(2),
+.cockpit-kpi:nth-child(3),
+.monitor-kpis > div:nth-child(3),
+.cockpit-kpi:nth-child(4),
+.monitor-kpis > div:nth-child(4),
+.cockpit-kpi:nth-child(5),
+.monitor-kpis > div:nth-child(5),
+.cockpit-kpi:nth-child(6),
+.monitor-kpis > div:nth-child(6) { box-shadow: inset 0 2px #a9bac8; }
+.cockpit-kpi.primary > svg,
+.cockpit-kpi:nth-child(2) > svg,
+.cockpit-kpi:nth-child(3) > svg,
+.cockpit-kpi:nth-child(5) > svg,
+.monitor-kpis > div svg { color: #7d91a1; }
+.cockpit-command,
+.monitor-command { border-left-color: #789bb8; }
+.cockpit-alerts:not(.clear) { border-color: #e1c9cb; background: #fcf7f7; }
+.cockpit-alerts.clear { border-color: #ccdcd4; background: #f7faf8; }
+.release-routing-warning { border-color: #ded3bf; background: #fbf9f5; }
+.billing-metrics .amount { color: var(--text-primary); background: #fff; }
+.billing-metrics .amount span,
+.billing-metrics .amount small { color: var(--muted); }
+.success-text { color: var(--el-color-success) !important; }
+.warning-text { color: var(--el-color-warning) !important; }
+.danger-text { color: var(--el-color-danger) !important; }
+
+/* Unified type scale: 18 page title, 14 section title, 13 body, 11-12 support. */
+.main-content { font-size: 13px; }
+.page-heading h1,
+.compact-page-heading h1 { font-size: 18px; }
+.panel-heading strong,
+.section-toolbar strong,
+.cockpit-panel > header strong,
+.monitor-panel > header > div > strong,
+.monitor-alert-workspace > header > div > strong,
+.version-history-panel h3 { font-size: 14px; line-height: 1.5; }
+.panel-heading > div > span,
+.section-toolbar > div > span,
+.monitor-panel > header > div > small,
+.release-command-title p,
+.version-history-panel > header p { font-size: 12px; line-height: 1.5; }
+.resource-workbench .resource-source-head strong,
+.resource-workbench .resource-api-item strong,
+.release-source-label strong,
+.release-source-apis > button strong,
+.provider-item strong { font-size: 13px; line-height: 1.45; }
+.resource-workbench .resource-source-head small,
+.resource-workbench .resource-api-item small,
+.release-source-label small,
+.release-source-apis > button small,
+.provider-item small,
+.resource-workbench .api-save-state small,
+.resource-workflow small { font-size: 11px; line-height: 1.45; }
+.resource-workbench .panel-title span,
+.developer-tabs button,
+.api-field-label,
+.api-mode-options button,
+.mapping-board-head,
+.resource-workbench .el-segmented__item-label { font-size: 13px; }
+.api-breadcrumb,
+.api-context-meta,
+.api-request-bar .request-timeout,
+.service-origin-strip > span,
+.service-origin-strip code,
+.service-origin-strip small,
+.mapping-summary span,
+.mapping-summary p,
+.vendor-code-path-panel span { font-size: 11px; }
+.release-console .release-lifecycle > div strong,
+.release-console .release-lifecycle > div small,
+.release-console .release-submit-panel span,
+.version-cell-sub { font-size: 11px; line-height: 1.45; }
+.auth-summary-panel > strong { font-size: 14px; }
+.auth-summary-panel > span,
+.auth-summary-panel small,
+.cockpit-runtime p,
+.monitor-health p,
+.cockpit-context span,
+.monitor-command-facts span,
+.cockpit-actions small,
+.monitor-command-actions small { font-size: 11px; }
+.cockpit-kpi > span,
+.monitor-kpis span { font-size: 12px; }
+.cockpit-kpi > small,
+.monitor-kpis small { font-size: 11px; }
+.chart-legend,
+.monitor-legend,
+.traffic-column > span,
+.monitor-latency-column > span,
+.trend-panel > footer span,
+.monitor-latency-panel > footer span { font-size: 11px; }
+.source-health-list strong,
+.ranking-list strong,
+.failure-list strong,
+.monitor-topology > button strong,
+.monitor-node-inspector > div:first-child strong,
+.monitor-alert-list strong { font-size: 12px; }
+.source-health-list small,
+.source-health-list b,
+.source-health-list em,
+.ranking-list small,
+.ranking-list > div > span,
+.ranking-list > div > em,
+.ranking-list > div > i,
+.failure-list small,
+.failure-list time,
+.monitor-topology > button small,
+.monitor-node-inspector > div:first-child span,
+.monitor-node-inspector > div:first-child small,
+.monitor-node-inspector > div:last-child > span,
+.monitor-node-inspector > div:last-child strong,
+.monitor-alert-list small,
+.monitor-alert-list time,
+.monitor-alert-detail p,
+.monitor-alert-detail > div span,
+.monitor-alert-detail > div b,
+.monitor-record-filters button,
+.monitor-call-table .call-main span,
+.monitor-call-table .call-main code,
+.monitor-call-table .duration-breakdown span,
+.monitor-call-table .duration-breakdown strong { font-size: 11px; line-height: 1.45; }
+.failure-list > button > span,
+.monitor-alert-detail > span { font-size: 10px; }
 
 /* Dialogs */
 .source-wizard .el-alert { margin-top: 14px; }
