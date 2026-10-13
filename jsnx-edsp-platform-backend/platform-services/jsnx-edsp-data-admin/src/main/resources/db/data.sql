@@ -218,14 +218,14 @@ ON DUPLICATE KEY UPDATE display_name=VALUES(display_name),role_code=VALUES(role_
 
 INSERT INTO data_source (id, provider_id, source_code, source_name, application_name, runtime_url, protocol_type, endpoint_url, default_timeout_ms, environment, status, instance_count, config_version)
 VALUES
-    (1, 1, 'ENTERPRISE', '企业工商数据源', 'jsnx-edsp-data-enterprise', 'http://127.0.0.1:8181', 'HTTP_JSON', 'http://127.0.0.1:8090', 3000, 'TEST', 'ACTIVE', 2, 3),
-    (2, 1, 'CREDIT', '征信报告数据源', 'jsnx-edsp-data-credit', 'http://127.0.0.1:8182', 'HTTP_JSON', 'http://127.0.0.1:8090', 5000, 'TEST', 'ACTIVE', 2, 1)
+    (1, 1, 'ENTERPRISE', '企业工商数据资源', 'jsnx-edsp-data-enterprise', 'http://127.0.0.1:8181', 'HTTP_JSON', 'http://127.0.0.1:8090', 3000, 'TEST', 'ACTIVE', 2, 3),
+    (2, 1, 'CREDIT', '征信报告数据资源', 'jsnx-edsp-data-credit', 'http://127.0.0.1:8182', 'HTTP_JSON', 'http://127.0.0.1:8090', 5000, 'TEST', 'ACTIVE', 2, 1)
 ON DUPLICATE KEY UPDATE source_code = VALUES(source_code), source_name = VALUES(source_name),
     application_name = VALUES(application_name), runtime_url=VALUES(runtime_url), endpoint_url=VALUES(endpoint_url),
     default_timeout_ms=VALUES(default_timeout_ms);
 
 INSERT INTO data_source (id, provider_id, source_code, source_name, application_name, runtime_url, protocol_type, endpoint_url, default_timeout_ms, environment, status, instance_count, config_version)
-VALUES (3, 1, 'ANTIFRAUD', '百融反欺诈数据源', 'jsnx-edsp-data-antifraud', 'http://127.0.0.1:8183', 'HTTP_JSON', 'http://127.0.0.1:8090', 4000, 'TEST', 'ACTIVE', 2, 1)
+VALUES (3, 1, 'ANTIFRAUD', '百融反欺诈数据资源', 'jsnx-edsp-data-antifraud', 'http://127.0.0.1:8183', 'HTTP_JSON', 'http://127.0.0.1:8090', 4000, 'TEST', 'ACTIVE', 2, 1)
 ON DUPLICATE KEY UPDATE source_name=VALUES(source_name), application_name=VALUES(application_name),
 runtime_url=VALUES(runtime_url), endpoint_url=VALUES(endpoint_url), default_timeout_ms=VALUES(default_timeout_ms);
 

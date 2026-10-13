@@ -106,7 +106,7 @@ button, input, textarea { font-family: inherit; }
 .status-dot.trial { background: #d98b2b; }
 .editor-panel { position: relative; min-width: 0; transition: opacity .18s ease; }
 .editor-panel.is-loading { opacity: .72; }
-.editor-panel.is-loading::after { content: '正在切换数据源'; position: absolute; z-index: 20; inset: 0; display: flex; align-items: flex-start; justify-content: center; padding-top: 118px; color: #2f668b; font-size: 12px; letter-spacing: .2px; background: rgba(248,250,252,.42); backdrop-filter: blur(1px); pointer-events: all; }
+.editor-panel.is-loading::after { content: '正在切换数据资源'; position: absolute; z-index: 20; inset: 0; display: flex; align-items: flex-start; justify-content: center; padding-top: 118px; color: #2f668b; font-size: 12px; letter-spacing: .2px; background: rgba(248,250,252,.42); backdrop-filter: blur(1px); pointer-events: all; }
 .editor-panel.is-loading::before { content: ''; position: absolute; z-index: 21; top: 93px; left: 50%; width: 16px; height: 16px; margin-left: -8px; border: 2px solid #c8dbe8; border-top-color: #3286bc; border-radius: 50%; animation: source-switch-spin .72s linear infinite; }
 @keyframes source-switch-spin { to { transform: rotate(360deg); } }
 .context-bar { min-height: 94px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 15px 20px; border-bottom: 1px solid var(--border); }

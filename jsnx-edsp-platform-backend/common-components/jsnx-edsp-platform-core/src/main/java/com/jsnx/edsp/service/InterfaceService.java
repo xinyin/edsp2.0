@@ -382,7 +382,7 @@ public class InterfaceService {
         int updated = jdbc.update("""
                 UPDATE data_source SET application_name=?,runtime_url=?,config_version=config_version+1 WHERE id=?
                 """, request.applicationName().trim(), runtimeUrl, dataSourceId);
-        if (updated == 0) throw new IllegalArgumentException("数据源不存在：" + dataSourceId);
+        if (updated == 0) throw new IllegalArgumentException("数据资源不存在：" + dataSourceId);
         notifyGatewayRouteRefreshAfterCommit();
         return dataSources().stream().filter(item -> item.id() == dataSourceId).findFirst().orElseThrow();
     }
@@ -391,7 +391,7 @@ public class InterfaceService {
     public DataSourceSummary saveDataSourceSettings(long dataSourceId, SaveDataSourceSettingsRequest request) {
         List<String> protocols = jdbc.queryForList(
                 "SELECT protocol_type FROM data_source WHERE id=?", String.class, dataSourceId);
-        if (protocols.isEmpty()) throw new IllegalArgumentException("数据源不存在：" + dataSourceId);
+        if (protocols.isEmpty()) throw new IllegalArgumentException("数据资源不存在：" + dataSourceId);
         String endpoint = normalizeDataSourceEndpoint(request.endpoint(), protocols.get(0));
         int defaultTimeoutMs = validTimeout(request.defaultTimeoutMs(), 3000);
         jdbc.update("""
@@ -430,7 +430,7 @@ public class InterfaceService {
                 : trimTrailingSlash(request.upstreamUrl());
         if ("INHERIT".equals(scope)) {
             if (source.get("endpoint_url") == null || String.valueOf(source.get("endpoint_url")).isBlank()) {
-                throw new IllegalArgumentException("所选数据源未配置基础地址，请改用接口独立配置");
+                throw new IllegalArgumentException("所选数据资源未配置基础地址，请改用接口独立配置");
             }
             if (path == null || path.isBlank()) throw new IllegalArgumentException("请填写供应商接口相对路径");
             url = joinUrl(String.valueOf(source.get("endpoint_url")), path);
@@ -473,7 +473,7 @@ public class InterfaceService {
         String url = trimTrailingSlash(request.upstreamUrl());
         if ("INHERIT".equals(scope)) {
             if (row.get("endpoint_url") == null || String.valueOf(row.get("endpoint_url")).isBlank()) {
-                throw new IllegalArgumentException("数据源未配置基础地址，请改用接口独立配置");
+                throw new IllegalArgumentException("数据资源未配置基础地址，请改用接口独立配置");
             }
             if (path == null || path.isBlank()) throw new IllegalArgumentException("请填写供应商接口相对路径");
             url = joinUrl(String.valueOf(row.get("endpoint_url")), path);
@@ -508,7 +508,7 @@ public class InterfaceService {
         jdbc.update("UPDATE resource_api SET status='READY',verified_at=CURRENT_TIMESTAMP,verified_checksum=? WHERE id=?",
                 upstreamChecksum(resource), id);
         List<TraceNode> nodes = List.of(
-                new TraceNode("DATA_SOURCE", "数据源应用", "ADAPTER", "SUCCESS", "装载资源接口连接配置", 1,
+                new TraceNode("DATA_SOURCE", "资源处理应用", "ADAPTER", "SUCCESS", "装载资源接口连接配置", 1,
                         resource.requestExample(), Map.of("endpoint", resource.summary().upstreamUrl())),
                 new TraceNode("VENDOR", "上游资源接口", "EXTERNAL", "SUCCESS", "收到资源提供商原始响应", duration,
                         resource.requestExample(), safeResponse));
@@ -762,10 +762,10 @@ public class InterfaceService {
                 """, interfaceId);
         if ("INHERIT".equals(configScope)) {
             if (source.get("endpoint_url") == null || String.valueOf(source.get("endpoint_url")).isBlank()) {
-                throw new IllegalArgumentException("所选数据源未配置基础地址，请改用接口独立配置");
+                throw new IllegalArgumentException("所选数据资源未配置基础地址，请改用接口独立配置");
             }
             if (upstreamPath == null || upstreamPath.isBlank()) {
-                throw new IllegalArgumentException("继承数据源配置时必须填写供应商接口相对路径");
+                throw new IllegalArgumentException("继承数据资源配置时必须填写供应商接口相对路径");
             }
             upstreamUrl = joinUrl(String.valueOf(source.get("endpoint_url")), upstreamPath);
         } else if (upstreamUrl == null || upstreamUrl.isBlank()) {
@@ -1236,8 +1236,8 @@ public class InterfaceService {
         dataSourceOutput.put("endpoint", executionSummary.upstreamUrl());
         dataSourceOutput.put("timeoutMs", detail.timeoutMs());
         dataSourceOutput.put("requestBody", securedBody);
-        traceNodes.add(new TraceNode("DATA_SOURCE", "数据源应用", "ADAPTER", "SUCCESS",
-                "独立数据源部署单元执行供应商协议适配", 1, securedRequest, dataSourceOutput));
+        traceNodes.add(new TraceNode("DATA_SOURCE", "资源处理应用", "ADAPTER", "SUCCESS",
+                "独立数据资源处理单元执行供应商协议适配", 1, securedRequest, dataSourceOutput));
         long callStarted = System.nanoTime();
         Map<String, Object> upstreamResponse = invokeThroughDataApplication(executionSummary, securedBody, traceId);
         upstreamDurationMs = Math.max(1, (System.nanoTime() - callStarted) / 1_000_000);
@@ -1306,7 +1306,7 @@ public class InterfaceService {
                 new String[]{"SCHEMA", "Schema 校验", "PLATFORM"},
                 new String[]{"REQUEST_MAPPING", "请求标准化", "PLATFORM"},
                 new String[]{"SECURITY", "安全处理", "PLATFORM"},
-                new String[]{"DATA_SOURCE", "数据源应用", "ADAPTER"},
+                new String[]{"DATA_SOURCE", "资源处理应用", "ADAPTER"},
                 new String[]{"VENDOR", "上游供应商", "EXTERNAL"},
                 new String[]{"RESPONSE_MAPPING", "响应标准化", "PLATFORM"},
                 new String[]{"BILLING", "计量计费", "PLATFORM"});
@@ -1452,7 +1452,7 @@ public class InterfaceService {
                 new String[]{"SCHEMA", "Schema 校验", "PLATFORM"},
                 new String[]{"REQUEST_MAPPING", "请求标准化", "PLATFORM"},
                 new String[]{"SECURITY", "安全处理", "PLATFORM"},
-                new String[]{"DATA_SOURCE", "数据源应用", "ADAPTER"},
+                new String[]{"DATA_SOURCE", "资源处理应用", "ADAPTER"},
                 new String[]{"VENDOR", "上游供应商", "EXTERNAL"},
                 new String[]{"RESPONSE_MAPPING", "响应标准化", "PLATFORM"},
                 new String[]{"BILLING", "计量计费", "PLATFORM"})) {
@@ -1473,7 +1473,7 @@ public class InterfaceService {
         invocation.put("url", detail.summary().upstreamUrl());
         invocation.put("timeoutMs", detail.timeoutMs());
         invocation.put("body", upstreamRequest);
-        traceNodes.add(new TraceNode("DATA_SOURCE", "数据源应用", "ADAPTER", "SUCCESS",
+        traceNodes.add(new TraceNode("DATA_SOURCE", "资源处理应用", "ADAPTER", "SUCCESS",
                 "装载供应商连接、认证和超时配置", 1, upstreamRequest, invocation));
         long callStarted = System.nanoTime();
         Map<String, Object> upstreamResponse = invokeThroughDataApplication(
@@ -1547,7 +1547,7 @@ public class InterfaceService {
                 throw new IllegalStateException(describeUpstreamError(result));
             }
             if (result == null || !(result.get("upstreamResponse") instanceof Map<?, ?> response)) {
-                throw new IllegalStateException("数据源应用返回结构不完整");
+                throw new IllegalStateException("资源处理应用返回结构不完整");
             }
             return (Map<String, Object>) response;
         } catch (Exception e) {
@@ -1959,7 +1959,7 @@ public class InterfaceService {
         Map<String, Object> context = Map.of("traceId", record.traceId(), "interfaceCode", record.interfaceCode());
         return List.of(
                 new TraceNode("GATEWAY", "统一 Gateway", "PLATFORM", "SUCCESS", "认证、授权与路由", Math.max(1, record.gatewayDurationMs() / 2), context, context),
-                new TraceNode("DATA_SOURCE", "数据源应用", "ADAPTER", success ? "SUCCESS" : "ERROR", "协议适配与字段转换", Math.max(1, record.gatewayDurationMs() / 2), context, context),
+                new TraceNode("DATA_SOURCE", "资源处理应用", "ADAPTER", success ? "SUCCESS" : "ERROR", "协议适配与字段转换", Math.max(1, record.gatewayDurationMs() / 2), context, context),
                 new TraceNode("VENDOR", "上游供应商", "EXTERNAL", finalStatus, success ? "上游调用完成" : "调用失败，请结合标准返回码定位", record.upstreamDurationMs(), context, Map.of("standardCode", record.standardCode()))
         );
     }
@@ -2259,7 +2259,7 @@ public class InterfaceService {
 
     private void requireDataApplicationRoute(InterfaceSummary summary) {
         if (dataApplicationEndpoint(summary) == null) {
-            throw new IllegalStateException("数据源尚未登记处理应用运行地址，不能上线；请先配置数据源运行路由");
+            throw new IllegalStateException("数据资源尚未登记处理应用运行地址，不能上线；请先配置数据资源运行路由");
         }
     }
 
@@ -2527,18 +2527,18 @@ public class InterfaceService {
     private String normalizeDataSourceEndpoint(String value, String protocolType) {
         String endpoint = trimTrailingSlash(value);
         if (endpoint == null || endpoint.isBlank()) {
-            throw new IllegalArgumentException("数据源基础地址不能为空");
+            throw new IllegalArgumentException("数据资源基础地址不能为空");
         }
         if ("LOCAL_SQL".equalsIgnoreCase(protocolType)) return endpoint;
         try {
             URI uri = URI.create(endpoint);
             if (!Set.of("http", "https").contains(uri.getScheme()) || uri.getHost() == null
                     || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null) {
-                throw new IllegalArgumentException("数据源基础地址必须是合法的 HTTP/HTTPS 地址");
+                throw new IllegalArgumentException("数据资源基础地址必须是合法的 HTTP/HTTPS 地址");
             }
             return endpoint;
         } catch (IllegalArgumentException error) {
-            throw new IllegalArgumentException("数据源基础地址必须是合法的 HTTP/HTTPS 地址", error);
+            throw new IllegalArgumentException("数据资源基础地址必须是合法的 HTTP/HTTPS 地址", error);
         }
     }
 
