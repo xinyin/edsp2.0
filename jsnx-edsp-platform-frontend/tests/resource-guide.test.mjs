@@ -45,7 +45,7 @@ function harness(overrides = {}, confirm = async () => true) {
   state.selectedSourceId.value = 1
   state.activeMenu.value = 'resource'
   state.selectedInterfaceId.value = 11
-  state.sources.value = [{ id: 1, sourceName: '企业工商数据资源', sourceCode: 'ENTERPRISE', endpointUrl: 'http://localhost', defaultTimeoutMs: 5000 }]
+  state.sources.value = [{ id: 1, sourceName: '企业工商数据源', sourceCode: 'ENTERPRISE', endpointUrl: 'http://localhost', defaultTimeoutMs: 5000 }]
   state.detail.value = { summary: { id: 11, dataSourceId: 1, interfaceCode: 'ENTERPRISE_QUERY', currentVersion: 2, publishedVersion: 1, status: 'DRAFT', upstreamUrl: 'http://localhost/query', servicePath: '/api/query' }, mappings: [mapping('REQUEST'), mapping('RESPONSE')], responseCodes: codes, vendorCodePath: 'result.code', requestExample: { name: '测试企业' }, upstreamRequestExample: { name: '测试企业' }, upstreamResponseExample: { name: '测试企业' }, standardResponseExample: { name: '测试企业' } }
   state.connectionForm.value = { configScope: 'INHERIT', upstreamPath: '/query', upstreamUrl: 'http://localhost/query', timeoutMode: 'INHERIT', timeoutMs: 5000 }
   state.savedConnectionBaseline.value = JSON.stringify(state.connectionForm.value)
@@ -80,7 +80,7 @@ test('接入向导阻止空基础信息和无效地址，不发起创建请求',
   s.advanceSourceWizard()
   assert.equal(s.sourceStep.value, 0)
   assert.match(s.sourceError.value, /资源提供商/)
-  Object.assign(s.sourceForm.value, { providerId: 1, sourceCode: 'NEW_SOURCE', sourceName: '新数据资源' })
+  Object.assign(s.sourceForm.value, { providerId: 1, sourceCode: 'NEW_SOURCE', sourceName: '新数据源' })
   s.advanceSourceWizard()
   assert.equal(s.sourceStep.value, 1)
   s.sourceForm.value.endpoint = 'not-an-address'
@@ -134,9 +134,9 @@ test('登录页使用纯色背景和居中卡片，不再渲染左右分栏品�
   assert.match(styles, /\.login-form-panel\s*\{[^}]*width:\s*min\(420px,\s*100%\)/s)
 })
 
-test('数据资源基础地址提供独立修改入口并保存到数据资源设置接口', () => {
-  assert.match(appText, />数据资源设置<\/el-button>/)
-  assert.match(appText, /数据资源基础地址[\s\S]*@click="openSourceSettingsEditor">修改<\/el-button>/)
+test('数据源基础地址提供独立修改入口并保存到数据源设置接口', () => {
+  assert.match(appText, />数据源设置<\/el-button>/)
+  assert.match(appText, /数据源基础地址[\s\S]*@click="openSourceSettingsEditor">修改<\/el-button>/)
   assert.match(appText, /api\.saveDataSourceSettings\(selectedSource\.value\.id/)
 })
 
@@ -509,7 +509,7 @@ test('标准服务只展示上游已保存接口，菜单支持横向和分组�
   assert.match(appText, /menuGroups\.service/)
   assert.doesNotMatch(appText, /<el-menu-item index="approvals"/)
 })
-test('没有接口级超时的草稿继续继承数据资源默认配置', async () => {
+test('没有接口级超时的草稿继续继承数据源默认配置', async () => {
   let loaded
   const s = harness({ detail: async () => loaded })
   loaded = JSON.parse(JSON.stringify(s.detail.value)); loaded.configuredTimeoutMs = null; loaded.timeoutMs = 5000
@@ -526,10 +526,10 @@ test('忙碌状态禁止重复保存和跳步', async () => {
   assert.equal(await s.runCurrentPrimaryAction(), false)
 })
 
-test('供应商目录接入不依赖固定主键，空库时先创建提供商再创建数据资源', async () => {
+test('供应商目录接入不依赖固定主键，空库时先创建提供商再创建数据源', async () => {
   const calls = []
   const provider = { id: 37, providerCode: 'VENDOR_DEMO', providerName: '上游演示资源提供商', status: 'ACTIVE' }
-  const source = { id: 52, providerId: 37, sourceCode: 'ENTERPRISE', sourceName: '企业数据资源', endpointUrl: 'http://127.0.0.1:8090/enterprise', defaultTimeoutMs: 3000, interfaceCount: 0 }
+  const source = { id: 52, providerId: 37, sourceCode: 'ENTERPRISE', sourceName: '企业数据源', endpointUrl: 'http://127.0.0.1:8090/enterprise', defaultTimeoutMs: 3000, interfaceCount: 0 }
   const s = harness({
     createProvider: async body => { calls.push(['provider', body]); return provider },
     createDataSource: async body => { calls.push(['source', body]); return source },
@@ -544,7 +544,7 @@ test('供应商目录接入不依赖固定主键，空库时先创建提供商�
   s.sources.value = []
   await s.bringVendorApiToPlatform(
     { apiCode: 'COMPANY_QUERY', apiName: '企业查询', httpMethod: 'POST', servicePath: '/enterprise/query', requestExample: { name: '测试企业' }, responseBody: { code: '0000' } },
-    { sourceCode: 'ENTERPRISE', sourceName: '企业数据资源', basePath: '/enterprise' }
+    { sourceCode: 'ENTERPRISE', sourceName: '企业数据源', basePath: '/enterprise' }
   )
   assert.equal(calls[0][0], 'provider')
   assert.equal(calls[1][0], 'source')

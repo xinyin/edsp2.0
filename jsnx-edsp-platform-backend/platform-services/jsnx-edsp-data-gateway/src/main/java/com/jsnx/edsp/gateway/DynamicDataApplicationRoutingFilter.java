@@ -43,7 +43,7 @@ public class DynamicDataApplicationRoutingFilter implements GlobalFilter, Ordere
         }
         if (route.runtimeUrl() == null || route.runtimeUrl().isBlank()) {
             return reject(exchange, HttpStatus.SERVICE_UNAVAILABLE, "EDSP-ROUTE-503",
-                    "数据资源尚未登记处理应用运行地址：" + route.sourceCode());
+                    "数据源尚未登记处理应用运行地址：" + route.sourceCode());
         }
         URI target = URI.create(route.runtimeUrl() + "/internal/adapter/published");
         exchange.getAttributes().put(ServerWebExchangeUtils.GATEWAY_REQUEST_URL_ATTR, target);

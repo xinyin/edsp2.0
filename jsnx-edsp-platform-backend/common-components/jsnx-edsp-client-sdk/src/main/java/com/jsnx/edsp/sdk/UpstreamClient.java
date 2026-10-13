@@ -29,7 +29,7 @@ public class UpstreamClient {
             catch (Exception ignored) { errorBody = Map.of("message", e.getResponseBodyAsString()); }
             throw new UpstreamCallException(e.getStatusCode().value(), errorBody, e);
         } catch (Exception e) {
-            throw new IllegalStateException("资源处理应用调用上游失败：" + e.getMessage(), e);
+            throw new IllegalStateException("数据源应用调用上游失败：" + e.getMessage(), e);
         }
     }
 

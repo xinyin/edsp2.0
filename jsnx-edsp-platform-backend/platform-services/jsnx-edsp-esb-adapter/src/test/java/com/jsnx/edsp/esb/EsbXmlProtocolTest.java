@@ -82,14 +82,14 @@ class EsbXmlProtocolTest {
 
     @Test
     void serializesFailureInTheSameProductionEnvelope() throws Exception {
-        String response = protocol.failure(protocol.parse(REQUEST), "ESB_FORWARD_503", "数据资源不可用");
+        String response = protocol.failure(protocol.parse(REQUEST), "ESB_FORWARD_503", "数据源不可用");
         Document document = parseXml(response);
 
         assertEquals("999999", text(document, "code"));
         assertEquals("FAILED", text(document, "status"));
         assertEquals("ESB_FORWARD_503", text(document, "resp_code"));
         assertEquals("-1", text(document, "response_code"));
-        assertEquals("数据资源不可用", text(document, "msg"));
+        assertEquals("数据源不可用", text(document, "msg"));
     }
 
     @Test

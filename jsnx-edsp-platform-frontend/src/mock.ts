@@ -10,9 +10,9 @@ export const dashboard: DashboardSummary = {
 }
 
 export const dataSources: DataSourceSummary[] = [
-  { id: 1, providerName: '企信资源提供商', sourceCode: 'ENTERPRISE', sourceName: '企业工商数据资源', applicationName: 'jsnx-edsp-data-enterprise', protocolType: 'HTTP_JSON', environment: 'TEST', status: 'ACTIVE', instanceCount: 2, configVersion: 3, interfaceCount: 5 },
-  { id: 2, providerName: '企信资源提供商', sourceCode: 'CREDIT', sourceName: '征信报告数据资源', applicationName: 'jsnx-edsp-data-credit', protocolType: 'HTTP_JSON', environment: 'TEST', status: 'ACTIVE', instanceCount: 2, configVersion: 2, interfaceCount: 3 },
-  { id: 3, providerName: '司法资源提供商', sourceCode: 'JUDICIAL', sourceName: '司法涉诉数据资源', applicationName: 'jsnx-edsp-data-source-judicial', protocolType: 'HTTP_JSON', environment: 'TEST', status: 'ACTIVE', instanceCount: 2, configVersion: 4, interfaceCount: 3 },
+  { id: 1, providerName: '企信资源提供商', sourceCode: 'ENTERPRISE', sourceName: '企业工商数据源', applicationName: 'jsnx-edsp-data-enterprise', protocolType: 'HTTP_JSON', environment: 'TEST', status: 'ACTIVE', instanceCount: 2, configVersion: 3, interfaceCount: 5 },
+  { id: 2, providerName: '企信资源提供商', sourceCode: 'CREDIT', sourceName: '征信报告数据源', applicationName: 'jsnx-edsp-data-credit', protocolType: 'HTTP_JSON', environment: 'TEST', status: 'ACTIVE', instanceCount: 2, configVersion: 2, interfaceCount: 3 },
+  { id: 3, providerName: '司法资源提供商', sourceCode: 'JUDICIAL', sourceName: '司法涉诉数据源', applicationName: 'jsnx-edsp-data-source-judicial', protocolType: 'HTTP_JSON', environment: 'TEST', status: 'ACTIVE', instanceCount: 2, configVersion: 4, interfaceCount: 3 },
   { id: 4, providerName: '行内数据平台', sourceCode: 'LOCAL_DATASET', sourceName: '本地数据集服务', applicationName: 'jsnx-edsp-data-source-local', protocolType: 'LOCAL_SQL', environment: 'TEST', status: 'TRIAL', instanceCount: 2, configVersion: 1, interfaceCount: 1 }
 ]
 
@@ -100,7 +100,7 @@ export function runMockTest(request: Record<string, unknown>, response: Record<s
     steps: [
       { name: '请求Schema校验', status: '通过', detail: '必填字段与类型校验完成', durationMs: 1 },
       { name: '请求字段映射', status: '通过', detail: `生成上游请求字段 ${Object.keys(upstreamRequest).length} 个`, durationMs: 2 },
-      { name: '认证与加解密', status: '通过', detail: '使用数据资源认证配置引用', durationMs: 3 },
+      { name: '认证与加解密', status: '通过', detail: '使用数据源认证配置引用', durationMs: 3 },
       { name: '响应解析', status: '通过', detail: '供应商返回码 0000', durationMs: 6 },
       { name: '字段标准化', status: '通过', detail: '生成平台统一响应', durationMs: 7 }
     ],
@@ -110,7 +110,7 @@ export function runMockTest(request: Record<string, unknown>, response: Record<s
       { key: 'SCHEMA', name: 'Schema 校验', category: 'PLATFORM', status: 'SUCCESS', detail: '请求结构校验通过', durationMs: 1, input: request, output: { valid: true, body: request } },
       { key: 'REQUEST_MAPPING', name: '请求标准化', category: 'PLATFORM', status: 'SUCCESS', detail: '转换为供应商字段', durationMs: 2, input: request, output: upstreamRequest },
       { key: 'SECURITY', name: '安全处理', category: 'PLATFORM', status: 'SUCCESS', detail: '装载认证与安全策略', durationMs: 1, input: upstreamRequest, output: { algorithm: 'PASSTHROUGH_DEMO', body: upstreamRequest } },
-      { key: 'DATA_SOURCE', name: '资源处理应用', category: 'ADAPTER', status: 'SUCCESS', detail: '独立适配器执行协议转换', durationMs: 1, input: upstreamRequest, output: { endpoint: 'vendor/api', body: upstreamRequest } },
+      { key: 'DATA_SOURCE', name: '数据源应用', category: 'ADAPTER', status: 'SUCCESS', detail: '独立适配器执行协议转换', durationMs: 1, input: upstreamRequest, output: { endpoint: 'vendor/api', body: upstreamRequest } },
       { key: 'VENDOR', name: '上游供应商', category: 'EXTERNAL', status: 'SUCCESS', detail: '供应商响应完成', durationMs: 80, input: upstreamRequest, output: response },
       { key: 'RESPONSE_MAPPING', name: '响应标准化', category: 'PLATFORM', status: 'SUCCESS', detail: '字段与返回码标准化', durationMs: 7, input: response, output: standardResponse },
       { key: 'BILLING', name: '计量计费', category: 'PLATFORM', status: 'SUCCESS', detail: '调用明细已记录', durationMs: 1, input: { traceId: standardResponse.traceId }, output: { recorded: true, billable: true } }

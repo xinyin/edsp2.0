@@ -18,7 +18,7 @@ public final class DraftAdapterExecutor {
         if (payload == null) throw new IllegalArgumentException("草稿联调请求不能为空");
         String dataSourceCode = text(payload.get("dataSourceCode"));
         if (!expectedDataSourceCode.equalsIgnoreCase(dataSourceCode)) {
-            throw new IllegalArgumentException("请求数据资源与当前应用不匹配：" + dataSourceCode);
+            throw new IllegalArgumentException("请求数据源与当前应用不匹配：" + dataSourceCode);
         }
         String upstreamUrl = text(payload.get("upstreamUrl"));
         if (!(upstreamUrl.startsWith("http://") || upstreamUrl.startsWith("https://"))) {

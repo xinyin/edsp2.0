@@ -96,7 +96,7 @@ public class EsbMessageAdapter {
                     node("ESB_QUEUE", "ESB 请求队列", "SUCCESS", Map.of("protocol", "XML", "queued", true), Map.of("traceId", effectiveTraceId)),
                     node("ESB_ADAPTER", "ESB Adapter", "SUCCESS", Map.of("apiCode", diagnosticApiCode, "xml", xmlRequest), Map.of("servicePath", diagnosticServicePath, "json", request)),
                     node("GATEWAY", "统一 Gateway", "SUCCESS", Map.of("apiCode", diagnosticApiCode, "body", request), Map.of("route", diagnosticServicePath)),
-                    node("DATA_APPLICATION", "资源处理应用", "SUCCESS", Map.of("apiCode", diagnosticApiCode, "body", request), Map.of("upstreamCall", true)),
+                    node("DATA_APPLICATION", "数据源应用", "SUCCESS", Map.of("apiCode", diagnosticApiCode, "body", request), Map.of("upstreamCall", true)),
                     node("SUPPLIER", "上游供应商", "SUCCESS", request, Map.of("responseReceived", true)),
                     node("STANDARD_RESPONSE", "ESB XML 响应", "SUCCESS", standardResponse,
                             Map.of("contentType", MediaType.APPLICATION_XML_VALUE, "xml", xmlResponse))
