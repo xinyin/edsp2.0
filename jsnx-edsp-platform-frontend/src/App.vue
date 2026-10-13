@@ -2170,13 +2170,15 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
 
 <template>
   <div v-if="!loggedIn" class="login-page">
-    <section class="login-brand-panel">
-      <div class="login-brand"><span>ED</span><div><strong>外部数据平台</strong><small>EXTERNAL DATA SERVICE PLATFORM</small></div></div>
-      <div class="login-message"><p>江苏农信</p><h1>外部数据统一接入与服务运营</h1><span>统一接入、标准化、授权、计量与审计</span></div>
-      <div class="login-system-status"><span>外部数据服务管理控制台</span><b>TEST 环境</b></div>
-    </section>
-    <section class="login-form-panel">
+    <main class="login-form-panel">
       <form class="login-box" @submit.prevent="login">
+        <div class="login-brand">
+          <span class="login-brand-mark">ED</span>
+          <div class="login-brand-copy">
+            <strong>外部数据平台</strong>
+            <small>EXTERNAL DATA SERVICE PLATFORM</small>
+          </div>
+        </div>
         <div class="login-title"><h2>登录平台</h2><p>使用行内统一身份进入管理控制台</p></div>
         <label>用户名</label><el-input v-model="loginForm.username" :prefix-icon="UserIcon" size="large" />
         <label>密码</label><el-input v-model="loginForm.password" :prefix-icon="Lock" type="password" show-password size="large" />
@@ -2184,7 +2186,8 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
         <el-button native-type="submit" type="primary" size="large" :loading="loginLoading">登录</el-button>
         <p class="login-help">技术支持：省联社信息科技部 · 内线 6800</p>
       </form>
-    </section>
+    </main>
+    <footer class="login-page-footer">江苏农信外部数据服务管理控制台</footer>
   </div>
 
   <el-container v-else class="app-shell" :class="{'sidebar-collapsed':sidebarCollapsed}" v-loading="loading">

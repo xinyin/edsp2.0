@@ -49,13 +49,8 @@ body { background: var(--canvas); }
 .main-content { min-width: 0; padding: 20px 24px 30px; background: var(--canvas); }
 
 /* Keep login and console on the same visual system. */
-.login-brand-panel { background: #386689; }
-.login-brand-panel::after { display: none; }
-.login-message p { color: #d9ecff; }
-.login-message span, .login-brand small { color: #d1e5f8; }
-.login-system-status { color: #d7e8f7; }
-.login-system-status b { color: #e5b85f; }
-.login-form-panel { background: #f7faff; }
+.login-box .el-input__wrapper { min-height: 40px; background: rgba(255, 255, 255, .88); }
+.login-box .el-checkbox__label { color: #596875; font-size: 11px; }
 .login-box .el-button--primary { background: var(--brand); border-color: var(--brand); }
 
 /* Shell */
