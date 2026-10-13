@@ -1,0 +1,25 @@
+---
+server:
+  # 复制模板后必须分配唯一端口；生产环境可由 SERVER_PORT 覆盖。
+  port: "${SERVER_PORT:8199}"
+spring:
+  application:
+    name: jsnx-edsp-data-template
+  cloud:
+    sentinel:
+      enabled: "${SENTINEL_ENABLED:false}"
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    tags:
+      application: "${spring.application.name}"
+edsp:
+  data-application:
+    # 必须与平台 data_source.code 完全一致。
+    data-source-code: TEMPLATE
+    display-name: 独立数据应用样例
+  admin-url: "${ADMIN_URL:http://127.0.0.1:8081}"
+  observability-url: "${OBSERVABILITY_URL:http://127.0.0.1:8083}"
