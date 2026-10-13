@@ -124,12 +124,20 @@ test('空映射被视为已完成的自动透传，无需生成一对一配置�
   assert.equal(s.detail.value.mappings.length, 0)
 })
 
-test('登录页使用科技背景和居中卡片，不再渲染左右分栏品牌面板', () => {
+test('登录页使用纯色背景和居中卡片，不再渲染左右分栏品牌面板', () => {
   const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
+  const loginPageRule = styles.match(/\.login-page\s*\{[^}]*\}/s)?.[0] ?? ''
   assert.match(appText, /class="login-page"[\s\S]*class="login-form-panel"[\s\S]*class="login-box"/)
   assert.doesNotMatch(appText, /class="login-brand-panel"/)
-  assert.match(styles, /\.login-page\s*\{[^}]*place-items:\s*center[^}]*login-platform-bg\.jpg/s)
+  assert.match(loginPageRule, /place-items:\s*center[^}]*background:\s*#[0-9a-f]{6}/is)
+  assert.doesNotMatch(loginPageRule, /login-platform-bg|background-image|url\(/)
   assert.match(styles, /\.login-form-panel\s*\{[^}]*width:\s*min\(420px,\s*100%\)/s)
+})
+
+test('数据源基础地址提供独立修改入口并保存到数据源设置接口', () => {
+  assert.match(appText, />数据源设置<\/el-button>/)
+  assert.match(appText, /数据源基础地址[\s\S]*@click="openSourceSettingsEditor">修改<\/el-button>/)
+  assert.match(appText, /api\.saveDataSourceSettings\(selectedSource\.value\.id/)
 })
 
 test('只有用户主动配置字段转换时才创建第一条映射，删除最后一条后恢复透传', () => {

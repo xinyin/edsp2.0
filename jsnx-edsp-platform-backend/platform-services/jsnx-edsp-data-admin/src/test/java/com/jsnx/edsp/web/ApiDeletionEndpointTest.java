@@ -13,6 +13,7 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import static org.hamcrest.Matchers.containsString;
 
@@ -53,6 +54,17 @@ class ApiDeletionEndpointTest {
                 .andExpect(status().isOk());
         verify(service).publishDirect(eq(42L), any());
         verify(service, never()).submitApproval(eq(42L), any());
+    }
+
+    @Test
+    void dataSourceSettingsCanUpdateTheSharedEndpointAndTimeout() throws Exception {
+        mvc.perform(put("/api/data-sources/7/settings")
+                        .contentType("application/json")
+                        .content("{\"endpoint\":\"https://provider.example.com/open\",\"defaultTimeoutMs\":5000}"))
+                .andExpect(status().isOk());
+        verify(service).saveDataSourceSettings(eq(7L), argThat(request ->
+                request.endpoint().equals("https://provider.example.com/open")
+                        && request.defaultTimeoutMs() == 5000));
     }
 
     @Test

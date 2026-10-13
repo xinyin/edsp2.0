@@ -74,6 +74,12 @@ public class ApiController {
         return service.saveDataSourceRuntime(id, request);
     }
 
+    @PutMapping("/data-sources/{id}/settings")
+    public DataSourceSummary saveDataSourceSettings(@PathVariable long id,
+                                                     @Valid @RequestBody SaveDataSourceSettingsRequest request) {
+        return service.saveDataSourceSettings(id, request);
+    }
+
     @GetMapping("/resource-apis")
     public List<ResourceApiSummary> resourceApis(@RequestParam(required = false) Long dataSourceId) {
         return service.resourceApis(dataSourceId);

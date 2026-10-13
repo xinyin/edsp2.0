@@ -387,6 +387,31 @@ public class InterfaceService {
         return dataSources().stream().filter(item -> item.id() == dataSourceId).findFirst().orElseThrow();
     }
 
+    @Transactional
+    public DataSourceSummary saveDataSourceSettings(long dataSourceId, SaveDataSourceSettingsRequest request) {
+        List<String> protocols = jdbc.queryForList(
+                "SELECT protocol_type FROM data_source WHERE id=?", String.class, dataSourceId);
+        if (protocols.isEmpty()) throw new IllegalArgumentException("数据源不存在：" + dataSourceId);
+        String endpoint = normalizeDataSourceEndpoint(request.endpoint(), protocols.get(0));
+        int defaultTimeoutMs = validTimeout(request.defaultTimeoutMs(), 3000);
+        jdbc.update("""
+                UPDATE data_source
+                SET endpoint_url=?,default_timeout_ms=?,config_version=config_version+1
+                WHERE id=?
+                """, endpoint, defaultTimeoutMs, dataSourceId);
+        jdbc.update("""
+                UPDATE resource_api SET verified_at=NULL
+                WHERE data_source_id=? AND config_scope='INHERIT'
+                """, dataSourceId);
+        jdbc.update("""
+                DELETE FROM interface_validation_record
+                WHERE interface_id IN (
+                    SELECT id FROM api_interface WHERE data_source_id=? AND config_scope='INHERIT'
+                )
+                """, dataSourceId);
+        return dataSources().stream().filter(item -> item.id() == dataSourceId).findFirst().orElseThrow();
+    }
+
     public List<ResourceApiSummary> resourceApis(Long dataSourceId) {
         String sql = resourceApiSelect() + (dataSourceId == null ? "" : " WHERE ra.data_source_id=?")
                 + " ORDER BY ra.id";
@@ -2496,6 +2521,24 @@ public class InterfaceService {
             return normalized;
         } catch (IllegalArgumentException error) {
             throw new IllegalArgumentException("数据处理应用运行地址必须是合法的 HTTP/HTTPS 基础地址", error);
+        }
+    }
+
+    private String normalizeDataSourceEndpoint(String value, String protocolType) {
+        String endpoint = trimTrailingSlash(value);
+        if (endpoint == null || endpoint.isBlank()) {
+            throw new IllegalArgumentException("数据源基础地址不能为空");
+        }
+        if ("LOCAL_SQL".equalsIgnoreCase(protocolType)) return endpoint;
+        try {
+            URI uri = URI.create(endpoint);
+            if (!Set.of("http", "https").contains(uri.getScheme()) || uri.getHost() == null
+                    || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null) {
+                throw new IllegalArgumentException("数据源基础地址必须是合法的 HTTP/HTTPS 地址");
+            }
+            return endpoint;
+        } catch (IllegalArgumentException error) {
+            throw new IllegalArgumentException("数据源基础地址必须是合法的 HTTP/HTTPS 地址", error);
         }
     }
 

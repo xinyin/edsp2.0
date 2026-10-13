@@ -190,8 +190,11 @@ body { background: var(--canvas); }
 .api-mode-options button { min-height: 31px; font-size: 11px; }
 .api-mode-options button.selected { color: var(--brand-dark); background: #fff; box-shadow: 0 0 0 1px #85b9f2; }
 .api-field-help { margin: 6px 0 9px; color: #7b838a; font-size: 11px; line-height: 1.55; }
-.api-inherited-value { border-radius: 2px; background: #f7f8f7; }
+.api-inherited-value { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 4px 12px; border-radius: 2px; background: #f7f8f7; }
+.api-inherited-value span { grid-column: 1; }
 .api-inherited-value code { overflow-wrap: anywhere; }
+.api-inherited-value .el-button { grid-column: 2; grid-row: 1 / span 2; }
+.form-unit { margin-left: 8px; color: var(--muted); font-size: 11px; }
 .api-timeout-disclosure { margin-top: 10px; border: 1px solid var(--border); border-radius: 2px; }
 .api-timeout-toggle { min-height: 46px; }
 .api-timeout-toggle strong, .api-timeout-toggle small { font-size: 11px; }
