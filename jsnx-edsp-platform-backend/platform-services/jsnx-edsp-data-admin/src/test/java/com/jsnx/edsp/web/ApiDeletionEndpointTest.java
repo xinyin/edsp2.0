@@ -60,10 +60,13 @@ class ApiDeletionEndpointTest {
     void dataSourceSettingsCanUpdateTheSharedEndpointAndTimeout() throws Exception {
         mvc.perform(put("/api/data-sources/7/settings")
                         .contentType("application/json")
-                        .content("{\"endpoint\":\"https://provider.example.com/open\",\"defaultTimeoutMs\":5000}"))
+                        .content("{\"providerId\":3,\"sourceName\":\"企业数据源\",\"protocolType\":\"HTTP_JSON\",\"endpoint\":\"https://provider.example.com/open\",\"defaultTimeoutMs\":5000}"))
                 .andExpect(status().isOk());
         verify(service).saveDataSourceSettings(eq(7L), argThat(request ->
-                request.endpoint().equals("https://provider.example.com/open")
+                request.providerId() == 3L
+                        && request.sourceName().equals("企业数据源")
+                        && request.protocolType().equals("HTTP_JSON")
+                        && request.endpoint().equals("https://provider.example.com/open")
                         && request.defaultTimeoutMs() == 5000));
     }
 

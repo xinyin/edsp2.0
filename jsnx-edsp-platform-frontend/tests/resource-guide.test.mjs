@@ -135,10 +135,14 @@ test('登录页使用纯色背景和居中卡片，不再渲染左右分栏品�
   assert.match(styles, /\.login-form-panel\s*\{[^}]*width:\s*min\(420px,\s*100%\)/s)
 })
 
-test('数据源基础地址提供独立修改入口并保存到数据源设置接口', () => {
-  assert.match(appText, />数据源设置<\/el-button>/)
+test('已接入数据源可修改归属、名称、协议和连接配置', () => {
+  assert.match(appText, />编辑数据源<\/el-button>/)
   assert.match(appText, /数据源基础地址[\s\S]*@click="openSourceSettingsEditor">修改<\/el-button>/)
+  assert.match(appText, /sourceSettingsForm\.providerId[\s\S]*sourceSettingsForm\.sourceName[\s\S]*sourceSettingsForm\.sourceCode[\s\S]*disabled/)
+  assert.match(appText, /sourceSettingsForm\.protocolType[\s\S]*HTTP_JSON[\s\S]*SOAP[\s\S]*LOCAL_SQL/)
   assert.match(appText, /api\.saveDataSourceSettings\(selectedSource\.value\.id/)
+  assert.match(appText, /providerId: sourceSettingsForm\.value\.providerId[\s\S]*sourceName: sourceSettingsForm\.value\.sourceName\.trim\(\)[\s\S]*protocolType: sourceSettingsForm\.value\.protocolType/)
+  assert.match(appText, /activeMenu==='resource' && selectedSource[\s\S]*openSourceSettingsEditor[\s\S]*新增资源 API/)
 })
 
 test('只有用户主动配置字段转换时才创建第一条映射，删除最后一条后恢复透传', () => {

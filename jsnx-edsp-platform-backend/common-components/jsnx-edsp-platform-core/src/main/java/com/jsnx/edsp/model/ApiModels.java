@@ -171,7 +171,8 @@ public final class ApiModels {
             @NotBlank String applicationName, @NotBlank String runtimeUrl) {}
 
     public record SaveDataSourceSettingsRequest(
-            @NotBlank String endpoint, Integer defaultTimeoutMs) {}
+            @NotNull Long providerId, @NotBlank String sourceName,
+            @NotBlank String protocolType, String endpoint, Integer defaultTimeoutMs) {}
 
     public record CreateResourceApiRequest(
             long dataSourceId, @NotBlank String resourceApiCode, @NotBlank String resourceApiName,

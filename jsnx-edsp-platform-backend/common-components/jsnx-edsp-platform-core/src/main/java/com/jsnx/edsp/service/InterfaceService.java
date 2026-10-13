@@ -389,16 +389,21 @@ public class InterfaceService {
 
     @Transactional
     public DataSourceSummary saveDataSourceSettings(long dataSourceId, SaveDataSourceSettingsRequest request) {
-        List<String> protocols = jdbc.queryForList(
-                "SELECT protocol_type FROM data_source WHERE id=?", String.class, dataSourceId);
-        if (protocols.isEmpty()) throw new IllegalArgumentException("数据源不存在：" + dataSourceId);
-        String endpoint = normalizeDataSourceEndpoint(request.endpoint(), protocols.get(0));
+        Integer sourceCount = jdbc.queryForObject("SELECT COUNT(*) FROM data_source WHERE id=?", Integer.class, dataSourceId);
+        if (sourceCount == null || sourceCount == 0) throw new IllegalArgumentException("数据源不存在：" + dataSourceId);
+        Integer providerCount = jdbc.queryForObject("SELECT COUNT(*) FROM data_provider WHERE id=?", Integer.class, request.providerId());
+        if (providerCount == null || providerCount == 0) throw new IllegalArgumentException("资源提供商不存在：" + request.providerId());
+        String protocolType = request.protocolType().trim().toUpperCase(Locale.ROOT);
+        if (!Set.of("HTTP_JSON", "SOAP", "LOCAL_SQL").contains(protocolType)) {
+            throw new IllegalArgumentException("不支持的协议类型：" + request.protocolType());
+        }
+        String endpoint = normalizeDataSourceEndpoint(request.endpoint(), protocolType);
         int defaultTimeoutMs = validTimeout(request.defaultTimeoutMs(), 3000);
         jdbc.update("""
                 UPDATE data_source
-                SET endpoint_url=?,default_timeout_ms=?,config_version=config_version+1
+                SET provider_id=?,source_name=?,protocol_type=?,endpoint_url=?,default_timeout_ms=?,config_version=config_version+1
                 WHERE id=?
-                """, endpoint, defaultTimeoutMs, dataSourceId);
+                """, request.providerId(), request.sourceName().trim(), protocolType, endpoint, defaultTimeoutMs, dataSourceId);
         jdbc.update("""
                 UPDATE resource_api SET verified_at=NULL
                 WHERE data_source_id=? AND config_scope='INHERIT'
@@ -2526,10 +2531,10 @@ public class InterfaceService {
 
     private String normalizeDataSourceEndpoint(String value, String protocolType) {
         String endpoint = trimTrailingSlash(value);
+        if ("LOCAL_SQL".equalsIgnoreCase(protocolType)) return endpoint;
         if (endpoint == null || endpoint.isBlank()) {
             throw new IllegalArgumentException("数据源基础地址不能为空");
         }
-        if ("LOCAL_SQL".equalsIgnoreCase(protocolType)) return endpoint;
         try {
             URI uri = URI.create(endpoint);
             if (!Set.of("http", "https").contains(uri.getScheme()) || uri.getHost() == null

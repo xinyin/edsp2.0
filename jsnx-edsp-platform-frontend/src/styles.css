@@ -589,6 +589,8 @@ button, input, textarea { font-family: inherit; }
 .empty-editor .el-icon { width: 44px; height: 44px; margin-bottom: 13px; color: #8fa4b7; }
 .empty-editor strong { color: #344054; font-size: 15px; }
 .empty-editor span { margin: 7px 0 18px; font-size: 11px; }
+.empty-editor-actions { display: flex; align-items: center; gap: 8px; }
+.empty-editor-actions .el-button + .el-button { margin-left: 0; }
 .split-panels { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(280px, .55fr); gap: 16px; margin-bottom: 16px; }
 .auth-summary-panel { min-height: 280px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 28px; color: #fff; background: #214b68; }
 .auth-summary-panel > svg { width: 34px; margin-bottom: 18px; color: #72c3b2; }

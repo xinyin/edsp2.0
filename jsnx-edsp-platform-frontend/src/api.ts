@@ -64,7 +64,7 @@ export const api = {
   createDataSource: (body: Record<string, unknown>) => request<DataSourceSummary>('/api/data-sources', { method: 'POST', body: JSON.stringify(body) }),
   saveDataSourceRuntime: (id: number, body: { applicationName: string; runtimeUrl: string }) =>
     request<DataSourceSummary>(`/api/data-sources/${id}/runtime`, { method: 'PUT', body: JSON.stringify(body) }),
-  saveDataSourceSettings: (id: number, body: { endpoint: string; defaultTimeoutMs: number }) =>
+  saveDataSourceSettings: (id: number, body: { providerId: number; sourceName: string; protocolType: string; endpoint: string; defaultTimeoutMs: number }) =>
     request<DataSourceSummary>(`/api/data-sources/${id}/settings`, { method: 'PUT', body: JSON.stringify(body) }),
   resourceApis: (sourceId?: number) => request<ResourceApiSummary[]>(sourceId ? `/api/resource-apis?dataSourceId=${sourceId}` : '/api/resource-apis'),
   createResourceApi: (body: Record<string, unknown>) => request<ResourceApiSummary>('/api/resource-apis', { method: 'POST', body: JSON.stringify(body) }),
