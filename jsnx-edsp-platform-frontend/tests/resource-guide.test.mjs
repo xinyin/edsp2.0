@@ -462,6 +462,11 @@ test('全平台使用统一的淡色导航区、白色工作区和收敛字号�
   assert.match(consoleThemeText, /\.page-heading h1,[\s\S]*?\.compact-page-heading h1 \{ font-size: 18px; \}/)
   assert.match(consoleThemeText, /\.billing-metrics \.amount \{ color: var\(--text-primary\); background: #fff; \}/)
 })
+test('折叠侧边栏的展开按钮作为内嵌控制条而非悬浮卡片', () => {
+  assert.match(consoleThemeText, /\.sidebar\.collapsed \.sidebar-collapse-button \{[^}]*width: 68px;[^}]*height: 36px;[^}]*background: var\(--nav\);[^}]*box-shadow: none;/)
+  assert.match(consoleThemeText, /\.sidebar\.collapsed \.sidebar-collapse-button:hover \{ color: var\(--brand-dark\); background: var\(--nav-hover\); \}/)
+  assert.match(consoleThemeText, /\.sidebar\.collapsed \.side-menu \{ padding-top: 42px; \}/)
+})
 test('已下线接口提供恢复最近线上版本入口并保留更高版本草稿', () => {
   assert.match(apiText, /interfaces\/\$\{id\}\/online/)
   assert.match(appText, /status==='OFFLINE'.*恢复线上 V\{\{ releaseDetail\.summary\.publishedVersion \}\}/s)
