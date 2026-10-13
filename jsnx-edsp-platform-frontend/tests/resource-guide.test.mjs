@@ -444,6 +444,13 @@ test('状态标签文字继承语义前景色且调用链标题样式不污染�
   assert.match(stylesText, /\.persisted-node-detail header>div:first-child>span/)
   assert.doesNotMatch(stylesText, /\.persisted-node-detail header span[,\{]/)
 })
+test('标题栏说明文字样式不覆盖主按钮文字和图标', () => {
+  assert.match(consoleThemeText, /\.el-button > span, \.el-button \.el-icon \{ color: inherit; \}/)
+  assert.match(consoleThemeText, /\.panel-heading > div > span, \.monitor-panel > header small/)
+  assert.doesNotMatch(consoleThemeText, /\.panel-heading span, \.monitor-panel > header small/)
+  assert.match(stylesText, /\.section-toolbar > div > span, \.test-toolbar > div > span/)
+  assert.match(stylesText, /\.panel-heading > div > span \{ color: var\(--muted\);/)
+})
 test('已下线接口提供恢复最近线上版本入口并保留更高版本草稿', () => {
   assert.match(apiText, /interfaces\/\$\{id\}\/online/)
   assert.match(appText, /status==='OFFLINE'.*恢复线上 V\{\{ releaseDetail\.summary\.publishedVersion \}\}/s)

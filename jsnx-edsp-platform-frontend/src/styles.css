@@ -160,7 +160,7 @@ button, input, textarea { font-family: inherit; }
 .mapping-sample-head small { margin-top: 3px; color: var(--muted); font-size: 9px; }
 .mapping-sample-panel .el-textarea__inner { border: 0; border-radius: 0; box-shadow: none; resize: vertical; font: 11px/1.6 Menlo, Monaco, monospace; }
 .section-toolbar > div, .test-toolbar > div { display: flex; flex-direction: column; gap: 4px; }
-.section-toolbar span, .test-toolbar span { color: var(--muted); font-size: 11px; }
+.section-toolbar > div > span, .test-toolbar > div > span { color: var(--muted); font-size: 11px; }
 .mapping-table .el-input__wrapper, .mapping-table .el-select__wrapper { box-shadow: none; padding-left: 2px; padding-right: 2px; background: transparent; }
 .map-arrow { color: #7a8797; font-size: 18px; }
 .mapping-summary { min-height: 68px; display: flex; align-items: center; margin-bottom: 12px; border: 1px solid #d9e1e8; background: #f8fafc; }
@@ -578,7 +578,7 @@ button, input, textarea { font-family: inherit; }
 .panel-heading { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--border); }
 .panel-heading > div { display: flex; flex-direction: column; gap: 4px; }
 .panel-heading strong { font-size: 14px; }
-.panel-heading span { color: var(--muted); font-size: 10px; }
+.panel-heading > div > span { color: var(--muted); font-size: 10px; }
 .health-row, .usage-mini { min-height: 60px; display: flex; align-items: center; gap: 11px; margin: 0 16px; border-bottom: 1px solid #edf0f3; }
 .health-row:last-child, .usage-mini:last-child { border-bottom: 0; }
 .health-row > i { width: 8px; height: 8px; border-radius: 50%; background: #2e9b76; }

@@ -94,6 +94,7 @@ body { background: var(--canvas); }
 .heading-actions { display: flex; flex-wrap: wrap; gap: 7px; }
 .heading-actions .el-button + .el-button, .panel-heading-actions .el-button + .el-button { margin-left: 0; }
 .el-button { min-height: 31px; padding: 7px 13px; border-radius: 3px; font-weight: 500; box-shadow: none; }
+.el-button > span, .el-button .el-icon { color: inherit; }
 .el-button--primary:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled) { color: #fff; background: var(--brand); border-color: var(--brand); }
 .el-button--primary:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled):hover { background: var(--brand-dark); border-color: var(--brand-dark); }
 .el-button.is-text, .el-button.is-link { min-height: 26px; padding: 4px 7px; }
@@ -121,7 +122,7 @@ body { background: var(--canvas); }
 .plain-panel, .cockpit-panel, .monitor-panel, .monitor-alert-workspace, .resource-workbench { border: 1px solid var(--border); border-radius: 5px; background: #fff; box-shadow: 0 1px 3px rgba(36,68,99,.045); }
 .panel-heading, .cockpit-panel > header, .monitor-panel > header { min-height: 52px; padding: 12px 16px; }
 .panel-heading strong, .cockpit-panel > header strong, .monitor-panel > header strong { font-size: 13px; font-weight: 600; }
-.panel-heading span, .monitor-panel > header small { color: var(--muted); font-size: 11px; }
+.panel-heading > div > span, .monitor-panel > header small { color: var(--muted); font-size: 11px; }
 .decorative-eyebrow { display: none !important; }
 
 /* API development workbench */
