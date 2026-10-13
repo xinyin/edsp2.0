@@ -7,6 +7,8 @@
     <artifactId>jsnx-edsp-data-admin</artifactId>
     <name>EDSP Configuration Demo</name>
     <dependencies>
+        <!-- Compile generated scaffold sources in tests without coupling Admin runtime to the SDK. -->
+        <dependency><groupId>com.jsnx.edsp</groupId><artifactId>jsnx-edsp-client-sdk</artifactId><version>${project.version}</version><scope>test</scope></dependency>
         <dependency><groupId>com.jsnx.edsp</groupId><artifactId>jsnx-edsp-platform-core</artifactId><version>${project.version}</version></dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

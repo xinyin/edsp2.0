@@ -40,6 +40,16 @@ export interface DataSourceSummary {
   interfaceCount: number
 }
 
+export interface ProvisionStep { status: string; message: string }
+export interface DataApplicationProvisionSettings { enabled: boolean; outputRoot: string; group: string; namespace: string }
+export interface DataApplicationProvisionResult {
+  dataSource: DataSourceSummary
+  routeSave: ProvisionStep
+  generation: ProvisionStep & { outputDirectory?: string; packageName?: string; generatedFiles: string[] }
+  nacos: ProvisionStep & { dataId: string; group: string; namespace: string }
+  routeRefresh: ProvisionStep
+}
+
 export interface InterfaceSummary {
   id: number
   dataSourceId: number

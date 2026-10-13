@@ -17,7 +17,7 @@ import type {
   DataSourceSummary, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult,
   MonitorAlert, MonitorPoint, MonitorSummary, ProviderAccount, ProviderSummary, ReleaseApproval, TestResult,
   ResourceApiDetail, ResourceApiSummary, UsageRecord, ValidationResult, VendorApiDefinition, VendorDataSourceDefinition,
-  SecurityAlgorithmDescriptor, SecurityPolicy
+  DataApplicationProvisionResult, DataApplicationProvisionSettings, SecurityAlgorithmDescriptor, SecurityPolicy
 } from './types'
 
 const loggedIn = ref(false)
@@ -174,6 +174,8 @@ const sourceSettingsSaving = ref(false)
 const sourceSettingsError = ref('')
 const sourceRuntimeDialog = ref(false)
 const sourceRuntimeSaving = ref(false)
+const sourceRuntimeResult = ref<DataApplicationProvisionResult | null>(null)
+const provisionSettings = ref<DataApplicationProvisionSettings | null>(null)
 const sourceStep = ref(0)
 const sourceSaving = ref(false)
 const sourceError = ref('')
@@ -1263,13 +1265,27 @@ async function createSource() {
   } finally { sourceSaving.value = false }
 }
 
-function openSourceRuntimeEditor() {
+async function openSourceRuntimeEditor() {
   if (!selectedSource.value) return
+  sourceRuntimeResult.value = null
   sourceRuntimeForm.value = {
     applicationName: selectedSource.value.applicationName,
     runtimeUrl: selectedSource.value.runtimeUrl ?? ''
   }
   sourceRuntimeDialog.value = true
+  try { provisionSettings.value = await api.dataApplicationProvisionSettings() }
+  catch { provisionSettings.value = null }
+}
+
+function provisionStatusLabel(status: string) {
+  return ({ SUCCESS: '已完成', REUSED: '已复用', REQUESTED: '已触发', FAILED: '失败', SKIPPED: '已跳过' } as Record<string, string>)[status] ?? status
+}
+
+async function copyGeneratedPath() {
+  const path = sourceRuntimeResult.value?.generation.outputDirectory
+  if (!path) return
+  try { await navigator.clipboard.writeText(path); ElMessage.success('生成目录已复制') }
+  catch { ElMessage.warning('浏览器不允许复制，请手动复制目录') }
 }
 
 function openSourceSettingsEditor() {
@@ -1330,14 +1346,17 @@ async function saveSourceRuntime() {
   }
   sourceRuntimeSaving.value = true
   try {
-    const updated = await api.saveDataSourceRuntime(selectedSource.value.id, {
+    const result = await api.saveDataSourceRuntime(selectedSource.value.id, {
       applicationName: sourceRuntimeForm.value.applicationName.trim(),
       runtimeUrl: sourceRuntimeForm.value.runtimeUrl.trim()
     })
+    const updated = result.dataSource
     const index = sources.value.findIndex(item => item.id === updated.id)
     if (index >= 0) sources.value[index] = updated
-    sourceRuntimeDialog.value = false
-    ElMessage.success('数据源应用运行路由已更新，Gateway 路由表将立即刷新')
+    sourceRuntimeResult.value = result
+    if (result.generation.status === 'FAILED' || result.nacos.status === 'FAILED') {
+      ElMessage.warning('路由已保存，工程生成或 Nacos 同步存在失败，请查看处理结果')
+    } else ElMessage.success('路由、Java 工程和 Nacos 配置处理完成')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '运行路由保存失败')
   } finally { sourceRuntimeSaving.value = false }
@@ -2735,7 +2754,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
 
   <el-dialog v-model="sourceDialog" title="接入数据源" width="680px" class="source-wizard" :close-on-click-modal="false" :close-on-press-escape="!sourceSaving" :show-close="!sourceSaving" destroy-on-close><el-steps :active="sourceStep" finish-status="success" simple><el-step title="基本信息"/><el-step title="连接配置"/></el-steps><el-alert v-if="sourceError" :title="sourceError" type="error" :closable="false" show-icon/><div class="wizard-body" v-if="sourceStep===0"><el-form label-position="top"><div class="form-grid"><el-form-item label="资源提供商" required><el-select v-model="sourceForm.providerId"><el-option v-for="item in providers" :key="item.id" :label="item.providerName" :value="item.id"/></el-select></el-form-item><el-form-item label="数据源名称" required><el-input v-model="sourceForm.sourceName" placeholder="例如：企业工商信息" maxlength="100"/></el-form-item><el-form-item label="数据源编码" required><el-input v-model="sourceForm.sourceCode" placeholder="例如：ENTERPRISE_INFO" maxlength="64"/></el-form-item><el-form-item label="协议类型"><el-select v-model="sourceForm.protocolType"><el-option label="HTTP JSON" value="HTTP_JSON"/><el-option label="WebService" value="SOAP"/><el-option label="本地数据集" value="LOCAL_SQL"/></el-select></el-form-item></div></el-form></div><div class="wizard-body" v-else><el-form label-position="top"><el-form-item label="资源提供商基础地址"><el-input v-model="sourceForm.endpoint" placeholder="https://provider.example.com"/><small class="form-hint">接口默认复用该基础地址；特殊接口可以单独覆盖</small></el-form-item><el-form-item label="数据源默认超时"><el-input-number v-model="sourceForm.defaultTimeoutMs" :min="100" :max="120000" :step="500"/><small class="form-hint">该数据源下新接口默认继承此值</small></el-form-item><details class="advanced-settings"><summary>处理应用路由 <span>可稍后配置，上线前必填</span></summary><div class="form-grid"><el-form-item label="处理应用标识"><el-input v-model="sourceForm.applicationName" :placeholder="`默认 jsnx-edsp-data-source-${sourceForm.sourceCode.toLowerCase().replace(/_/g,'-')}`"/></el-form-item><el-form-item label="运行地址 / 行内 VIP"><el-input v-model="sourceForm.runtimeUrl" placeholder="http://127.0.0.1:8185"/></el-form-item></div><small class="form-hint">允许接入阶段暂不填写；平台服务上线前必须完成配置。生产环境填写该数据源应用的行内 VIP，不填写单实例地址。</small></details><p class="quiet-note">创建后配置具体接口及报文，通过“接入验证”发起真实调用。</p></el-form></div><template #footer><el-button :disabled="sourceSaving" @click="sourceDialog=false">取消</el-button><el-button :disabled="sourceSaving" v-if="sourceStep>0" @click="sourceStep--">上一步</el-button><el-button v-if="sourceStep<1" type="primary" @click="advanceSourceWizard">下一步</el-button><el-button v-else type="primary" :loading="sourceSaving" @click="createSource">创建并配置接口</el-button></template></el-dialog>
   <el-dialog v-model="sourceSettingsDialog" title="编辑数据源" width="680px" :close-on-click-modal="false"><el-alert v-if="sourceSettingsError" :title="sourceSettingsError" type="error" :closable="false" show-icon/><el-form label-position="top" style="margin-top:18px"><div class="form-grid"><el-form-item label="资源提供商" required><el-select v-model="sourceSettingsForm.providerId" filterable><el-option v-for="item in providers" :key="item.id" :label="item.providerName" :value="item.id"/></el-select></el-form-item><el-form-item label="数据源名称" required><el-input v-model="sourceSettingsForm.sourceName" maxlength="100"/></el-form-item><el-form-item label="数据源编码"><el-input v-model="sourceSettingsForm.sourceCode" disabled/><small class="form-hint">编码是数据应用和路由的稳定标识，创建后不允许修改。</small></el-form-item><el-form-item label="协议类型" required><el-select v-model="sourceSettingsForm.protocolType"><el-option label="HTTP JSON" value="HTTP_JSON"/><el-option label="WebService" value="SOAP"/><el-option label="本地数据集" value="LOCAL_SQL"/></el-select></el-form-item></div><el-form-item v-if="sourceSettingsForm.protocolType!=='LOCAL_SQL'" label="数据源基础地址" required><el-input v-model="sourceSettingsForm.endpoint" placeholder="https://provider.example.com"/><small class="form-hint">该数据源下选择“继承数据源”的接口会复用此地址。</small></el-form-item><el-form-item label="默认请求超时"><el-input-number v-model="sourceSettingsForm.defaultTimeoutMs" :min="100" :max="120000" :step="500" controls-position="right"/><span class="form-unit">毫秒（ms）</span></el-form-item><el-alert title="修改影响" description="目录归属和草稿配置立即生效；继承配置的接口需要重新联调。已发布服务保持原发布快照，重新发布后才切换。" type="info" :closable="false" show-icon/></el-form><template #footer><el-button :disabled="sourceSettingsSaving" @click="sourceSettingsDialog=false">取消</el-button><el-button type="primary" :loading="sourceSettingsSaving" @click="saveSourceSettings">保存修改</el-button></template></el-dialog>
-  <el-dialog v-model="sourceRuntimeDialog" title="数据处理应用路由" width="580px"><el-alert title="Gateway 根据 API 编码从发布路由表选择该处理应用；生产环境请填写行内 VIP。修改后无需重启 Gateway。" type="info" :closable="false"/><el-form label-position="top" style="margin-top:18px"><el-form-item label="处理应用标识" required><el-input v-model="sourceRuntimeForm.applicationName" placeholder="jsnx-edsp-data-source-example"/></el-form-item><el-form-item label="运行地址 / 行内 VIP" required><el-input v-model="sourceRuntimeForm.runtimeUrl" placeholder="http://data-app-vip.internal:8180"/></el-form-item></el-form><template #footer><el-button @click="sourceRuntimeDialog=false">取消</el-button><el-button type="primary" :loading="sourceRuntimeSaving" @click="saveSourceRuntime">保存并刷新路由</el-button></template></el-dialog>
+  <el-dialog v-model="sourceRuntimeDialog" title="数据处理应用路由" width="680px" class="runtime-provision-dialog" :close-on-click-modal="!sourceRuntimeSaving"><el-alert title="保存后将生成独立 Java 工程、初始化 Nacos 配置，并触发 Gateway 路由刷新；生成工程仍须纳入 Git、测试、打包和发布。" type="info" :closable="false"/><el-form label-position="top" style="margin-top:18px"><el-form-item label="处理应用标识" required><el-input v-model="sourceRuntimeForm.applicationName" placeholder="jsnx-edsp-data-source-example"/><small class="form-hint">作为模块名、Nacos Data ID 和 Spring 应用名，保存后不建议变更。</small></el-form-item><el-form-item label="运行地址 / 行内 VIP" required><el-input v-model="sourceRuntimeForm.runtimeUrl" placeholder="http://data-app-vip.internal:8180"/></el-form-item></el-form><div class="provision-destination"><span>服务器生成目录</span><code>{{ provisionSettings?.outputRoot || '由 Admin 服务端配置决定' }}</code><small>页面不能指定任意目录；已有生成工程不会被覆盖。</small></div><section v-if="sourceRuntimeResult" class="provision-result"><header><strong>处理结果</strong><span>路由已保存，可根据各步骤状态继续处理</span></header><div class="provision-step"><i :class="sourceRuntimeResult.routeSave.status.toLowerCase()"></i><div><strong>路由持久化</strong><small>{{ sourceRuntimeResult.routeSave.message }}</small></div><b>{{ provisionStatusLabel(sourceRuntimeResult.routeSave.status) }}</b></div><div class="provision-step"><i :class="sourceRuntimeResult.generation.status.toLowerCase()"></i><div><strong>Java 工程</strong><small>{{ sourceRuntimeResult.generation.message }}</small><code v-if="sourceRuntimeResult.generation.outputDirectory">{{ sourceRuntimeResult.generation.outputDirectory }}</code></div><b>{{ provisionStatusLabel(sourceRuntimeResult.generation.status) }}</b></div><div class="provision-step"><i :class="sourceRuntimeResult.nacos.status.toLowerCase()"></i><div><strong>Nacos 配置</strong><small>{{ sourceRuntimeResult.nacos.dataId }} · {{ sourceRuntimeResult.nacos.group }}</small><small>{{ sourceRuntimeResult.nacos.message }}</small></div><b>{{ provisionStatusLabel(sourceRuntimeResult.nacos.status) }}</b></div><div class="provision-step"><i :class="sourceRuntimeResult.routeRefresh.status.toLowerCase()"></i><div><strong>Gateway 路由</strong><small>{{ sourceRuntimeResult.routeRefresh.message }}</small></div><b>{{ provisionStatusLabel(sourceRuntimeResult.routeRefresh.status) }}</b></div></section><template #footer><el-button v-if="sourceRuntimeResult?.generation.outputDirectory" @click="copyGeneratedPath">复制生成目录</el-button><el-button @click="sourceRuntimeDialog=false">{{ sourceRuntimeResult ? '关闭' : '取消' }}</el-button><el-button type="primary" :loading="sourceRuntimeSaving" @click="saveSourceRuntime">{{ sourceRuntimeResult ? '重新执行' : '保存、生成并同步' }}</el-button></template></el-dialog>
   <el-dialog v-model="apiDialog" title="新增资源 API" width="660px">
     <el-form label-position="top"><div class="form-grid"><el-form-item label="所属数据源"><el-select v-model="apiForm.dataSourceId"><el-option v-for="item in sources" :key="item.id" :label="`${item.sourceName} · 默认 ${item.defaultTimeoutMs ?? 3000}ms`" :value="item.id"/></el-select></el-form-item><el-form-item label="上游 HTTP 方法"><el-select v-model="apiForm.httpMethod"><el-option label="POST" value="POST"/><el-option label="GET" value="GET"/></el-select></el-form-item><el-form-item label="资源 API 名称" required><el-input v-model="apiForm.interfaceName"/></el-form-item><el-form-item label="资源 API 编码" required><el-input v-model="apiForm.interfaceCode"/><small class="form-hint">用于唯一标识资源提供商的原始接口</small></el-form-item></div><section class="api-policy-section"><header><strong>上游连接策略</strong><span>资源 API 只描述供应商原始契约，不在此定义平台服务路径</span></header><el-segmented v-model="apiForm.configScope" :options="[{label:'继承数据源',value:'INHERIT'},{label:'单接口覆盖',value:'OVERRIDE'}]"/><div class="source-default-facts"><span>基础地址<b>{{ selectedApiSource?.endpointUrl || '未配置' }}</b></span><span>默认超时<b>{{ selectedApiSource?.defaultTimeoutMs ?? 3000 }} ms</b></span><span>服务封装<b>保存后单独创建</b></span></div><el-form-item v-if="apiForm.configScope==='INHERIT'" label="供应商接口相对路径" required><el-input v-model="apiForm.upstreamPath" placeholder="/vendor/api/query"/></el-form-item><el-form-item v-else label="接口独立完整地址" required><el-input v-model="apiForm.upstreamUrl" placeholder="https://provider.example.com/vendor/api/query"/></el-form-item><div class="timeout-policy"><div class="timeout-policy-choice"><label>超时策略</label><div class="timeout-choice-group" role="radiogroup" aria-label="超时策略"><button type="button" role="radio" :aria-checked="apiForm.timeoutMode==='INHERIT'" :class="{selected:apiForm.timeoutMode==='INHERIT'}" @click="apiForm.timeoutMode='INHERIT'"><span class="timeout-choice-radio"/><span><strong>继承数据源默认</strong><small>使用当前数据源的 {{ selectedApiSource?.defaultTimeoutMs ?? 3000 }} ms</small></span></button><button type="button" role="radio" :aria-checked="apiForm.timeoutMode==='OVERRIDE'" :class="{selected:apiForm.timeoutMode==='OVERRIDE'}" @click="apiForm.timeoutMode='OVERRIDE'"><span class="timeout-choice-radio"/><span><strong>当前接口覆盖</strong><small>仅修改此资源 API</small></span></button></div></div><div class="timeout-policy-value"><label>接口超时（毫秒）</label><el-input-number v-model="apiForm.timeoutMs" :disabled="apiForm.timeoutMode==='INHERIT'" :min="100" :max="120000" :step="500"/><small>{{ apiForm.timeoutMode==='INHERIT' ? '当前生效值：' + (selectedApiSource?.defaultTimeoutMs ?? 3000) + ' ms' : '设置后仅对此接口生效' }}</small></div></div></section></el-form>
     <template #footer><el-button @click="apiDialog=false">取消</el-button><el-button type="primary" :loading="apiCreating" @click="createInterface">创建资源草稿</el-button></template>

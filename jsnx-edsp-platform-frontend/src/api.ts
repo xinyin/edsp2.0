@@ -1,5 +1,5 @@
 import * as mock from './mock'
-import type { AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary, DataSourceSummary, EsbDiagnosticResult, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult, MonitorAlert, MonitorPoint, MonitorSummary, ProviderAccount, ProviderSummary, ReleaseApproval, ResourceApiDetail, ResourceApiSummary, SecurityAlgorithmDescriptor, SecurityPolicy, TestResult, UsageRecord, ValidationResult, VendorDataSourceDefinition } from './types'
+import type { AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary, DataApplicationProvisionResult, DataApplicationProvisionSettings, DataSourceSummary, EsbDiagnosticResult, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult, MonitorAlert, MonitorPoint, MonitorSummary, ProviderAccount, ProviderSummary, ReleaseApproval, ResourceApiDetail, ResourceApiSummary, SecurityAlgorithmDescriptor, SecurityPolicy, TestResult, UsageRecord, ValidationResult, VendorDataSourceDefinition } from './types'
 
 const demoMode = import.meta.env.VITE_DEMO_MODE === 'mock'
 export const isDemoMode = () => demoMode
@@ -62,8 +62,9 @@ export const api = {
   updateProviderAccount: (id: number, body: Omit<ProviderAccount, 'id'|'providerId'|'providerName'>) => request<ProviderAccount>(`/api/provider-accounts/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   dataSources: () => request<DataSourceSummary[]>('/api/data-sources', undefined, () => mock.dataSources),
   createDataSource: (body: Record<string, unknown>) => request<DataSourceSummary>('/api/data-sources', { method: 'POST', body: JSON.stringify(body) }),
+  dataApplicationProvisionSettings: () => request<DataApplicationProvisionSettings>('/api/data-application-provision/settings'),
   saveDataSourceRuntime: (id: number, body: { applicationName: string; runtimeUrl: string }) =>
-    request<DataSourceSummary>(`/api/data-sources/${id}/runtime`, { method: 'PUT', body: JSON.stringify(body) }),
+    request<DataApplicationProvisionResult>(`/api/data-sources/${id}/runtime`, { method: 'PUT', body: JSON.stringify(body) }, undefined, 60_000),
   saveDataSourceSettings: (id: number, body: { providerId: number; sourceName: string; protocolType: string; endpoint: string; defaultTimeoutMs: number }) =>
     request<DataSourceSummary>(`/api/data-sources/${id}/settings`, { method: 'PUT', body: JSON.stringify(body) }),
   resourceApis: (sourceId?: number) => request<ResourceApiSummary[]>(sourceId ? `/api/resource-apis?dataSourceId=${sourceId}` : '/api/resource-apis'),

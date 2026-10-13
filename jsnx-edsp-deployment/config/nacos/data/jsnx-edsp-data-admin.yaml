@@ -39,6 +39,9 @@ logging:
   level:
     com.jsnx.edsp: INFO
 edsp:
+  code-generation:
+    enabled: "${EDSP_CODE_GENERATION_ENABLED:true}"
+    output-root: "${EDSP_CODE_GENERATION_ROOT:/data/edsp/generated-applications}"
   security:
     keys:
       enterprise-encryption: "${EDSP_ENTERPRISE_ENCRYPTION_KEY:}"

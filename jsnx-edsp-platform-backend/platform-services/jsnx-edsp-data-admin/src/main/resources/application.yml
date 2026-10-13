@@ -1,3 +1,7 @@
+edsp:
+  code-generation:
+    enabled: ${EDSP_CODE_GENERATION_ENABLED:true}
+    output-root: ${EDSP_CODE_GENERATION_ROOT:/data/edsp/generated-applications}
 spring:
   application:
     name: jsnx-edsp-data-admin

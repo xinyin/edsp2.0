@@ -27,6 +27,7 @@ coverage/
 logs/
 var/logs/
 var/run/
+jsnx-edsp-deployment/var/generated-applications/
 jsnx-edsp-deployment/bin/[0-9]*
 
 # Local configuration and secrets

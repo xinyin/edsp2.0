@@ -68,12 +68,6 @@ public class ApiController {
         return service.createDataSource(request);
     }
 
-    @PutMapping("/data-sources/{id}/runtime")
-    public DataSourceSummary saveDataSourceRuntime(@PathVariable long id,
-                                                    @Valid @RequestBody SaveDataSourceRuntimeRequest request) {
-        return service.saveDataSourceRuntime(id, request);
-    }
-
     @PutMapping("/data-sources/{id}/settings")
     public DataSourceSummary saveDataSourceSettings(@PathVariable long id,
                                                      @Valid @RequestBody SaveDataSourceSettingsRequest request) {

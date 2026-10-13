@@ -85,7 +85,7 @@ publish_config() {
       return 0
     fi
     if [[ "$CHECK_ONLY" == "1" ]]; then
-      echo "[present]   $data_id（Nacos 内容由控制台维护，未覆盖）"
+      echo "[present]   ${data_id}（Nacos 内容由控制台维护，未覆盖）"
       return 0
     fi
     if [[ "$FORCE" != "1" ]]; then
@@ -97,7 +97,7 @@ publish_config() {
     read_status=$?
     [[ "$read_status" == "1" ]] || return 2
     [[ "$CHECK_ONLY" != "1" ]] || {
-      echo "[missing]   $data_id（请先执行同步脚本）" >&2
+      echo "[missing]   ${data_id}（请先执行同步脚本）" >&2
       return 2
     }
     echo "[create]    $data_id"
