@@ -551,7 +551,7 @@ public class InterfaceService {
                 LEFT JOIN api_interface ai ON ai.data_source_id=ds.id AND ai.status <> 'DELETED'
                 GROUP BY ds.id, p.provider_name ORDER BY ds.id
                 """, (rs, rowNum) -> new DataSourceSummary(
-                rs.getLong("id"), rs.getString("provider_name"), rs.getString("source_code"),
+                rs.getLong("id"), rs.getLong("provider_id"), rs.getString("provider_name"), rs.getString("source_code"),
                 rs.getString("source_name"), rs.getString("application_name"), rs.getString("runtime_url"), rs.getString("protocol_type"),
                 rs.getString("endpoint_url"), rs.getInt("default_timeout_ms"), rs.getString("environment"),
                 rs.getString("status"), rs.getInt("instance_count"),

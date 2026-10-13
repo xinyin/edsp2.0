@@ -15,12 +15,25 @@
 .resource-tree-tools button:disabled { opacity: .45; cursor: default; }
 .resource-search-hint, .resource-tree-footer { color: #65778a; font-size: 11px; line-height: 1.7; }
 .resource-tree-footer { padding: 12px 4px 0; margin-top: 14px; border-top: 1px solid #e0e7ef; }
+.resource-provider-group { border-bottom: 1px solid #e2e8ef; padding: 2px 0 7px; }
+.resource-provider-group:last-child { border-bottom: 0; }
+.resource-provider-heading { display: flex; align-items: center; min-width: 0; }
+.resource-provider-head { min-width: 0; flex: 1; min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 5px 6px 2px; border: 0; border-radius: 5px; background: transparent; color: #334b61; text-align: left; cursor: pointer; }
+.resource-provider-head:hover { background: #edf3f8; }
+.resource-provider-head:disabled { cursor: default; }
+.resource-provider-head > span { min-width: 0; }
+.resource-provider-head strong, .resource-provider-head small { display: block; overflow-wrap: anywhere; line-height: 1.45; }
+.resource-provider-head strong { font-size: 12px; font-weight: 650; }
+.resource-provider-head small { margin-top: 2px; color: #7b8996; font: 9px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.resource-provider-head em { flex: 0 0 auto; color: #788895; font-size: 10px; font-style: normal; white-space: nowrap; }
+.resource-provider-sources { margin-left: 11px; padding-left: 8px; border-left: 1px solid #d8e2ea; }
 .resource-source-heading { display: flex; align-items: center; padding-left: 3px; }
 .resource-workbench .resource-source-heading .resource-source-head { flex: 1; min-width: 0; padding-left: 3px; }
 .source-expand-toggle { flex: 0 0 24px; width: 24px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: #637d95; cursor: pointer; }
 .source-expand-toggle svg { width: 13px; height: 13px; transition: transform .16s; }
 .source-expand-toggle.expanded svg { transform: rotate(90deg); }
 .source-expand-toggle:disabled { cursor: default; }
+.provider-expand-toggle { color: #4e687d; }
 .resource-workbench .resource-source-head strong, .resource-workbench .resource-source-head small, .resource-workbench .resource-api-item strong, .resource-workbench .resource-api-item small { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.65; }
 .resource-workbench .resource-tree-panel .panel-title { margin-bottom: 12px; }
 .resource-workbench .resource-source-head { min-height: 66px; }

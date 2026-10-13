@@ -14,7 +14,7 @@ public final class ApiModels {
     private ApiModels() {}
 
     public record DataSourceSummary(
-            long id, String providerName, String sourceCode, String sourceName,
+            long id, long providerId, String providerName, String sourceCode, String sourceName,
             String applicationName, String runtimeUrl, String protocolType, String endpointUrl, int defaultTimeoutMs, String environment,
             String status, int instanceCount, int configVersion, int interfaceCount) {}
 

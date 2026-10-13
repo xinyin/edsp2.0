@@ -24,6 +24,7 @@ export interface VendorDataSourceDefinition { id: number; sourceCode: string; so
 
 export interface DataSourceSummary {
   id: number
+  providerId: number
   providerName: string
   sourceCode: string
   sourceName: string

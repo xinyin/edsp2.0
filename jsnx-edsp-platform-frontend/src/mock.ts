@@ -10,10 +10,10 @@ export const dashboard: DashboardSummary = {
 }
 
 export const dataSources: DataSourceSummary[] = [
-  { id: 1, providerName: '企信资源提供商', sourceCode: 'ENTERPRISE', sourceName: '企业工商数据源', applicationName: 'jsnx-edsp-data-enterprise', protocolType: 'HTTP_JSON', environment: 'TEST', status: 'ACTIVE', instanceCount: 2, configVersion: 3, interfaceCount: 5 },
-  { id: 2, providerName: '企信资源提供商', sourceCode: 'CREDIT', sourceName: '征信报告数据源', applicationName: 'jsnx-edsp-data-credit', protocolType: 'HTTP_JSON', environment: 'TEST', status: 'ACTIVE', instanceCount: 2, configVersion: 2, interfaceCount: 3 },
-  { id: 3, providerName: '司法资源提供商', sourceCode: 'JUDICIAL', sourceName: '司法涉诉数据源', applicationName: 'jsnx-edsp-data-source-judicial', protocolType: 'HTTP_JSON', environment: 'TEST', status: 'ACTIVE', instanceCount: 2, configVersion: 4, interfaceCount: 3 },
-  { id: 4, providerName: '行内数据平台', sourceCode: 'LOCAL_DATASET', sourceName: '本地数据集服务', applicationName: 'jsnx-edsp-data-source-local', protocolType: 'LOCAL_SQL', environment: 'TEST', status: 'TRIAL', instanceCount: 2, configVersion: 1, interfaceCount: 1 }
+  { id: 1, providerId: 1, providerName: '企信资源提供商', sourceCode: 'ENTERPRISE', sourceName: '企业工商数据源', applicationName: 'jsnx-edsp-data-enterprise', protocolType: 'HTTP_JSON', environment: 'TEST', status: 'ACTIVE', instanceCount: 2, configVersion: 3, interfaceCount: 5 },
+  { id: 2, providerId: 1, providerName: '企信资源提供商', sourceCode: 'CREDIT', sourceName: '征信报告数据源', applicationName: 'jsnx-edsp-data-credit', protocolType: 'HTTP_JSON', environment: 'TEST', status: 'ACTIVE', instanceCount: 2, configVersion: 2, interfaceCount: 3 },
+  { id: 3, providerId: 2, providerName: '司法资源提供商', sourceCode: 'JUDICIAL', sourceName: '司法涉诉数据源', applicationName: 'jsnx-edsp-data-source-judicial', protocolType: 'HTTP_JSON', environment: 'TEST', status: 'ACTIVE', instanceCount: 2, configVersion: 4, interfaceCount: 3 },
+  { id: 4, providerId: 3, providerName: '行内数据平台', sourceCode: 'LOCAL_DATASET', sourceName: '本地数据集服务', applicationName: 'jsnx-edsp-data-source-local', protocolType: 'LOCAL_SQL', environment: 'TEST', status: 'TRIAL', instanceCount: 2, configVersion: 1, interfaceCount: 1 }
 ]
 
 export const interfaces: InterfaceSummary[] = [

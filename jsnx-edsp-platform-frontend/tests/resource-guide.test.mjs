@@ -41,11 +41,12 @@ function harness(overrides = {}, confirm = async () => true) {
       resourceValidationStatus: async () => ({ upstreamVerified: false }), ...overrides },
       { get: (target, name) => target[name] ?? (() => { throw new Error('Unexpected API call: ' + String(name)) }) })
   })
-  const state = vm.runInNewContext('(() => { ' + appJS + ' return { navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, activeMenu, activeTab, detail, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, sourceExpansion, isSourceExpanded, sourceInterfaces, filteredSources, setAllSourcesExpanded, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, currentPreReleaseVerified, currentE2EVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, bringVendorApiToPlatform, vendorImportingKey, apiForm, apiDialog, mappingDirection, mappingIsPassThrough, mappingModeLabel, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
+  const state = vm.runInNewContext('(() => { ' + appJS + ' return { navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, activeMenu, activeTab, detail, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, providerExpansion, sourceExpansion, isProviderExpanded, isSourceExpanded, sourceInterfaces, filteredProviderGroups, filteredSources, setAllSourcesExpanded, locateSelectedApi, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, currentPreReleaseVerified, currentE2EVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, bringVendorApiToPlatform, vendorImportingKey, apiForm, apiDialog, mappingDirection, mappingIsPassThrough, mappingModeLabel, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
   state.selectedSourceId.value = 1
   state.activeMenu.value = 'resource'
   state.selectedInterfaceId.value = 11
-  state.sources.value = [{ id: 1, sourceName: '企业工商数据源', sourceCode: 'ENTERPRISE', endpointUrl: 'http://localhost', defaultTimeoutMs: 5000 }]
+  state.providers.value = [{ id: 10, providerCode: 'QX', providerName: '企信资源提供商', status: 'ACTIVE' }]
+  state.sources.value = [{ id: 1, providerId: 10, providerName: '企信资源提供商', sourceName: '企业工商数据源', sourceCode: 'ENTERPRISE', endpointUrl: 'http://localhost', defaultTimeoutMs: 5000 }]
   state.detail.value = { summary: { id: 11, dataSourceId: 1, interfaceCode: 'ENTERPRISE_QUERY', currentVersion: 2, publishedVersion: 1, status: 'DRAFT', upstreamUrl: 'http://localhost/query', servicePath: '/api/query' }, mappings: [mapping('REQUEST'), mapping('RESPONSE')], responseCodes: codes, vendorCodePath: 'result.code', requestExample: { name: '测试企业' }, upstreamRequestExample: { name: '测试企业' }, upstreamResponseExample: { name: '测试企业' }, standardResponseExample: { name: '测试企业' } }
   state.connectionForm.value = { configScope: 'INHERIT', upstreamPath: '/query', upstreamUrl: 'http://localhost/query', timeoutMode: 'INHERIT', timeoutMs: 5000 }
   state.savedConnectionBaseline.value = JSON.stringify(state.connectionForm.value)
@@ -305,12 +306,39 @@ test('草稿链路测试为可选项，没有测试凭证也能进入发布', as
 })
 test('搜索自动展开所有匹配项，清除搜索后恢复折叠偏好', () => {
   const s = harness(); s.setAllSourcesExpanded(false)
+  assert.equal(s.isProviderExpanded(10), false)
   assert.equal(s.isSourceExpanded(1), false)
   s.sourceSearch.value = '企业'
+  assert.equal(s.isProviderExpanded(10), true)
   assert.equal(s.isSourceExpanded(1), true)
   assert.equal(s.filteredSources.value.length, 1)
   s.sourceSearch.value = ''
+  assert.equal(s.isProviderExpanded(10), false)
   assert.equal(s.isSourceExpanded(1), false)
+})
+test('目录按资源提供商、数据源、API 三级稳定分组', () => {
+  const s = harness()
+  s.activeMenu.value = 'service-development'
+  s.providers.value.push({ id: 20, providerCode: 'SF', providerName: '司法资源提供商', status: 'ACTIVE' })
+  s.sources.value.push(
+    { id: 2, providerId: 10, providerName: '企信资源提供商', sourceName: '企业风险数据源', sourceCode: 'RISK' },
+    { id: 3, providerId: 20, providerName: '司法资源提供商', sourceName: '司法涉诉数据源', sourceCode: 'JUDICIAL' }
+  )
+  s.allInterfaces.value = [
+    { id: 11, dataSourceId: 1, interfaceName: '企业查询', interfaceCode: 'ENT_QUERY', servicePath: '/enterprise' },
+    { id: 12, dataSourceId: 2, interfaceName: '风险查询', interfaceCode: 'RISK_QUERY', servicePath: '/risk' },
+    { id: 13, dataSourceId: 3, interfaceName: '涉诉查询', interfaceCode: 'CASE_QUERY', servicePath: '/case' }
+  ]
+  assert.equal(s.filteredProviderGroups.value.length, 2)
+  assert.deepEqual(Array.from(s.filteredProviderGroups.value[0].sources, item => item.id), [1, 2])
+  assert.deepEqual(Array.from(s.sourceInterfaces(2), item => item.id), [12])
+  s.sourceSearch.value = 'QX'
+  assert.equal(s.filteredProviderGroups.value.length, 1)
+  assert.deepEqual(Array.from(s.filteredProviderGroups.value[0].sources, item => item.id), [1, 2])
+  assert.deepEqual(Array.from(s.sourceInterfaces(2), item => item.id), [12])
+  s.sourceSearch.value = 'CASE_QUERY'
+  assert.deepEqual(Array.from(s.filteredProviderGroups.value[0].sources, item => item.id), [3])
+  assert.deepEqual(Array.from(s.sourceInterfaces(3), item => item.id), [13])
 })
 test('加载已有接口保留独立超时；折叠状态不改变配置', async () => {
   let loaded

@@ -118,6 +118,7 @@ const serviceDevelopmentStage = ref<ServiceDevelopmentStage>('UPSTREAM')
 // available as a separate, explicitly named direction.
 const mappingDirection = ref<'REQUEST' | 'RESPONSE'>('RESPONSE')
 const sourceSearch = ref('')
+const providerExpansion = ref<Record<number, boolean>>({})
 const sourceExpansion = ref<Record<number, boolean>>({})
 const timeoutExpanded = ref(false)
 const guideBusy = ref(false)
@@ -438,34 +439,63 @@ function adaptResourceDetail(item: ResourceApiDetail): InterfaceDetail {
 }
 const workspaceInterfaceRows = computed(() => activeMenu.value === 'resource'
   ? allResourceApis.value.map(resourceApiProjection) : allInterfaces.value)
-const filteredSources = computed(() => {
+const availableSources = computed(() => sources.value.filter(source => activeMenu.value !== 'service-development'
+  || workspaceInterfaceRows.value.some(apiItem => apiItem.dataSourceId === source.id)))
+type ProviderSourceGroup = { providerId: number; providerName: string; providerCode: string; sources: DataSourceSummary[] }
+function resolvedProviderId(source: DataSourceSummary) {
+  return providers.value.find(item => item.id === source.providerId)?.id
+    ?? providers.value.find(item => item.providerName === source.providerName)?.id
+    ?? source.providerId
+    ?? -source.id
+}
+const filteredProviderGroups = computed<ProviderSourceGroup[]>(() => {
   const keyword = sourceSearch.value.trim().toLowerCase()
-  const availableSources = sources.value.filter(source => activeMenu.value !== 'service-development'
-    || workspaceInterfaceRows.value.some(apiItem => apiItem.dataSourceId === source.id))
-  return keyword ? availableSources.filter(item => {
-    const sourceMatched = `${item.sourceName}${item.sourceCode}${item.providerName}`.toLowerCase().includes(keyword)
-    const apiMatched = workspaceInterfaceRows.value.some(apiItem => apiItem.dataSourceId === item.id
+  const grouped = new Map<number, ProviderSourceGroup>()
+  availableSources.value.forEach(source => {
+    const provider = providers.value.find(item => item.id === source.providerId)
+      ?? providers.value.find(item => item.providerName === source.providerName)
+    const providerId = resolvedProviderId(source)
+    const providerName = provider?.providerName ?? source.providerName ?? '未关联资源提供商'
+    const providerCode = provider?.providerCode ?? ''
+    const providerMatched = `${providerName}${providerCode}`.toLowerCase().includes(keyword)
+    const sourceMatched = `${source.sourceName}${source.sourceCode}`.toLowerCase().includes(keyword)
+    const apiMatched = workspaceInterfaceRows.value.some(apiItem => apiItem.dataSourceId === source.id
       && `${apiItem.interfaceName}${apiItem.interfaceCode}${apiItem.servicePath}`.toLowerCase().includes(keyword))
-    return sourceMatched || apiMatched
-  }) : availableSources
+    if (keyword && !providerMatched && !sourceMatched && !apiMatched) return
+    if (!grouped.has(providerId)) grouped.set(providerId, { providerId, providerName, providerCode, sources: [] })
+    grouped.get(providerId)!.sources.push(source)
+  })
+  return [...grouped.values()]
 })
+const filteredSources = computed(() => filteredProviderGroups.value.flatMap(group => group.sources))
 function sourceInterfaces(sourceId: number) {
   const keyword = sourceSearch.value.trim().toLowerCase()
   const rows = workspaceInterfaceRows.value.filter(item => item.dataSourceId === sourceId)
   if (!keyword) return rows
   const source = sources.value.find(item => item.id === sourceId)
-  const sourceMatched = source && `${source.sourceName}${source.sourceCode}${source.providerName}`.toLowerCase().includes(keyword)
+  const provider = providers.value.find(item => item.id === source?.providerId)
+    ?? providers.value.find(item => item.providerName === source?.providerName)
+  const sourceMatched = source && `${source.sourceName}${source.sourceCode}${source.providerName}${provider?.providerCode ?? ''}`.toLowerCase().includes(keyword)
   return sourceMatched ? rows : rows.filter(item =>
     `${item.interfaceName}${item.interfaceCode}${item.servicePath}`.toLowerCase().includes(keyword))
+}
+function isProviderExpanded(providerId: number) {
+  const selectedSourceItem = sources.value.find(item => item.id === selectedSourceId.value)
+  const selectedProviderId = selectedSourceItem ? resolvedProviderId(selectedSourceItem) : undefined
+  return !!sourceSearch.value.trim() || (providerExpansion.value[providerId] ?? providerId === selectedProviderId)
 }
 function isSourceExpanded(sourceId: number) {
   return !!sourceSearch.value.trim() || (sourceExpansion.value[sourceId] ?? sourceId === selectedSourceId.value)
 }
 function setAllSourcesExpanded(expanded: boolean) {
+  providerExpansion.value = Object.fromEntries(filteredProviderGroups.value.map(group => [group.providerId, expanded]))
   sourceExpansion.value = Object.fromEntries(sources.value.map(source => [source.id, expanded]))
 }
 async function locateSelectedApi() {
   sourceSearch.value = ''
+  const source = sources.value.find(item => item.id === selectedSourceId.value)
+  const providerId = source ? resolvedProviderId(source) : undefined
+  if (providerId != null) providerExpansion.value[providerId] = true
   sourceExpansion.value[selectedSourceId.value] = true
   await nextTick()
   document.querySelector('.resource-api-item.active')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
@@ -913,6 +943,9 @@ async function selectSource(id: number) {
   if (id === selectedSourceId.value && !sourceSwitching.value) return
   if (!await confirmDiscardUnsaved()) return
   selectedSourceId.value = id
+  const source = sources.value.find(item => item.id === id)
+  const providerId = source ? resolvedProviderId(source) : undefined
+  if (providerId != null) providerExpansion.value[providerId] = true
   sourceExpansion.value[id] = true
   await loadInterfaces()
 }
@@ -923,6 +956,9 @@ async function selectResourceInterface(sourceId: number, interfaceId: number) {
   if (!await confirmDiscardUnsaved()) return
   sourceSwitching.value = true
   selectedSourceId.value = sourceId
+  const source = sources.value.find(item => item.id === sourceId)
+  const providerId = source ? resolvedProviderId(source) : undefined
+  if (providerId != null) providerExpansion.value[providerId] = true
   sourceExpansion.value[sourceId] = true
   interfaces.value = activeMenu.value === 'resource'
     ? allResourceApis.value.filter(item => item.dataSourceId === sourceId).map(resourceApiProjection)
@@ -1218,6 +1254,8 @@ async function createSource() {
   sourceDialog.value = false
   selectedSourceId.value = created.id
   await loadAll()
+  providerExpansion.value[sourceForm.value.providerId] = true
+  sourceExpansion.value[created.id] = true
   ElMessage.success(`数据源 ${created.sourceName} 已创建，可继续开发 API`)
   openApiDialog()
   } catch (error) {
@@ -2385,27 +2423,35 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
             <aside class="resource-tree-panel" :class="{collapsed:resourceCatalogCollapsed}">
               <button v-if="resourceCatalogCollapsed" class="api-catalog-rail" type="button" title="展开 API 资源目录" aria-label="展开 API 资源目录" @click="resourceCatalogCollapsed=false"><Expand/><span>API</span></button>
               <template v-else>
-              <div class="panel-title"><div><span>{{ activeMenu==='resource' ? '资源 API 目录' : '平台服务目录' }}</span><small>{{ sources.length }} 个数据源 · {{ workspaceInterfaceRows.length }} 个{{ activeMenu==='resource' ? '资源 API' : '标准服务' }}</small></div><div class="catalog-heading-actions"><el-button v-if="activeMenu==='resource'" :icon="Plus" text aria-label="新增数据源" @click="openSourceWizard"/><el-button :icon="Fold" text title="收起 API 目录" aria-label="收起 API 目录" @click="resourceCatalogCollapsed=true"/></div></div>
-              <el-input v-model="sourceSearch" :prefix-icon="Search" placeholder="搜索数据源、API 或路径" clearable aria-label="搜索资源目录" />
+              <div class="panel-title"><div><span>{{ activeMenu==='resource' ? '资源 API 目录' : '平台服务目录' }}</span><small>{{ filteredProviderGroups.length }} 个资源提供商 · {{ sources.length }} 个数据源 · {{ workspaceInterfaceRows.length }} 个{{ activeMenu==='resource' ? '资源 API' : '标准服务' }}</small></div><div class="catalog-heading-actions"><el-button v-if="activeMenu==='resource'" :icon="Plus" text aria-label="新增数据源" @click="openSourceWizard"/><el-button :icon="Fold" text title="收起 API 目录" aria-label="收起 API 目录" @click="resourceCatalogCollapsed=true"/></div></div>
+              <el-input v-model="sourceSearch" :prefix-icon="Search" placeholder="搜索提供商、数据源、API 或路径" clearable aria-label="搜索资源目录" />
               <div class="resource-tree-tools"><button :disabled="!!sourceSearch.trim()" @click="setAllSourcesExpanded(true)">展开全部</button><button :disabled="!!sourceSearch.trim()" @click="setAllSourcesExpanded(false)">收起全部</button><button :disabled="!selectedInterfaceId" @click="locateSelectedApi">定位当前</button></div>
-              <p v-if="sourceSearch.trim()" class="resource-search-hint">找到 {{ filteredSources.length }} 个数据源，已展开匹配结果</p>
-              <div class="resource-tree" aria-label="数据源与接口目录">
-                <div v-for="source in filteredSources" :key="source.id" class="resource-source-group" :class="{active: source.id === selectedSourceId}">
-                  <div class="resource-source-heading">
-                    <button class="source-expand-toggle" :class="{expanded:isSourceExpanded(source.id)}" :aria-expanded="isSourceExpanded(source.id)" :aria-controls="'source-apis-' + source.id" :aria-label="(isSourceExpanded(source.id) ? '收起' : '展开') + source.sourceName" :disabled="!!sourceSearch.trim()" @click="sourceExpansion[source.id] = !isSourceExpanded(source.id)"><ArrowRight/></button>
-                    <button class="resource-source-head" :title="source.sourceName + ' · ' + source.sourceCode" @click="selectSource(source.id)"><span><strong>{{ source.sourceName }}</strong><small>{{ source.sourceCode }} · {{ sourceInterfaces(source.id).length }} 个{{ activeMenu==='resource' ? '资源 API' : '标准服务' }}</small></span><i class="status-dot" :class="source.status.toLowerCase()"></i></button>
+              <p v-if="sourceSearch.trim()" class="resource-search-hint">找到 {{ filteredProviderGroups.length }} 个资源提供商、{{ filteredSources.length }} 个数据源，已展开匹配结果</p>
+              <div class="resource-tree" aria-label="资源提供商、数据源与接口目录">
+                <section v-for="providerGroup in filteredProviderGroups" :key="providerGroup.providerId" class="resource-provider-group">
+                  <div class="resource-provider-heading">
+                    <button class="source-expand-toggle provider-expand-toggle" :class="{expanded:isProviderExpanded(providerGroup.providerId)}" :aria-expanded="isProviderExpanded(providerGroup.providerId)" :aria-controls="'provider-sources-' + providerGroup.providerId" :aria-label="(isProviderExpanded(providerGroup.providerId) ? '收起' : '展开') + providerGroup.providerName" :disabled="!!sourceSearch.trim()" @click="providerExpansion[providerGroup.providerId] = !isProviderExpanded(providerGroup.providerId)"><ArrowRight/></button>
+                    <button class="resource-provider-head" :title="providerGroup.providerName" :disabled="!!sourceSearch.trim()" @click="providerExpansion[providerGroup.providerId] = !isProviderExpanded(providerGroup.providerId)"><span><strong>{{ providerGroup.providerName }}</strong><small v-if="providerGroup.providerCode">{{ providerGroup.providerCode }}</small></span><em>{{ providerGroup.sources.length }} 个数据源</em></button>
                   </div>
-                  <div v-show="isSourceExpanded(source.id)" :id="'source-apis-' + source.id">
-                    <div class="resource-api-list">
-                      <button v-for="apiItem in sourceInterfaces(source.id)" :key="apiItem.id" class="resource-api-item" :class="{active: apiItem.id === selectedInterfaceId}" :aria-current="apiItem.id === selectedInterfaceId ? 'page' : undefined" :title="apiItem.interfaceName + ' · ' + apiItem.servicePath" @click="selectResourceInterface(source.id, apiItem.id)"><span class="api-method">{{ apiItem.httpMethod }}</span><span><strong>{{ apiItem.interfaceName }}</strong><small>{{ apiItem.interfaceCode }}</small></span><el-tag size="small" :type="serviceDevelopmentStage==='UPSTREAM' ? (apiItem.upstreamStatus==='READY'?'success':'info') : apiItem.status === 'OFFLINE' ? 'danger' : apiItem.status === 'PUBLISHED' ? 'success' : 'info'">{{ serviceDevelopmentStage==='UPSTREAM' ? (apiItem.upstreamStatus==='READY'?'已接入':'未保存') : apiItem.status === 'OFFLINE' ? '已下线' : apiItem.status === 'PUBLISHED' ? '已发布' : '开发中' }}</el-tag></button>
-                      <div v-if="!sourceInterfaces(source.id).length" class="resource-api-empty">{{ sourceSearch.trim() ? '没有匹配的 API' : '暂无 API，点击下方按钮创建' }}</div>
+                  <div v-show="isProviderExpanded(providerGroup.providerId)" :id="'provider-sources-' + providerGroup.providerId" class="resource-provider-sources">
+                    <div v-for="source in providerGroup.sources" :key="source.id" class="resource-source-group" :class="{active: source.id === selectedSourceId}">
+                      <div class="resource-source-heading">
+                        <button class="source-expand-toggle" :class="{expanded:isSourceExpanded(source.id)}" :aria-expanded="isSourceExpanded(source.id)" :aria-controls="'source-apis-' + source.id" :aria-label="(isSourceExpanded(source.id) ? '收起' : '展开') + source.sourceName" :disabled="!!sourceSearch.trim()" @click="sourceExpansion[source.id] = !isSourceExpanded(source.id)"><ArrowRight/></button>
+                        <button class="resource-source-head" :title="source.sourceName + ' · ' + source.sourceCode" @click="selectSource(source.id)"><span><strong>{{ source.sourceName }}</strong><small>{{ source.sourceCode }} · {{ sourceInterfaces(source.id).length }} 个{{ activeMenu==='resource' ? '资源 API' : '标准服务' }}</small></span><i class="status-dot" :class="source.status.toLowerCase()"></i></button>
+                      </div>
+                      <div v-show="isSourceExpanded(source.id)" :id="'source-apis-' + source.id">
+                        <div class="resource-api-list">
+                          <button v-for="apiItem in sourceInterfaces(source.id)" :key="apiItem.id" class="resource-api-item" :class="{active: apiItem.id === selectedInterfaceId}" :aria-current="apiItem.id === selectedInterfaceId ? 'page' : undefined" :title="apiItem.interfaceName + ' · ' + apiItem.servicePath" @click="selectResourceInterface(source.id, apiItem.id)"><span class="api-method">{{ apiItem.httpMethod }}</span><span><strong>{{ apiItem.interfaceName }}</strong><small>{{ apiItem.interfaceCode }}</small></span><el-tag size="small" :type="serviceDevelopmentStage==='UPSTREAM' ? (apiItem.upstreamStatus==='READY'?'success':'info') : apiItem.status === 'OFFLINE' ? 'danger' : apiItem.status === 'PUBLISHED' ? 'success' : 'info'">{{ serviceDevelopmentStage==='UPSTREAM' ? (apiItem.upstreamStatus==='READY'?'已接入':'未保存') : apiItem.status === 'OFFLINE' ? '已下线' : apiItem.status === 'PUBLISHED' ? '已发布' : '开发中' }}</el-tag></button>
+                          <div v-if="!sourceInterfaces(source.id).length" class="resource-api-empty">{{ sourceSearch.trim() ? '没有匹配的 API' : '暂无 API，点击下方按钮创建' }}</div>
+                        </div>
+                        <button v-if="activeMenu==='resource'" class="resource-add-api" @click="openApiDialogForSource(source.id)"><Plus/> 新增资源 API</button>
+                      </div>
                     </div>
-                    <button v-if="activeMenu==='resource'" class="resource-add-api" @click="openApiDialogForSource(source.id)"><Plus/> 新增资源 API</button>
                   </div>
-                </div>
-                <div v-if="!filteredSources.length" class="resource-tree-empty"><Files/><strong>未找到匹配资源</strong><span>尝试名称、编码或服务路径</span><el-button text @click="sourceSearch=''">清空搜索</el-button></div>
+                </section>
+                <div v-if="!filteredProviderGroups.length" class="resource-tree-empty"><Files/><strong>未找到匹配资源</strong><span>尝试提供商、数据源、API 或服务路径</span><el-button text @click="sourceSearch=''">清空搜索</el-button></div>
               </div>
-              <div class="resource-tree-footer">{{ workspaceInterfaceRows.length }} 个{{ activeMenu==='resource' ? '资源 API' : '标准服务' }} · 按数据源分组</div>
+              <div class="resource-tree-footer">{{ workspaceInterfaceRows.length }} 个{{ activeMenu==='resource' ? '资源 API' : '标准服务' }} · 按资源提供商 / 数据源分组</div>
               </template>
             </aside>
             <div class="editor-panel" v-if="detail && selectedSource" :class="{ 'is-loading': detailLoading || sourceSwitching }" aria-live="polite">
