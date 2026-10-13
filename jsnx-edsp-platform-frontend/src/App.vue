@@ -536,7 +536,7 @@ const overviewHealthySources = computed(() => sources.value.filter(item => !['IN
 const overviewTotalInstances = computed(() => sources.value.reduce((sum, item) => sum + item.instanceCount, 0))
 const overviewResultTotal = computed(() => Math.max(1, billingSummary.value.hitCalls + billingSummary.value.missCalls + billingSummary.value.errorCalls))
 const overviewResultMix = computed(() => [
-  { key: 'hit', label: '成功命中', value: billingSummary.value.hitCalls, color: '#21866f' },
+  { key: 'hit', label: '成功命中', value: billingSummary.value.hitCalls, color: '#5b927f' },
   { key: 'miss', label: '未查得', value: billingSummary.value.missCalls, color: '#d59a3c' },
   { key: 'error', label: '异常', value: billingSummary.value.errorCalls, color: '#c84d52' }
 ].map(item => ({ ...item, percentage: Math.round(item.value * 1000 / overviewResultTotal.value) / 10 })))

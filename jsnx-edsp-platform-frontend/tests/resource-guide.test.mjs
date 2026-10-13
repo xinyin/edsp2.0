@@ -435,7 +435,7 @@ test('标准服务链路测试模式使用完整内容列并在窄编辑区纵�
 })
 test('状态标签文字继承语义前景色且调用链标题样式不污染标签内容', () => {
   assert.match(consoleThemeText, /\.el-tag \.el-tag__content \{ color: inherit; \}/)
-  assert.match(consoleThemeText, /--el-color-success: #24725f;/)
+  assert.match(consoleThemeText, /--el-color-success: #3f806d;/)
   assert.match(consoleThemeText, /--el-color-warning: #94611f;/)
   assert.match(consoleThemeText, /--el-color-danger: #ac3f48;/)
   assert.match(consoleThemeText, /--el-color-info: #516679;/)

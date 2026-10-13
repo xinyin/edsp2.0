@@ -637,17 +637,17 @@ button, input, textarea { font-family: inherit; }
 .mock-endpoint-preview span { color: var(--muted); font-size: 9px; }
 .mock-endpoint-preview strong { font: 11px Menlo, Monaco, monospace; color: var(--brand-dark); }
 .form-hint { display: block; margin-top: 4px; color: #98a2b3; font-size: 9px; }
-.vendor-app-banner { min-height: 112px; display: flex; align-items: center; gap: 16px; margin-bottom: 14px; padding: 20px 24px; color: #fff; background: #224b66; border-left: 5px solid #42aa8d; }
-.vendor-brand-icon { width: 54px; height: 54px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.4); background: rgba(255,255,255,.08); }
+.vendor-app-banner { min-height: 104px; display: flex; align-items: center; gap: 16px; margin-bottom: 14px; padding: 18px 22px; color: #263746; background: #fff; border: 1px solid #d7e2ec; border-left: 4px solid #4f8fd2; box-shadow: 0 1px 3px rgba(36,68,99,.04); }
+.vendor-brand-icon { width: 50px; height: 50px; display: grid; place-items: center; border: 1px solid #c6d9ec; color: #3979b7; background: #edf5fd; }
 .vendor-brand-icon svg { width: 26px; }
 .vendor-app-banner > div:nth-child(2) { flex: 1; }
-.vendor-app-banner span, .vendor-app-banner p { color: #bcd0dc; font-size: 10px; }
-.vendor-app-banner h2 { margin: 5px 0; font-size: 18px; }
+.vendor-app-banner span, .vendor-app-banner p { color: #708295; font-size: 10px; }
+.vendor-app-banner h2 { margin: 5px 0; color: #263746; font-size: 17px; }
 .vendor-app-banner p { margin: 0; font-family: Menlo, Monaco, monospace; }
 .vendor-runtime { min-width: 155px; display: grid; grid-template-columns: 10px 1fr; gap: 3px 8px; align-items: center; }
-.vendor-runtime i { grid-row: 1 / span 2; width: 9px; height: 9px; border-radius: 50%; background: #4bd1aa; box-shadow: 0 0 0 4px rgba(75,209,170,.12); }
+.vendor-runtime i { grid-row: 1 / span 2; width: 8px; height: 8px; border-radius: 50%; background: #65a58e; box-shadow: 0 0 0 4px rgba(101,165,142,.12); }
 .vendor-runtime strong, .vendor-runtime span { display: block; }
-.vendor-runtime strong { font-size: 12px; }
+.vendor-runtime strong { color: #344b5f; font-size: 12px; }
 .vendor-runtime.offline i { background: #ef8d68; }
 .vendor-flow { min-height: 84px; display: grid; grid-template-columns: 1fr 50px 1fr 50px 1fr; align-items: center; margin-bottom: 14px; padding: 12px 24px; border: 1px solid var(--border); background: #fff; }
 .vendor-flow > div { display: grid; grid-template-columns: 30px 1fr; column-gap: 10px; }
@@ -660,7 +660,7 @@ button, input, textarea { font-family: inherit; }
 .catalog-source { overflow: hidden; }
 .catalog-source code { color: #275877; font: 10px Menlo, Monaco, monospace; }
 .api-name-cell { display: flex; align-items: center; gap: 10px; }
-.api-name-cell > span { padding: 4px 6px; color: #177156; background: #e8f4f0; border-radius: 3px; font-size: 9px; font-weight: 700; }
+.api-name-cell > span { padding: 4px 6px; color: #356b91; background: #e8f2fb; border-radius: 3px; font-size: 9px; font-weight: 700; }
 .api-name-cell strong, .api-name-cell small { display: block; }
 .api-name-cell small { margin-top: 4px; color: var(--muted); font: 9px Menlo, Monaco, monospace; }
 .vendor-offline { min-height: 280px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px dashed #c8d0d9; background: #fff; color: var(--muted); }
@@ -685,13 +685,13 @@ button, input, textarea { font-family: inherit; }
 .latency-column { min-width: 34px; height: 165px; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
 .latency-bars { height: 130px; display: flex; align-items: flex-end; gap: 3px; }
 .latency-bars i, .latency-bars b { width: 10px; min-height: 3px; background: #377da9; }
-.latency-bars b { background: #38a083; }
+.latency-bars b { background: #8ba3b8; }
 .latency-column > strong { margin-top: 4px; color: #4a586a; font-size: 8px; }
 .latency-column > span { margin-top: 4px; color: #8894a3; font-size: 8px; }
 .chart-legend { height: 38px; display: flex; align-items: center; gap: 16px; padding: 0 17px; border-top: 1px solid var(--border); font-size: 9px; }
 .chart-legend span { display: flex; align-items: center; gap: 5px; }
 .chart-legend i, .chart-legend b { width: 9px; height: 9px; background: #377da9; }
-.chart-legend b { background: #38a083; }
+.chart-legend b { background: #8ba3b8; }
 .chart-legend small { margin-left: auto; color: var(--muted); }
 .chart-empty { width: 100%; align-self: center; text-align: center; color: var(--muted); font-size: 11px; }
 .topology-chain { min-height: 145px; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 16px; }
