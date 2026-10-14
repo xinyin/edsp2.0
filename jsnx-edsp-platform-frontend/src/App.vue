@@ -113,10 +113,9 @@ const upstreamSections = [
 watch(selectedInterfaceId, () => { upstreamSection.value = 0 })
 type ServiceDevelopmentStage = 'UPSTREAM' | 'ORCHESTRATION'
 const serviceDevelopmentStage = ref<ServiceDevelopmentStage>('UPSTREAM')
-// The platform's primary product output is the standardized response returned
-// to internal consumers, so open this side first. Request adaptation remains
-// available as a separate, explicitly named direction.
-const mappingDirection = ref<'REQUEST' | 'RESPONSE'>('RESPONSE')
+// Start field standardization from the request flow, which is the first step
+// when adapting the platform contract to an upstream resource API.
+const mappingDirection = ref<'REQUEST' | 'RESPONSE'>('REQUEST')
 const sourceSearch = ref('')
 const providerExpansion = ref<Record<number, boolean>>({})
 const sourceExpansion = ref<Record<number, boolean>>({})
