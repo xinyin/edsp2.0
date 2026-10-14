@@ -17,10 +17,10 @@ class DataApplicationScaffoldGeneratorTest {
     }
     static DataSourceSummary source(String app) {
         return new DataSourceSummary(7, 3, "资源方", "CREDIT_V2", "征信\"2.0\"\n业务", app,
-                "http://127.0.0.1:8198", "HTTP_JSON", "https://vendor.example", 3000, "TEST", "TRIAL", 1, 1, 0);
+                "http://127.0.0.1:8198", 8198, "HTTP_JSON", "https://vendor.example", 3000, "TEST", "TRIAL", 1, 1, 0);
     }
     @Test void generatesCompleteJdk17ProjectAndEscapesYaml() throws Exception {
-        var result = generator().generate(source("jsnx-edsp-data-credit-v2"));
+        var result = generator().generate(source("jsnx-edsp-data-credit-v2"), 8198);
         assertThat(result.status()).isEqualTo("SUCCESS");
         Path project = Path.of(result.outputDirectory());
         assertThat(result.generatedFiles()).hasSize(8);
@@ -30,7 +30,8 @@ class DataApplicationScaffoldGeneratorTest {
         assertThat(Files.readString(project.resolve("src/main/resources/application.yml")))
                 .contains("nacos:jsnx-edsp-data-credit-v2.yaml").doesNotContain("password: nacos");
         assertThat(Files.readString(project.resolve("config/nacos/jsnx-edsp-data-credit-v2.yaml")))
-                .contains("data-source-code: \"CREDIT_V2\"", "\\n业务", "${SERVER_PORT:8199}");
+                .contains("data-source-code: \"CREDIT_V2\"", "\\n业务", "${SERVER_PORT:8198}")
+                .doesNotContain("${SERVER_PORT:8199}");
         // Compile generated sources, not just substring assertions.
         Path classes = Files.createDirectories(root.resolve("compiled"));
         java.util.List<String> args = new java.util.ArrayList<>(java.util.List.of("--release", "17", "-classpath",
@@ -41,18 +42,18 @@ class DataApplicationScaffoldGeneratorTest {
         assertThat(javax.tools.ToolProvider.getSystemJavaCompiler().run(null, null, null, args.toArray(String[]::new))).isZero();
     }
     @Test void reusesWithoutOverwritingDeveloperEdits() throws Exception {
-        var first = generator().generate(source("jsnx-edsp-data-credit-v2"));
+        var first = generator().generate(source("jsnx-edsp-data-credit-v2"), 8198);
         Path pom = Path.of(first.outputDirectory()).resolve("pom.xml");
         Files.writeString(pom, "developer changes");
-        assertThat(generator().generate(source("jsnx-edsp-data-credit-v2")).status()).isEqualTo("REUSED");
+        assertThat(generator().generate(source("jsnx-edsp-data-credit-v2"), 8205).status()).isEqualTo("REUSED");
         assertThat(Files.readString(pom)).isEqualTo("developer changes");
     }
     @Test void rejectsTraversalForeignDirectoriesAndSymlinks() throws Exception {
-        assertThatThrownBy(() -> generator().generate(source("../../escape"))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> generator().generate(source("../../escape"), 8198)).isInstanceOf(IllegalArgumentException.class);
         Path target = Files.createDirectory(root.resolve("jsnx-edsp-data-existing"));
-        assertThatThrownBy(() -> generator().generate(source(target.getFileName().toString())))
+        assertThatThrownBy(() -> generator().generate(source(target.getFileName().toString()), 8198))
                 .hasMessageContaining("禁止覆盖");
         Files.createSymbolicLink(root.resolve("jsnx-edsp-data-link"), target);
-        assertThatThrownBy(() -> generator().generate(source("jsnx-edsp-data-link"))).hasMessageContaining("安全");
+        assertThatThrownBy(() -> generator().generate(source("jsnx-edsp-data-link"), 8198)).hasMessageContaining("安全");
     }
 }

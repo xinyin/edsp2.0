@@ -4,8 +4,6 @@ import com.jsnx.edsp.model.ApiModels.SaveDataSourceRuntimeRequest;
 import com.jsnx.edsp.service.InterfaceService;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 
 @Service
@@ -42,7 +40,7 @@ public class DataApplicationProvisionService {
             nacos = new ProvisionModels.Nacos("SKIPPED", "未生成工程，未同步 Nacos", source.applicationName() + ".yaml", publisher.group(), publisher.namespace());
         } else {
             try {
-                generation = generator.generate(source);
+                generation = generator.generate(source, request.serverPort());
             } catch (Exception ex) {
                 generation = new ProvisionModels.Generation("FAILED", "工程生成失败，请检查目录权限或已有工程归属", null, null, List.of());
                 org.slf4j.LoggerFactory.getLogger(getClass()).warn("Scaffold generation failed for {}", source.applicationName(), ex);
@@ -51,8 +49,8 @@ public class DataApplicationProvisionService {
                 nacos = new ProvisionModels.Nacos("SKIPPED", "工程生成失败，未同步 Nacos", source.applicationName() + ".yaml", publisher.group(), publisher.namespace());
             } else {
                 try {
-                    String yaml = Files.readString(Path.of(generation.outputDirectory()).resolve("config/nacos/" + source.applicationName() + ".yaml"));
-                    nacos = publisher.publish(source.applicationName(), yaml);
+                    String yaml = generator.renderNacosYaml(source, request.serverPort());
+                    nacos = publisher.publishManaged(source.applicationName(), yaml, request.serverPort());
                 } catch (Exception ex) {
                     nacos = new ProvisionModels.Nacos("FAILED", "Nacos 同步失败；工程已保留，可重试保存或检查配置中心权限", source.applicationName() + ".yaml", publisher.group(), publisher.namespace());
                     org.slf4j.LoggerFactory.getLogger(getClass()).warn("Nacos publication failed for {}", source.applicationName(), ex);

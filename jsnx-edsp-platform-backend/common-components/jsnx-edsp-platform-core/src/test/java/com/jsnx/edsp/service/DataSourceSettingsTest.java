@@ -38,7 +38,7 @@ class DataSourceSettingsTest {
     void updatesEditableAccessInformationAndKeepsTheStableSourceCode() {
         DataSourceSummary updated = new DataSourceSummary(
                 7L, 3L, "新资源提供商", "STABLE_CODE", "新数据源名称",
-                "jsnx-edsp-data-source-stable", null, "SOAP", "https://provider.example.com/ws", 5000,
+                "jsnx-edsp-data-source-stable", null, 8199, "SOAP", "https://provider.example.com/ws", 5000,
                 "TEST", "ACTIVE", 1, 2, 0);
         when(jdbc.query(anyString(), org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<DataSourceSummary>>any()))
                 .thenReturn(List.of(updated));

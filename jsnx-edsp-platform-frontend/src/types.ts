@@ -30,6 +30,7 @@ export interface DataSourceSummary {
   sourceName: string
   applicationName: string
   runtimeUrl?: string
+  serverPort: number
   protocolType: string
   endpointUrl?: string
   defaultTimeoutMs?: number

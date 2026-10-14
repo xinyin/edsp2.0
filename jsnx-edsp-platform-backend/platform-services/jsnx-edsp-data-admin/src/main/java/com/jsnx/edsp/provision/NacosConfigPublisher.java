@@ -7,6 +7,11 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Autowired;
 import java.util.Properties;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 public class NacosConfigPublisher {
@@ -43,6 +48,75 @@ public class NacosConfigPublisher {
         if (!normalized(yaml).equals(normalized(stored)))
             throw new IllegalStateException("Nacos 发布后读回不一致，请检查配置中心");
         return new ProvisionModels.Nacos("SUCCESS", "Nacos 配置已发布", dataId, group(), namespace());
+    }
+
+    public synchronized ProvisionModels.Nacos publishManaged(String applicationName, String generatedYaml,
+                                                               int serverPort) throws Exception {
+        String dataId = applicationName + ".yaml";
+        String current = client().getConfig(dataId, group(), 3000);
+        if (current == null || current.isBlank()) return publish(applicationName, generatedYaml);
+        String updated = withServerPort(current, serverPort);
+        if (normalized(current).equals(normalized(updated))) {
+            return new ProvisionModels.Nacos("REUSED", "Nacos 配置已存在，应用监听端口一致", dataId, group(), namespace());
+        }
+        String md5 = HexFormat.of().formatHex(MessageDigest.getInstance("MD5")
+                .digest(current.getBytes(StandardCharsets.UTF_8)));
+        if (!client().publishConfigCas(dataId, group(), updated, md5, "yaml")) {
+            throw new IllegalStateException("Nacos 配置已被并发修改，请刷新后重试");
+        }
+        String stored = client().getConfig(dataId, group(), 3000);
+        if (!normalized(updated).equals(normalized(stored))) {
+            throw new IllegalStateException("Nacos 监听端口更新后读回不一致，请检查配置中心");
+        }
+        return new ProvisionModels.Nacos("SUCCESS", "已更新 Nacos 应用监听端口，其他配置保持不变",
+                dataId, group(), namespace());
+    }
+
+    static String withServerPort(String yaml, int serverPort) {
+        if (serverPort < 1 || serverPort > 65535) throw new IllegalArgumentException("应用监听端口无效");
+        String value = "\"${SERVER_PORT:" + serverPort + "}\"";
+        Pattern dotted = Pattern.compile("(?m)^server\\.port\\s*:\\s*[^\\r\\n]*(?:\\r?\\n|$)");
+        Matcher dottedMatcher = dotted.matcher(yaml);
+        if (dottedMatcher.find()) {
+            if (dottedMatcher.find()) throw new IllegalArgumentException("Nacos 配置存在重复 server.port，不能自动更新");
+            return dotted.matcher(yaml).replaceFirst("server.port: " + Matcher.quoteReplacement(value) + "\n");
+        }
+        String[] lines = yaml.split("(?<=\\n)", -1);
+        int serverLine = -1;
+        int portLine = -1;
+        int serverEnd = lines.length;
+        for (int i = 0; i < lines.length; i++) {
+            String plain = lines[i].replaceFirst("[\\r\\n]+$", "");
+            if (plain.matches("^server\\s*:\\s*(?:#.*)?$")) {
+                if (serverLine >= 0) throw new IllegalArgumentException("Nacos 配置存在重复 server 节点，不能自动更新");
+                serverLine = i;
+                continue;
+            }
+            if (serverLine >= 0 && i > serverLine && !plain.isBlank() && !Character.isWhitespace(plain.charAt(0))) {
+                serverEnd = i;
+                break;
+            }
+        }
+        if (serverLine < 0) return "server:\n  port: " + value + "\n" + yaml;
+        for (int i = serverLine + 1; i < serverEnd; i++) {
+            String plain = lines[i].replaceFirst("[\\r\\n]+$", "");
+            if (plain.matches("^\\s+port\\s*:.*$")) {
+                if (portLine >= 0) throw new IllegalArgumentException("Nacos server 节点存在重复 port，不能自动更新");
+                portLine = i;
+            }
+        }
+        if (portLine >= 0) {
+            String newline = lines[portLine].endsWith("\r\n") ? "\r\n" : "\n";
+            String indent = lines[portLine].substring(0, lines[portLine].indexOf('p'));
+            lines[portLine] = indent + "port: " + value + newline;
+            return String.join("", lines);
+        }
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < lines.length; i++) {
+            result.append(lines[i]);
+            if (i == serverLine) result.append("  port: ").append(value).append('\n');
+        }
+        return result.toString();
     }
     private String normalized(String content) {
         return content == null ? "" : content.replace("\r\n", "\n").stripTrailing();

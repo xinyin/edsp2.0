@@ -42,8 +42,9 @@ public class DataApplicationScaffoldGenerator {
             throw new IllegalArgumentException("处理应用标识不能使用 Java 保留字作为包名");
     }
 
-    public synchronized ProvisionModels.Generation generate(DataSourceSummary source) throws IOException {
+    public synchronized ProvisionModels.Generation generate(DataSourceSummary source, int serverPort) throws IOException {
         validate(source.applicationName(), source.sourceCode());
+        validateServerPort(serverPort);
         Path root = outputRoot();
         Files.createDirectories(root);
         root = root.toRealPath();
@@ -87,9 +88,10 @@ public class DataApplicationScaffoldGenerator {
                         .replace("TemplateAdapterController", className + "AdapterController");
                 if (original.endsWith(".yaml")) {
                     content = content.replace("data-source-code: TEMPLATE", "data-source-code: " + yamlQuote(source.sourceCode()))
-                            .replace("display-name: 独立数据应用样例", "display-name: " + yamlQuote(source.sourceName()));
+                            .replace("display-name: 独立数据应用样例", "display-name: " + yamlQuote(source.sourceName()))
+                            .replace("${SERVER_PORT:8199}", "${SERVER_PORT:" + serverPort + "}");
                 }
-                if (original.equals("README.md")) content = readme(source, packageName);
+                if (original.equals("README.md")) content = readme(source, packageName, serverPort);
                 Path file = staging.resolve(name);
                 Files.createDirectories(file.getParent());
                 Files.writeString(file, content, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW);
@@ -111,7 +113,25 @@ public class DataApplicationScaffoldGenerator {
 
     private String yamlQuote(String value) throws IOException { return mapper.writeValueAsString(value); }
 
-    private String readme(DataSourceSummary source, String packageName) {
+    public String renderNacosYaml(DataSourceSummary source, int serverPort) throws IOException {
+        validate(source.applicationName(), source.sourceCode());
+        validateServerPort(serverPort);
+        try (var stream = new ClassPathResource("scaffold/config/nacos/jsnx-edsp-data-template.yaml").getInputStream()) {
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8)
+                    .replace("jsnx-edsp-data-template", source.applicationName())
+                    .replace("data-source-code: TEMPLATE", "data-source-code: " + yamlQuote(source.sourceCode()))
+                    .replace("display-name: 独立数据应用样例", "display-name: " + yamlQuote(source.sourceName()))
+                    .replace("${SERVER_PORT:8199}", "${SERVER_PORT:" + serverPort + "}");
+        }
+    }
+
+    private void validateServerPort(int serverPort) {
+        if (serverPort < 1 || serverPort > 65535) {
+            throw new IllegalArgumentException("应用监听端口必须在 1 到 65535 之间");
+        }
+    }
+
+    private String readme(DataSourceSummary source, String packageName, int serverPort) {
         return """
                 # %s
 
@@ -122,7 +142,7 @@ public class DataApplicationScaffoldGenerator {
                 1. 将本目录复制到后端工程 `data-applications/%s`，不要复制 target 目录。
                 2. 在后端父 pom.xml 的 modules 中加入 `data-applications/%s`。
                 3. 配置 Nacos Data ID `%s.yaml`（平台已尝试同步，结果以页面为准）。
-                4. 分配 SERVER_PORT；默认 8199 仅为占位，不能让多个应用共用一个监听端口。
+                4. 当前 Nacos 默认监听端口为 `%d`；生产可通过 SERVER_PORT 环境变量覆盖。
                 5. 使用 JDK 17 执行 `mvn -pl data-applications/%s -am clean verify`。
                 6. 将代码提交 Git，按行内流程打包、部署，检查 `/actuator/health` 和 `/internal/adapter/info`。
                 7. 页面登记的运行地址是 %s；部署必须与此地址或 VIP 后端一致。
@@ -132,9 +152,9 @@ public class DataApplicationScaffoldGenerator {
                 普通接口通过平台配置、保存和发布执行计划，配置更新无需重启数据应用。
                 特殊供应商协议、SDK 或算法在本模块内扩展，保持内部 adapter 接口契约不变。
                 源码及 YAML 不保存密码和密钥，使用部署环境变量或受控密钥引用。
-                平台重复保存仅复用本生成目录，不覆盖开发人员修改过的文件；已有 Nacos 配置也不覆盖。
+                平台重复保存仅复用本生成目录，不覆盖开发人员修改过的文件；Nacos 仅同步平台管理的监听端口。
                 生成工程不代表已部署，必须完成开发、测试、打包和上线流程。
                 """.formatted(source.applicationName(), source.sourceCode(), packageName, source.applicationName(),
-                source.applicationName(), source.applicationName(), source.applicationName(), source.runtimeUrl());
+                source.applicationName(), source.applicationName(), serverPort, source.applicationName(), source.runtimeUrl());
     }
 }

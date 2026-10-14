@@ -3,6 +3,8 @@ package com.jsnx.edsp.model;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 
 import java.time.LocalDateTime;
 import java.time.LocalDate;
@@ -15,7 +17,7 @@ public final class ApiModels {
 
     public record DataSourceSummary(
             long id, long providerId, String providerName, String sourceCode, String sourceName,
-            String applicationName, String runtimeUrl, String protocolType, String endpointUrl, int defaultTimeoutMs, String environment,
+            String applicationName, String runtimeUrl, int serverPort, String protocolType, String endpointUrl, int defaultTimeoutMs, String environment,
             String status, int instanceCount, int configVersion, int interfaceCount) {}
 
     public record InterfaceSummary(
@@ -163,12 +165,13 @@ public final class ApiModels {
 
     public record CreateDataSourceRequest(
             long providerId, @NotBlank String sourceCode, @NotBlank String sourceName,
-            String applicationName, String runtimeUrl,
+            String applicationName, String runtimeUrl, @Min(1) @Max(65535) Integer serverPort,
             @NotBlank String protocolType, String endpoint, Integer defaultTimeoutMs,
             @NotBlank String environment, int instanceCount) {}
 
     public record SaveDataSourceRuntimeRequest(
-            @NotBlank String applicationName, @NotBlank String runtimeUrl) {}
+            @NotBlank String applicationName, @NotBlank String runtimeUrl,
+            @NotNull @Min(1) @Max(65535) Integer serverPort) {}
 
     public record SaveDataSourceSettingsRequest(
             @NotNull Long providerId, @NotBlank String sourceName,

@@ -161,6 +161,17 @@ public class InterfaceService {
         if (runtimeUrlColumns == null || runtimeUrlColumns == 0) {
             jdbc.execute("ALTER TABLE data_source ADD COLUMN runtime_url VARCHAR(500) NULL AFTER application_name");
         }
+        Integer serverPortColumns = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_schema=DATABASE() AND table_name='data_source' AND column_name='server_port'
+                """, Integer.class);
+        if (serverPortColumns == null || serverPortColumns == 0) {
+            jdbc.execute("ALTER TABLE data_source ADD COLUMN server_port INT NOT NULL DEFAULT 8199 AFTER runtime_url");
+            jdbc.queryForList("SELECT id,runtime_url FROM data_source WHERE runtime_url IS NOT NULL").forEach(row -> {
+                int inferredPort = inferRuntimePort(String.valueOf(row.get("runtime_url")));
+                jdbc.update("UPDATE data_source SET server_port=? WHERE id=?", inferredPort, row.get("id"));
+            });
+        }
         jdbc.update("""
                 UPDATE data_source SET runtime_url=CASE source_code
                     WHEN 'ENTERPRISE' THEN 'http://127.0.0.1:8181'
@@ -364,13 +375,15 @@ public class InterfaceService {
         String generatedName = "jsnx-edsp-data-source-" + request.sourceCode().toLowerCase(Locale.ROOT).replace('_', '-');
         String applicationName = valueOr(request.applicationName(), generatedName).trim();
         String runtimeUrl = normalizeRuntimeUrl(request.runtimeUrl(), false);
+        int serverPort = request.serverPort() == null
+                ? (runtimeUrl == null ? 8199 : inferRuntimePort(runtimeUrl)) : request.serverPort();
         int defaultTimeoutMs = validTimeout(request.defaultTimeoutMs(), 3000);
         jdbc.update("""
                 INSERT INTO data_source(provider_id,source_code,source_name,application_name,protocol_type,
-                runtime_url,endpoint_url,default_timeout_ms,environment,status,instance_count,config_version)
-                VALUES(?,?,?,?,?,?,?, ?,?,'TRIAL',?,1)
+                runtime_url,server_port,endpoint_url,default_timeout_ms,environment,status,instance_count,config_version)
+                VALUES(?,?,?,?,?,?,?,?, ?,?,'TRIAL',?,1)
                 """, request.providerId(), request.sourceCode(), request.sourceName(), applicationName,
-                request.protocolType(), runtimeUrl, trimTrailingSlash(request.endpoint()), defaultTimeoutMs,
+                request.protocolType(), runtimeUrl, serverPort, trimTrailingSlash(request.endpoint()), defaultTimeoutMs,
                 request.environment(), Math.max(1, request.instanceCount()));
         long id = Objects.requireNonNull(jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class));
         return dataSources().stream().filter(item -> item.id() == id).findFirst().orElseThrow();
@@ -380,8 +393,8 @@ public class InterfaceService {
     public DataSourceSummary saveDataSourceRuntime(long dataSourceId, SaveDataSourceRuntimeRequest request) {
         String runtimeUrl = normalizeRuntimeUrl(request.runtimeUrl(), true);
         int updated = jdbc.update("""
-                UPDATE data_source SET application_name=?,runtime_url=?,config_version=config_version+1 WHERE id=?
-                """, request.applicationName().trim(), runtimeUrl, dataSourceId);
+                UPDATE data_source SET application_name=?,runtime_url=?,server_port=?,config_version=config_version+1 WHERE id=?
+                """, request.applicationName().trim(), runtimeUrl, request.serverPort(), dataSourceId);
         if (updated == 0) throw new IllegalArgumentException("数据源不存在：" + dataSourceId);
         notifyGatewayRouteRefreshAfterCommit();
         return dataSources().stream().filter(item -> item.id() == dataSourceId).findFirst().orElseThrow();
@@ -557,7 +570,7 @@ public class InterfaceService {
                 GROUP BY ds.id, p.provider_name ORDER BY ds.id
                 """, (rs, rowNum) -> new DataSourceSummary(
                 rs.getLong("id"), rs.getLong("provider_id"), rs.getString("provider_name"), rs.getString("source_code"),
-                rs.getString("source_name"), rs.getString("application_name"), rs.getString("runtime_url"), rs.getString("protocol_type"),
+                rs.getString("source_name"), rs.getString("application_name"), rs.getString("runtime_url"), rs.getInt("server_port"), rs.getString("protocol_type"),
                 rs.getString("endpoint_url"), rs.getInt("default_timeout_ms"), rs.getString("environment"),
                 rs.getString("status"), rs.getInt("instance_count"),
                 rs.getInt("config_version"), rs.getInt("interface_count")));
@@ -2546,6 +2559,16 @@ public class InterfaceService {
             return normalized;
         } catch (IllegalArgumentException error) {
             throw new IllegalArgumentException("数据处理应用运行地址必须是合法的 HTTP/HTTPS 基础地址", error);
+        }
+    }
+
+    private int inferRuntimePort(String value) {
+        try {
+            URI uri = URI.create(value);
+            if (uri.getPort() > 0) return uri.getPort();
+            return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
+        } catch (RuntimeException ignored) {
+            return 8199;
         }
     }
 

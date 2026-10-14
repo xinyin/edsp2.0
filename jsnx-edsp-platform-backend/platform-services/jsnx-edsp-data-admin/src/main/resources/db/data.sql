@@ -11,6 +11,9 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='edsp_demo' AND table_name='data_source' AND column_name='default_timeout_ms') THEN
         ALTER TABLE data_source ADD COLUMN default_timeout_ms INT NOT NULL DEFAULT 3000 AFTER endpoint_url;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='edsp_demo' AND table_name='data_source' AND column_name='server_port') THEN
+        ALTER TABLE data_source ADD COLUMN server_port INT NOT NULL DEFAULT 8199 AFTER runtime_url;
+    END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='edsp_demo' AND table_name='api_interface' AND column_name='upstream_path') THEN
         ALTER TABLE api_interface ADD COLUMN upstream_path VARCHAR(256) AFTER upstream_url;
     END IF;
@@ -216,18 +219,18 @@ VALUES
  JSON_ARRAY('DATASOURCE_VIEW','API_VIEW','AUDIT_VIEW'),'ACTIVE',NULL)
 ON DUPLICATE KEY UPDATE display_name=VALUES(display_name),role_code=VALUES(role_code),permissions=VALUES(permissions),status=VALUES(status);
 
-INSERT INTO data_source (id, provider_id, source_code, source_name, application_name, runtime_url, protocol_type, endpoint_url, default_timeout_ms, environment, status, instance_count, config_version)
+INSERT INTO data_source (id, provider_id, source_code, source_name, application_name, runtime_url, server_port, protocol_type, endpoint_url, default_timeout_ms, environment, status, instance_count, config_version)
 VALUES
-    (1, 1, 'ENTERPRISE', '企业工商数据源', 'jsnx-edsp-data-enterprise', 'http://127.0.0.1:8181', 'HTTP_JSON', 'http://127.0.0.1:8090', 3000, 'TEST', 'ACTIVE', 2, 3),
-    (2, 1, 'CREDIT', '征信报告数据源', 'jsnx-edsp-data-credit', 'http://127.0.0.1:8182', 'HTTP_JSON', 'http://127.0.0.1:8090', 5000, 'TEST', 'ACTIVE', 2, 1)
+    (1, 1, 'ENTERPRISE', '企业工商数据源', 'jsnx-edsp-data-enterprise', 'http://127.0.0.1:8181', 8181, 'HTTP_JSON', 'http://127.0.0.1:8090', 3000, 'TEST', 'ACTIVE', 2, 3),
+    (2, 1, 'CREDIT', '征信报告数据源', 'jsnx-edsp-data-credit', 'http://127.0.0.1:8182', 8182, 'HTTP_JSON', 'http://127.0.0.1:8090', 5000, 'TEST', 'ACTIVE', 2, 1)
 ON DUPLICATE KEY UPDATE source_code = VALUES(source_code), source_name = VALUES(source_name),
-    application_name = VALUES(application_name), runtime_url=VALUES(runtime_url), endpoint_url=VALUES(endpoint_url),
+    application_name = VALUES(application_name), runtime_url=VALUES(runtime_url), server_port=VALUES(server_port), endpoint_url=VALUES(endpoint_url),
     default_timeout_ms=VALUES(default_timeout_ms);
 
-INSERT INTO data_source (id, provider_id, source_code, source_name, application_name, runtime_url, protocol_type, endpoint_url, default_timeout_ms, environment, status, instance_count, config_version)
-VALUES (3, 1, 'ANTIFRAUD', '百融反欺诈数据源', 'jsnx-edsp-data-antifraud', 'http://127.0.0.1:8183', 'HTTP_JSON', 'http://127.0.0.1:8090', 4000, 'TEST', 'ACTIVE', 2, 1)
+INSERT INTO data_source (id, provider_id, source_code, source_name, application_name, runtime_url, server_port, protocol_type, endpoint_url, default_timeout_ms, environment, status, instance_count, config_version)
+VALUES (3, 1, 'ANTIFRAUD', '百融反欺诈数据源', 'jsnx-edsp-data-antifraud', 'http://127.0.0.1:8183', 8183, 'HTTP_JSON', 'http://127.0.0.1:8090', 4000, 'TEST', 'ACTIVE', 2, 1)
 ON DUPLICATE KEY UPDATE source_name=VALUES(source_name), application_name=VALUES(application_name),
-runtime_url=VALUES(runtime_url), endpoint_url=VALUES(endpoint_url), default_timeout_ms=VALUES(default_timeout_ms);
+runtime_url=VALUES(runtime_url), server_port=VALUES(server_port), endpoint_url=VALUES(endpoint_url), default_timeout_ms=VALUES(default_timeout_ms);
 
 INSERT INTO api_interface (
     id, data_source_id, interface_code, interface_name, service_path, http_method, upstream_url,

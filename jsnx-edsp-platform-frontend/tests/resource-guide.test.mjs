@@ -580,3 +580,10 @@ test('供应商目录接入不依赖固定主键，空库时先创建提供商�
   assert.equal(s.apiDialog.value, true)
   assert.equal(s.vendorImportingKey.value, '')
 })
+
+test('数据处理应用路由区分 Gateway 地址与应用监听端口', () => {
+  assert.match(appText, /label="Gateway 路由地址"/)
+  assert.match(appText, /label="应用监听端口"/)
+  assert.match(appText, /serverPort: sourceRuntimeForm\.value\.serverPort/)
+  assert.match(appText, /已有 Nacos 配置只更新监听端口，其他配置保持不变/)
+})

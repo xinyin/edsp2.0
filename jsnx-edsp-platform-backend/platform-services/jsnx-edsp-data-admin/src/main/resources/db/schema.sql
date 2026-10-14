@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS data_source (
     source_name VARCHAR(128) NOT NULL,
     application_name VARCHAR(128) NOT NULL,
     runtime_url VARCHAR(500),
+    server_port INT NOT NULL DEFAULT 8199,
     protocol_type VARCHAR(32) NOT NULL DEFAULT 'HTTP_JSON',
     endpoint_url VARCHAR(500),
     default_timeout_ms INT NOT NULL DEFAULT 3000,

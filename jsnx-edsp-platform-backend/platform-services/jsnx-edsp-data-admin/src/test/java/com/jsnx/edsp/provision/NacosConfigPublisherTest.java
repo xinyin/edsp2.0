@@ -26,4 +26,23 @@ class NacosConfigPublisherTest {
         assertThatThrownBy(() -> publisher.publish("jsnx-edsp-data-credit", "generated")).hasMessageContaining("denied");
         verify(client, never()).publishConfigCas(any(), any(), any(), any(), any());
     }
+    @Test void updatesOnlyManagedServerPortInExistingConfig() throws Exception {
+        String current = "server:\n  port: \"${SERVER_PORT:8199}\"\nspring:\n  application:\n    name: custom\n";
+        String updated = "server:\n  port: \"${SERVER_PORT:8205}\"\nspring:\n  application:\n    name: custom\n";
+        when(client.getConfig(any(), any(), anyLong())).thenReturn(current, updated);
+        when(client.publishConfigCas(any(), any(), any(), any(), any())).thenReturn(true);
+
+        var result = publisher.publishManaged("jsnx-edsp-data-credit", "generated", 8205);
+
+        assertThat(result.status()).isEqualTo("SUCCESS");
+        verify(client).publishConfigCas(eq("jsnx-edsp-data-credit.yaml"), eq("DEFAULT_GROUP"),
+                eq(updated), matches("[0-9a-f]{32}"), eq("yaml"));
+    }
+
+    @Test void patchesDottedPortAndPreservesOtherSettings() {
+        assertThat(NacosConfigPublisher.withServerPort("server.port: 8199\nfeature: true\n", 8210))
+                .isEqualTo("server.port: \"${SERVER_PORT:8210}\"\nfeature: true\n");
+        assertThat(NacosConfigPublisher.withServerPort("feature: true\n", 8210))
+                .isEqualTo("server:\n  port: \"${SERVER_PORT:8210}\"\nfeature: true\n");
+    }
 }
