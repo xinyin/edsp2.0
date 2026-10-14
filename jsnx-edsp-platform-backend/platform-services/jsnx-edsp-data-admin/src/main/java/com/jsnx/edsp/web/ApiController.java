@@ -6,6 +6,7 @@ import com.jsnx.edsp.plan.SecurityAlgorithmRegistry;
 import com.jsnx.edsp.service.InterfaceService;
 import com.jsnx.edsp.service.PublishedPlanRegistry;
 import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -26,7 +27,16 @@ public class ApiController {
     }
 
     @PostMapping("/auth/login")
-    public LoginResult login(@Valid @RequestBody LoginRequest request) { return service.login(request); }
+    public LoginResult login(@Valid @RequestBody LoginRequest request, HttpServletRequest http) {
+        LoginResult user = service.login(request);
+        var previous = http.getSession(false);
+        if (previous != null) previous.invalidate();
+        var session = http.getSession(true);
+        session.setMaxInactiveInterval(1800);
+        String token = java.util.UUID.randomUUID().toString();
+        session.setAttribute(ChainTestToolController.SESSION_TOKEN, token);
+        return new LoginResult(token, user.displayName(), user.role(), user.institution());
+    }
 
     @GetMapping("/dashboard")
     public DashboardSummary dashboard() { return service.dashboard(); }

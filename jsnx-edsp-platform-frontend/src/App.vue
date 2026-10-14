@@ -253,15 +253,14 @@ const esbTraceNodeDefinitions = [
   { key: 'ESB_QUEUE', label: 'ESB 队列', short: 'XML QUEUE', icon: Tickets },
   { key: 'ESB_ADAPTER', label: 'ESB Adapter', short: 'PARSE', icon: Connection },
   { key: 'GATEWAY', label: '统一 Gateway', short: 'ROUTE', icon: DataBoard },
-  { key: 'DATA_APPLICATION', label: '数据源应用', short: 'ADAPTER', icon: Files },
-  { key: 'SUPPLIER', label: '上游服务', short: 'UPSTREAM', icon: OfficeBuilding },
+  ...traceNodeDefinitions.filter(node => !['DOWNSTREAM', 'GATEWAY', 'MOCK_RESPONSE'].includes(node.key)),
   { key: 'STANDARD_RESPONSE', label: 'ESB XML 响应', short: 'XML REPLY', icon: DataAnalysis }
 ]
 
 const testModes = [
   { value: 'UPSTREAM' as const, index: '01', label: '上游接口验证', path: '数据源应用 → 上游服务', description: '发送真实请求，验证连接、认证和原始响应' },
-  { value: 'PLATFORM' as const, index: '02', label: '草稿链路测试（可选）', path: '标准请求 → 转换与安全 → 数据源应用 → 上游 → 标准响应', description: '真实调用上游，辅助检查当前草稿，不影响上线' },
-  { value: 'E2E' as const, index: '03', label: '线上入口验收（可选）', path: 'XML → ESB → Gateway → 上游服务 → XML', description: '检查当前线上版本的 ESB 请求与响应、动态路由和调用方授权' }
+  { value: 'PLATFORM' as const, index: '02', label: '草稿链路测试', path: '标准请求 → 转换与安全 → 数据源应用 → 上游 → 标准响应', description: '测试当前已保存草稿，不依赖发布状态' },
+  { value: 'E2E' as const, index: '03', label: '上线链路测试', path: 'XML → ESB → Gateway → 数据源应用 → 上游 → XML', description: '通过内部测试通道测试当前草稿，不依赖发布状态和业务授权' }
 ]
 const orchestrationTestModes = computed(() => testModes.filter(mode => mode.value !== 'UPSTREAM'))
 
@@ -273,7 +272,7 @@ const activeTraceDefinitions = computed(() => (testMode.value === 'E2E' ? esbTra
 
 const activeTestMode = computed(() => testModes.find(mode => mode.value === testMode.value) ?? testModes[2])
 const testActionLabel = computed(() => testMode.value === 'UPSTREAM'
-  ? '验证上游接口' : testMode.value === 'PLATFORM' ? '执行草稿链路测试' : '执行线上入口验收')
+  ? '验证上游接口' : testMode.value === 'PLATFORM' ? '执行草稿链路测试' : '执行上线链路测试')
 
 function selectTestMode(mode: 'UPSTREAM' | 'PLATFORM' | 'E2E') {
   if (testRunning.value || guideBusy.value) return
@@ -511,7 +510,6 @@ const activeClients = computed(() => clients.value.filter(item => item.status ==
 const today = computed(() => new Date().toISOString().slice(0, 10))
 const validAuthorizations = computed(() => authorizations.value.filter(item => item.status === 'ACTIVE'
   && item.validFrom <= today.value && item.validTo >= today.value))
-const validTestAuthorizations = computed(() => validAuthorizations.value.filter(item => item.environment.toUpperCase() === 'TEST'))
 const releaseHasAuthorization = computed(() => !!releaseDetail.value
   && validAuthorizations.value.some(item => item.interfaceId === releaseDetail.value?.summary.id))
 function authorizationStatus(item: AuthorizationRecord) {
@@ -630,8 +628,6 @@ const filteredMonitorRecords = computed(() => usageRecords.value.filter(item => 
   if (monitorRecordFilter.value === 'SLOW') return item.durationMs >= monitorSummary.value.p95DurationMs
   return true
 }))
-const currentE2EVerified = computed(() => !!detail.value && lastE2ETest.value?.interfaceId === detail.value.summary.id
-  && lastE2ETest.value?.version === detail.value.summary.publishedVersion)
 const upstreamValidationFingerprint = computed(() => [
   savedConnectionBaseline.value, savedUpstreamRequestBaseline.value, savedUpstreamResponseBaseline.value
 ].join('|'))
@@ -652,7 +648,6 @@ function draftEditorMatchesSaved() {
     && (detail.value.vendorCodePath || 'result.code') === (savedVendorCodePathBaseline.value || 'result.code')
     && JSON.stringify(standardServiceForm.value) === savedStandardServiceBaseline.value
 }
-const currentPreReleaseVerified = computed(() => currentOrchestrationVerified.value)
 const apiGuideSteps = computed(() => buildResourceGuide({
   upstreamUrl: detail.value?.summary.upstreamUrl ?? '', servicePath: detail.value?.summary.servicePath ?? '',
   mappings: savedMappingsBaseline.value, responseCodes: JSON.parse(savedResponseCodesBaseline.value || '[]'),
@@ -1816,31 +1811,12 @@ async function runTest() {
         throw new Error(`联调请求缺少映射必填来源字段：${missingRequiredSources.join('、')}。请修改请求样例后重新保存草稿。`)
       }
     }
-    if (testMode.value === 'E2E') {
-      // The release workspace and the service workspace have independent caches.
-      // Refresh the summary before an E2E run so a just-published version is not
-      // mistaken for a draft after navigating between workspaces.
-      const latestDetail = await api.detail(testingInterfaceId)
-      if (testingInterfaceId !== selectedInterfaceId.value) return
-      detail.value.summary = latestDetail.summary
-      if (latestDetail.summary.publishedVersion == null
-        || ['OFFLINE', 'DELETED'].includes(latestDetail.summary.status)) {
-        throw new Error('当前接口没有可验收的线上版本。线上入口验收只测试已上线版本；草稿可按需执行“草稿链路测试”。')
-      }
-    }
-    const e2eClient = testingMode === 'E2E' ? (() => {
-      const grant = validTestAuthorizations.value.find(item => item.interfaceId === testingInterfaceId)
-      return grant ? activeClients.value.find(item => item.id === grant.clientId) : undefined
-    })() : undefined
-    if (testingMode === 'E2E' && !e2eClient) {
-      throw new Error('当前 API 没有今日生效的 TEST 授权。请在“API 访问授权”中为该 API 配置 TEST 环境，并确保有效期包含今日。')
-    }
     const traceId = `EDSP-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
     const result = testMode.value === 'E2E'
-      ? await api.esbDiagnostic(e2eClient!.clientCode, buildEsbXml(detail.value.summary.interfaceCode, traceId, e2eClient!.clientCode, requestPayload), traceId,
+      ? await api.esbDiagnostic('EDSP_TEST_TOOL', buildEsbXml(detail.value.summary.interfaceCode, traceId, 'EDSP_TEST_TOOL', requestPayload), traceId,
           { timeoutMs: requestDeadlineMs(previewTimeoutMs.value), signal: controller.signal }).then(diagnostic => ({
-            upstreamRequest: diagnostic.parsedRequest,
-            upstreamResponse: {},
+            upstreamRequest: diagnostic.upstreamRequest,
+            upstreamResponse: diagnostic.upstreamResponse,
             standardResponse: diagnostic.standardResponse,
             steps: diagnostic.nodes.map(node => ({ name: node.name, status: node.status, detail: node.detail, durationMs: node.durationMs })),
             traceNodes: diagnostic.nodes
@@ -1869,20 +1845,17 @@ async function runTest() {
     }
     if (testingMode === 'PLATFORM' && testingVersion === detail.value.summary.currentVersion
       && JSON.stringify(mappingSnapshot) === JSON.stringify(savedMappingsBaseline.value)) {
-      const proof = await api.validationStatus(testingInterfaceId)
-      lastOrchestrationValidation.value = proof.orchestrationVerified
-        ? { interfaceId: testingInterfaceId, version: testingVersion } : null
-      if (!proof.orchestrationVerified) throw new Error('当前草稿未取得有效验证凭证，请保存配置后重新验证。')
+      lastOrchestrationValidation.value = { interfaceId: testingInterfaceId, version: testingVersion }
     }
-    if (isSuccessfulE2E(result, testingMode) && detail.value.summary.publishedVersion != null) {
-      lastE2ETest.value = { interfaceId: testingInterfaceId, version: detail.value.summary.publishedVersion }
+    if (isSuccessfulE2E(result, testingMode)) {
+      lastE2ETest.value = { interfaceId: testingInterfaceId, version: testingVersion }
     }
     testSucceeded.value = true
     if (testingMode !== 'UPSTREAM') {
       try { await refreshBilling() } catch { ElMessage.warning('联调已完成，计费统计刷新失败，可稍后刷新') }
     }
     ElMessage.success(testMode.value === 'UPSTREAM' ? '上游接口验证成功'
-      : testMode.value === 'PLATFORM' ? '草稿链路测试通过' : `线上 V${detail.value.summary.publishedVersion} 入口验收成功`)
+      : testMode.value === 'PLATFORM' ? '草稿链路测试通过' : '上线链路测试通过')
     return true
   } catch (error) {
     const apiError = error && typeof error === 'object' && 'payload' in error && 'message' in error
@@ -2073,10 +2046,7 @@ async function publishConfig() {
   if (!detail.value || !hasUnpublishedChanges.value || detail.value.summary.status === 'PENDING_APPROVAL') return false
   await validateConfig()
   if (!validation.value?.valid) return false
-  const testHint = currentPreReleaseVerified.value
-    ? '当前草稿已完成可选链路测试。'
-    : '当前草稿尚未执行可选链路测试；该测试不影响上线。'
-  await ElMessageBox.confirm(`${testHint} 确认上线 ${detail.value.summary.interfaceCode} V${detail.value.summary.currentVersion}？`, '确认服务上线', { confirmButtonText: '确认上线', cancelButtonText: '返回检查', type: 'warning' })
+  await ElMessageBox.confirm(`确认上线 ${detail.value.summary.interfaceCode} V${detail.value.summary.currentVersion}？`, '确认服务上线', { confirmButtonText: '确认上线', cancelButtonText: '返回检查', type: 'warning' })
   const published = await api.directPublish(selectedInterfaceId.value, releaseNote.value)
   detail.value.summary = published
   ElMessage.success(`V${published.publishedVersion} 已上线，可配置 API 访问授权`)
@@ -2602,7 +2572,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                     <div class="security-execution-note"><span>运行方式</span><strong>标准请求 → 字段映射 → 加密 → 签名 → 上游调用</strong><small>密钥只保存引用，联调链路会展示安全节点的输入输出摘要。</small></div>
                   </div>
                 </el-tab-pane>
-                <el-tab-pane v-if="serviceDevelopmentStage==='ORCHESTRATION'" name="test" label="链路验证">
+                <el-tab-pane v-if="serviceDevelopmentStage==='ORCHESTRATION'" name="test" label="链路测试">
                   <div class="trace-workbench-head"><div><span>TRACE WORKBENCH</span><strong>接口联调与链路追踪</strong><small>{{ detail.summary.interfaceCode }} · TEST</small></div><div class="trace-run-actions"><el-button v-if="testRunning" type="danger" plain @click="cancelTest">取消测试</el-button><el-button type="primary" :icon="Promotion" :loading="testRunning" :disabled="testRunning" @click="runCurrentPrimaryAction">{{ testRunning ? `请求中 ${testElapsedSeconds}s` : testActionLabel }}</el-button></div></div>
                   <div class="test-mode-selector orchestration-modes" role="radiogroup" aria-label="标准服务验证模式">
                     <button v-for="mode in orchestrationTestModes" :key="mode.value" type="button" role="radio" :aria-checked="testMode===mode.value" :class="{active:testMode===mode.value}" @click="selectTestMode(mode.value)">
@@ -2611,7 +2581,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                   </div>
                   <div class="test-mode-context"><div><span>{{ activeTestMode.path }}</span><strong>{{ activeTestMode.label }}</strong><small>{{ activeTestMode.description }}</small></div><code>{{ testMode === 'UPSTREAM' ? detail.summary.upstreamUrl : detail.summary.servicePath }}</code></div>
                   <el-alert v-if="resourceContractChanged && testMode==='PLATFORM'" type="warning" :closable="false" show-icon title="来源资源契约已变更。如需采用新入参，请先回到请求转换，点击“同步资源契约”并核对映射。" />
-                  <div v-if="testMode==='E2E'" class="esb-contract-strip"><div><span>真实调用入口</span><strong>行内系统 → XML → 模拟 ESB 队列</strong><small>队列消费后由 service_id 解析服务路由，不再由调用方传 servicePath。</small></div><el-tag type="success" effect="plain">service_id：{{ detail.summary.interfaceCode }}</el-tag></div>
+                  <div v-if="testMode==='E2E'" class="esb-contract-strip"><div><span>独立测试入口</span><strong>行内系统 → XML → 模拟 ESB 队列</strong><small>内部测试通道使用当前已保存草稿，不要求接口已发布或已配置业务授权。</small></div><el-tag type="info" effect="plain">service_id：{{ detail.summary.interfaceCode }}</el-tag></div>
                   <div v-if="testMode==='E2E'" class="esb-contract-details">
                     <div><span>XML 必填元数据</span><strong>service_sn · service_id · requester_id</strong><small>分别标识全局流水、平台 API 和调用系统；业务字段放在 Service_Body/request。</small></div>
                     <div><span>平台处理方向</span><strong>request → 请求转换 → 上游服务</strong><small>平台内部和 Kafka 使用结构化 JSON，协议转换仅由 ESB Adapter 负责。</small></div>
@@ -2653,7 +2623,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                       <div v-if="validation" class="validation-result" :class="validation?.valid ? 'valid' : 'invalid'"><el-icon><component :is="validation?.valid ? CircleCheck : Warning"/></el-icon><div><strong>{{ validation?.valid ? '已保存草稿校验通过' : '配置校验未通过，请修正后重试' }}</strong><span v-for="item in [...(validation?.errors ?? []),...(validation?.warnings ?? [])]" :key="item">{{ item }}</span></div></div>
                       <div v-if="detail?.summary.status==='PENDING_APPROVAL'" class="api-release-followup"><strong>已提交，等待审批 · 尚未上线</strong><p>当前草稿 V{{ detail?.summary.currentVersion }} 已进入审批队列{{ publishResult ? '，审批单 ' + publishResult?.id : '' }}。请在审批中心查看处理结果；通过后再为调用系统授权。</p><el-button type="primary" @click="navigate('approvals')">前往审批中心</el-button><el-button :disabled="loading" @click="loadAll">刷新审批状态</el-button></div>
                       <div v-else-if="!hasUnpublishedChanges" class="api-release-followup"><strong>当前版本已发布</strong><p>下一步为机构 / 调用系统配置 API 授权和配额。已有授权无需重复创建；使用正式链路发起请求后，到调用日志核对执行结果。</p><el-button type="primary" @click="navigate('authorization')">前往服务授权</el-button><el-button @click="navigate('logs')">查看调用日志</el-button></div>
-                      <div v-else class="api-release-followup"><strong>草稿准备提交</strong><p>{{ currentPreReleaseVerified ? '当前草稿已完成可选链路测试，可直接上线。' : '尚未执行草稿链路测试；该测试仅用于辅助检查，不影响直接上线。' }}</p><el-button v-if="!currentPreReleaseVerified" @click="openGuideStep('test')">前往可选链路测试</el-button></div>
+                      <div v-else class="api-release-followup"><strong>草稿准备提交</strong><p>发布操作只检查接口配置是否合法；链路测试是独立工具，不构成上线条件。</p></div>
                     </div>
                   </div>
                   <section id="interface-version-history" class="version-history-panel">

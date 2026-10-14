@@ -48,8 +48,19 @@ public class MockEsbQueue {
                     Message message = requests.poll(300, TimeUnit.MILLISECONDS);
                     if (message == null) continue;
                     try {
+                        long queueWaitMs = Math.max(0, (System.nanoTime() - message.enqueuedAt()) / 1_000_000);
                         EsbForwardResult response = adapter.forward(message.servicePath(), message.appId(), message.apiKey(),
                                 message.xml(), message.traceId(), message.diagnostic());
+                        if (message.diagnostic()) {
+                            var details = new java.util.LinkedHashMap<>(response.diagnosticResponse());
+                            var nodes = new java.util.ArrayList<Object>();
+                            nodes.add(Map.of("key", "ESB_QUEUE", "name", "ESB 请求队列", "category", "PLATFORM",
+                                    "status", "SUCCESS", "detail", "请求已入队并由消费线程取出", "durationMs", queueWaitMs,
+                                    "input", Map.of("xml", message.xml()), "output", Map.of("traceId", message.traceId())));
+                            if (details.get("nodes") instanceof java.util.List<?> actual) nodes.addAll(actual);
+                            details.put("nodes", nodes);
+                            response = new EsbForwardResult(response.request(), response.standardResponse(), response.xmlResponse(), details);
+                        }
                         completed.incrementAndGet();
                         message.result().complete(response);
                     } catch (Exception error) {
@@ -72,7 +83,7 @@ public class MockEsbQueue {
                                             String traceId, String xml, boolean diagnostic) {
         String currentTrace = traceId == null || traceId.isBlank()
                 ? UUID.randomUUID().toString().replace("-", "") : traceId;
-        Message message = new Message(servicePath, appId, apiKey, currentTrace, xml, diagnostic, new CompletableFuture<>());
+        Message message = new Message(servicePath, appId, apiKey, currentTrace, xml, diagnostic, System.nanoTime(), new CompletableFuture<>());
         if (!requests.offer(message)) throw new IllegalStateException("模拟 ESB 请求队列已满");
         accepted.incrementAndGet();
         try {
@@ -106,5 +117,5 @@ public class MockEsbQueue {
     }
 
     private record Message(String servicePath, String appId, String apiKey, String traceId,
-                           String xml, boolean diagnostic, CompletableFuture<EsbForwardResult> result) {}
+                           String xml, boolean diagnostic, long enqueuedAt, CompletableFuture<EsbForwardResult> result) {}
 }

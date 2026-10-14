@@ -40,7 +40,7 @@ class InterfaceOfflineEditingTest {
         verify(jdbc).update(contains("status=CASE WHEN status='OFFLINE' THEN 'OFFLINE' ELSE 'DRAFT' END"),
                 eq("result.code"), eq(ID));
         verify(jdbc).update(
-                "DELETE FROM interface_validation_record WHERE interface_id=? AND validation_type IN ('ORCHESTRATION','PRE_RELEASE')",
+                "DELETE FROM interface_validation_record WHERE interface_id=? AND validation_type IN ('ORCHESTRATION','PRE_RELEASE','DRAFT_TEST')",
                 ID);
     }
 }

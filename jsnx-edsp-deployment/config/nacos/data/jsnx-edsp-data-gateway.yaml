@@ -29,7 +29,7 @@ spring:
       - id: edsp-admin
         uri: "${ADMIN_URI:http://127.0.0.1:8081}"
         predicates:
-        - Path=/api/auth/**,/api/dashboard,/api/providers/**,/api/data-sources/**,/api/resource-apis/**,/api/platform-services/**,/api/interfaces/**,/api/approvals/**,/api/clients/**,/api/authorizations/**,/api/billing/**,/api/usage-records,/api/security-algorithms
+        - Path=/api/auth/**,/api/test-tools/**,/api/dashboard,/api/providers/**,/api/data-sources/**,/api/resource-apis/**,/api/platform-services/**,/api/interfaces/**,/api/approvals/**,/api/clients/**,/api/authorizations/**,/api/billing/**,/api/usage-records,/api/security-algorithms
       - id: edsp-published-api-dynamic
         uri: http://127.0.0.1:9
         predicates:
@@ -47,6 +47,8 @@ spring:
         request.timeout.ms: 800
 edsp:
   admin-url: "${ADMIN_URL:http://127.0.0.1:8081}"
+  test-tool:
+    internal-key: "${EDSP_INTERNAL_TEST_KEY:demo-internal-test-key}"
   route-registry:
     refresh-ms: "${EDSP_ROUTE_REFRESH_MS:5000}"
     initial-delay-ms: "${EDSP_ROUTE_INITIAL_DELAY_MS:3000}"

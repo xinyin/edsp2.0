@@ -138,7 +138,7 @@ class PublicationValidationTest {
                 new TestRequest(REQUEST, Map.of("fake", "response"), false, List.of(), "PLATFORM"));
         assertThat(result.upstreamResponse()).isEqualTo(RESPONSE);
         verify(service).invokeThroughDataApplication(any(), eq(REQUEST), anyString());
-        verify(jdbc).update(contains("INSERT INTO interface_validation_record"), eq(SERVICE_ID), eq("PRE_RELEASE"), anyString());
+        verify(jdbc).update(contains("INSERT INTO interface_validation_record"), eq(SERVICE_ID), eq("DRAFT_TEST"), anyString());
         assertThat(result.traceNodes()).anyMatch(n -> n.key().equals("GATEWAY") && n.status().equals("SKIPPED"));
     }
 
@@ -148,7 +148,7 @@ class PublicationValidationTest {
                 .invokeThroughDataApplication(any(), anyMap(), anyString());
         TestResult result = service.test(SERVICE_ID, new TestRequest(REQUEST, null, true, List.of(), "PLATFORM"));
         assertThat(result.traceNodes()).anyMatch(n -> n.key().equals("RESPONSE_MAPPING") && n.status().equals("ERROR"));
-        verify(jdbc, never()).update(contains("INSERT INTO interface_validation_record"), eq(SERVICE_ID), eq("PRE_RELEASE"), anyString());
+        verify(jdbc, never()).update(contains("INSERT INTO interface_validation_record"), eq(SERVICE_ID), eq("DRAFT_TEST"), anyString());
     }
 
     @Test
@@ -157,7 +157,7 @@ class PublicationValidationTest {
                 .invokeThroughDataApplication(any(), anyMap(), anyString());
         assertThatThrownBy(() -> service.test(SERVICE_ID, new TestRequest(REQUEST, null, true, List.of(), "PLATFORM")))
                 .isInstanceOf(InterfaceService.TrackedCallException.class).hasMessageContaining("HTTP 400");
-        verify(jdbc, never()).update(contains("INSERT INTO interface_validation_record"), eq(SERVICE_ID), eq("PRE_RELEASE"), anyString());
+        verify(jdbc, never()).update(contains("INSERT INTO interface_validation_record"), eq(SERVICE_ID), eq("DRAFT_TEST"), anyString());
         assertThat(mockingDetails(jdbc).getInvocations()).anyMatch(invocation -> Arrays.asList(invocation.getArguments()).contains("ERROR"));
     }
 
@@ -180,8 +180,8 @@ class PublicationValidationTest {
             return RESPONSE;
         }).when(service).invokeThroughDataApplication(any(), anyMap(), anyString());
         assertThatThrownBy(() -> service.test(SERVICE_ID, new TestRequest(REQUEST, null, true, List.of(), "PLATFORM")))
-                .hasMessageContaining("验证期间草稿配置已变更");
-        verify(jdbc, never()).update(contains("INSERT INTO interface_validation_record"), eq(SERVICE_ID), eq("PRE_RELEASE"), anyString());
+                .hasMessageContaining("测试期间草稿配置已变更");
+        verify(jdbc, never()).update(contains("INSERT INTO interface_validation_record"), eq(SERVICE_ID), eq("DRAFT_TEST"), anyString());
     }
 
     @Test

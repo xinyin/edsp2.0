@@ -1,4 +1,7 @@
 edsp:
+  esb-adapter-url: ${ESB_ADAPTER_URL:http://127.0.0.1:8084}
+  test-tool:
+    internal-key: ${EDSP_INTERNAL_TEST_KEY:demo-internal-test-key}
   code-generation:
     enabled: ${EDSP_CODE_GENERATION_ENABLED:true}
     output-root: ${EDSP_CODE_GENERATION_ROOT:/data/edsp/generated-applications}

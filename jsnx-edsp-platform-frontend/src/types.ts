@@ -202,6 +202,8 @@ export interface TestResult {
 }
 
 export interface EsbDiagnosticResult {
+  upstreamRequest: Record<string, unknown>
+  upstreamResponse: Record<string, unknown>
   standardResponse: Record<string, unknown>
   apiCode: string
   servicePath: string

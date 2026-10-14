@@ -4,8 +4,8 @@ export const guideAdvice: Record<string, { objective: string; tasks: string[]; t
   overview: { objective: '先确认谁来调用、平台再调用谁。', tasks: ['核对上方的行内标准服务路径。', '填写上游相对路径，或选择单接口覆盖并填入完整地址。', '核对下方完整地址预览；超时默认继承，无特殊要求无需调整。'], tip: '保存只更新草稿，不会改变线上正在使用的接口。' },
   request: { objective: '按需定义“行内标准请求”和“行内标准响应”的转换规则。', tasks: ['字段名称和路径一致时保持为空，平台会自动按原路径一对一透传。', '仅在字段名称、路径、枚举或安全处理存在差异时，点击“配置字段转换”生成规则。', '切换“响应标准化”，需要适配供应商字段时再配置目标字段。'], tip: '空映射不是未完成，而是明确的自动透传模式；保存后即可联调和发布。' },
   codes: { objective: '让调用方无需理解不同上游服务的结果码。', tasks: ['根据上游接口文档填写原始返回码及对应的平台标准码。', '区分 HIT（命中）、MISS（无数据）、ERROR（异常）。', '确认每个结果是否参与计量、是否允许重试。'], tip: '不能把“无数据”当作“调用异常”；具体语义以上游接口文档为准。' },
-  security: { objective: '仅在上游接口要求加密或签名时配置。', tasks: ['普通透传接口保持关闭，直接继续到链路验证。', '如需安全处理，开启策略并指定字段、算法和密钥引用。', '在下一步查看安全节点，核对实际送往上游的报文。'], tip: '算法必须来自后台注册目录并经过安全评审；密钥只保存配置引用，不在页面留存明文。' },
-  test: { objective: '按需测试当前草稿的实际业务调用。', tasks: ['草稿链路测试会经独立数据源应用真实调用上游。', '可查看实际请求、上游响应及标准化结果，也可以跳过并直接进入发布。', '线上入口验收只检查当前线上版本，与草稿和上线操作相互独立。'], tip: '测试是辅助诊断能力，不生成上线门槛；修改草稿后旧测试结果仅供历史参考。' },
+  security: { objective: '仅在上游接口要求加密或签名时配置。', tasks: ['普通透传接口保持关闭，直接继续到链路测试。', '如需安全处理，开启策略并指定字段、算法和密钥引用。', '在下一步查看安全节点，核对实际送往上游的报文。'], tip: '算法必须来自后台注册目录并经过安全评审；密钥只保存配置引用，不在页面留存明文。' },
+  test: { objective: '按需测试当前草稿的实际业务调用。', tasks: ['草稿链路测试会经独立数据源应用真实调用上游。', '上线链路测试会经过模拟 ESB 和 Gateway 的内部测试通道。', '两类测试都不依赖发布状态和业务授权，也不决定能否上线。'], tip: '测试是独立诊断工具，不生成发布凭证；是否上线由开发人员根据测试结果自行决策。' },
   release: { objective: '完成必要配置校验后上线，再为调用系统授权。', tasks: ['平台自动检查配置结构是否合法。', '填写变更说明并直接上线当前草稿版本。', '上线后在 API 访问授权中配置调用系统、配额和有效期。'], tip: '首次上线为 V1；同一草稿多次保存不增加发布版本，下次发布才进入 V2。历史已发布版本号保留。' }
 }
 
@@ -34,8 +34,8 @@ export function buildResourceGuide(input: { upstreamUrl: string; servicePath: st
 }
 
 export function isSuccessfulE2E(result: TestResult, mode: string) {
-  const required = result.traceNodes.some(node => node.key === 'ESB_QUEUE')
-    ? ['ESB_QUEUE', 'ESB_ADAPTER', 'GATEWAY', 'DATA_APPLICATION', 'SUPPLIER', 'STANDARD_RESPONSE']
+  const required = result.traceNodes.some(node => node.key === 'ESB_ADAPTER')
+    ? ['ESB_ADAPTER', 'GATEWAY', 'DATA_SOURCE', 'VENDOR', 'RESPONSE_MAPPING', 'STANDARD_RESPONSE']
     : ['DOWNSTREAM', 'VENDOR', 'RESPONSE_MAPPING']
   return mode === 'E2E' && required.every(key => result.traceNodes.some(node => node.key === key && node.status === 'SUCCESS'))
     && result.traceNodes.every(node => ['SUCCESS', 'SKIPPED'].includes(node.status))

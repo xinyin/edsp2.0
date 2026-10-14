@@ -23,7 +23,7 @@ const appJS = ts.transpileModule(standalone, { compilerOptions: { target: ts.Scr
 const mapping = direction => ({ direction, sourcePath: 'name', targetPath: 'name', transformType: 'DIRECT', transformConfig: {}, defaultValue: '', required: true, sortOrder: 1 })
 const codes = [{ vendorCode: '0000', standardCode: 'EXT-SUCCESS', resultStatus: 'HIT', billable: true, retryable: false }]
 const baseGuide = { upstreamUrl: 'http://localhost/query', servicePath: '/api/query', mappings: [mapping('REQUEST'), mapping('RESPONSE')], responseCodes: codes, securityEnabled: false, status: 'DRAFT', currentVersion: 2, publishedVersion: 1, orchestrationVerified: false }
-const result = () => ({ upstreamRequest: {}, upstreamResponse: {}, standardResponse: { resultStatus: 'HIT' }, steps: [], traceNodes: ['ESB_QUEUE', 'ESB_ADAPTER', 'GATEWAY', 'DATA_APPLICATION', 'SUPPLIER', 'STANDARD_RESPONSE'].map(key => ({ key, status: 'SUCCESS' })) })
+const result = () => ({ upstreamRequest: {}, upstreamResponse: {}, standardResponse: { resultStatus: 'HIT' }, steps: [], traceNodes: ['ESB_ADAPTER', 'GATEWAY', 'DATA_SOURCE', 'VENDOR', 'RESPONSE_MAPPING', 'STANDARD_RESPONSE'].map(key => ({ key, status: 'SUCCESS' })) })
 
 function harness(overrides = {}, confirm = async () => true) {
   const messages = []
@@ -41,7 +41,7 @@ function harness(overrides = {}, confirm = async () => true) {
       resourceValidationStatus: async () => ({ upstreamVerified: false }), ...overrides },
       { get: (target, name) => target[name] ?? (() => { throw new Error('Unexpected API call: ' + String(name)) }) })
   })
-  const state = vm.runInNewContext('(() => { ' + appJS + ' return { navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, activeMenu, activeTab, detail, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, providerExpansion, sourceExpansion, isProviderExpanded, isSourceExpanded, sourceInterfaces, filteredProviderGroups, filteredSources, setAllSourcesExpanded, locateSelectedApi, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, currentPreReleaseVerified, currentE2EVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, bringVendorApiToPlatform, vendorImportingKey, apiForm, apiDialog, mappingDirection, mappingIsPassThrough, mappingModeLabel, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
+  const state = vm.runInNewContext('(() => { ' + appJS + ' return { navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, activeMenu, activeTab, detail, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, providerExpansion, sourceExpansion, isProviderExpanded, isSourceExpanded, sourceInterfaces, filteredProviderGroups, filteredSources, setAllSourcesExpanded, locateSelectedApi, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, bringVendorApiToPlatform, vendorImportingKey, apiForm, apiDialog, mappingDirection, mappingIsPassThrough, mappingModeLabel, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
   state.selectedSourceId.value = 1
   state.activeMenu.value = 'resource'
   state.selectedInterfaceId.value = 11
@@ -306,7 +306,7 @@ test('草稿链路测试为可选项，没有测试凭证也能进入发布', as
   await s.continueGuide()
   assert.equal(s.activeMenu.value, 'releases')
   assert.equal(s.activeTab.value, 'test')
-  assert.equal(s.currentPreReleaseVerified.value, false)
+  assert.equal(s.currentOrchestrationVerified.value, false)
 })
 test('搜索自动展开所有匹配项，清除搜索后恢复折叠偏好', () => {
   const s = harness(); s.setAllSourcesExpanded(false)
@@ -369,41 +369,36 @@ test('只配置请求映射时响应自动透传并允许进入下一步', async
   await s.continueGuide()
   assert.equal(s.activeTab.value, 'codes')
 })
-test('完整链路测试会记录版本，后续失败会清除已通过记录', async () => {
+test('上线链路测试记录当前草稿版本，后续失败会清除已通过记录', async () => {
   let failed = false
   let latest
   const s = harness({ detail: async () => latest, esbDiagnostic: async () => { if (failed) throw new Error('上游连接失败'); return { ...result(), apiCode: 'ENTERPRISE_QUERY', servicePath: '/api/query', traceId: 'T001', parsedRequest: {}, xmlRequest: '<edspRequest/>', nodes: result().traceNodes } } })
   latest = s.detail.value
-  s.detail.value.summary.status = 'PUBLISHED'
-  s.detail.value.summary.publishedVersion = 2
-  s.clients.value = [{ id: 7, clientCode: 'TEST_CLIENT', status: 'ACTIVE' }]
-  s.authorizations.value = [{ id: 8, clientId: 7, interfaceId: 11, environment: 'TEST', status: 'ACTIVE', validFrom: '2020-01-01', validTo: '2099-12-31' }]
+  s.detail.value.summary.status = 'DRAFT'
+  s.detail.value.summary.publishedVersion = undefined
   s.activeTab.value = 'test'; s.testMode.value = 'E2E'
   assert.equal(await s.runTest(), true)
-  assert.equal(s.currentE2EVerified.value, true)
+  assert.equal(s.lastE2ETest.value.version, 2)
   failed = true
   assert.equal(await s.runTest(), false)
-  assert.equal(s.currentE2EVerified.value, false)
+  assert.equal(s.lastE2ETest.value, null)
 })
-test('存在新草稿时仍可独立验收当前线上版本', async () => {
+test('存在新草稿时上线链路测试使用当前草稿，不使用旧线上版本', async () => {
   let latest
   const s = harness({ detail: async () => latest, esbDiagnostic: async () => ({ ...result(), apiCode: 'ENTERPRISE_QUERY', servicePath: '/api/query', traceId: 'T002', parsedRequest: {}, xmlRequest: '<edspRequest/>', nodes: result().traceNodes }) })
   s.detail.value.summary.status = 'DRAFT'
   s.detail.value.summary.currentVersion = 3
   s.detail.value.summary.publishedVersion = 2
   latest = JSON.parse(JSON.stringify(s.detail.value))
-  s.clients.value = [{ id: 7, clientCode: 'TEST_CLIENT', status: 'ACTIVE' }]
-  s.authorizations.value = [{ id: 8, clientId: 7, interfaceId: 11, environment: 'TEST', status: 'ACTIVE', validFrom: '2020-01-01', validTo: '2099-12-31' }]
   s.activeTab.value = 'test'; s.testMode.value = 'E2E'
   assert.equal(await s.runTest(), true)
-  assert.equal(s.currentE2EVerified.value, true)
-  assert.equal(s.lastE2ETest.value.version, 2)
+  assert.equal(s.lastE2ETest.value.version, 3)
 })
 test('上游测试成功不会被误判为完整链路通过', async () => {
   const s = harness({ test: async () => result() })
   s.activeTab.value = 'test'; s.testMode.value = 'UPSTREAM'
   assert.equal(await s.runTest(), true)
-  assert.equal(s.currentE2EVerified.value, false)
+  assert.equal(s.lastE2ETest.value, null)
 })
 test('可选草稿链路测试由后端记录结果，不要求已发布和授权', async () => {
   let submitted
@@ -412,23 +407,23 @@ test('可选草稿链路测试由后端记录结果，不要求已发布和授�
   s.activeTab.value = 'test'; s.testMode.value = 'UPSTREAM'
   assert.equal(await s.runTest(), true)
   assert.equal(s.currentUpstreamVerified.value, true)
-  assert.equal(s.currentPreReleaseVerified.value, false)
+  assert.equal(s.currentOrchestrationVerified.value, false)
   s.testMode.value = 'PLATFORM'
   assert.equal(await s.runTest(), true)
   assert.equal(s.currentOrchestrationVerified.value, true)
-  assert.equal(s.currentPreReleaseVerified.value, true)
+  assert.equal(s.currentOrchestrationVerified.value, true)
   assert.equal(submitted.callUpstream, true)
   assert.equal(submitted.upstreamResponse, undefined)
   s.requestText.value = '{"name":"未保存的请求"}'
-  assert.equal(s.currentPreReleaseVerified.value, false)
+  assert.equal(s.currentOrchestrationVerified.value, false)
   assert.equal(await s.runTest(), false)
 })
 
-test('响应看似成功但后端未签发凭证时不能进入发布', async () => {
+test('草稿链路测试由本次执行结果决定，不要求发布凭证', async () => {
   const s = harness({ test: async () => result() })
   s.activeTab.value = 'test'; s.testMode.value = 'PLATFORM'
-  assert.equal(await s.runTest(), false)
-  assert.equal(s.currentPreReleaseVerified.value, false)
+  assert.equal(await s.runTest(), true)
+  assert.equal(s.currentOrchestrationVerified.value, true)
 })
 
 test('同一草稿反复保存不跳版本，保存后必须重新验证', async () => {
@@ -439,7 +434,7 @@ test('同一草稿反复保存不跳版本，保存后必须重新验证', async
     s.detail.value.mappings[0].targetPath = name
     await s.continueGuide()
     assert.equal(s.detail.value.summary.currentVersion, 2)
-    assert.equal(s.currentPreReleaseVerified.value, false)
+    assert.equal(s.currentOrchestrationVerified.value, false)
   }
 })
 test('服务开发三阶段可以从上游接入切换到标准编排，发布阶段交由服务发布', async () => {

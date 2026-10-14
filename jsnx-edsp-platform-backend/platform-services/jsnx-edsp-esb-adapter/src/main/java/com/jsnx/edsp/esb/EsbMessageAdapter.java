@@ -25,6 +25,7 @@ public class EsbMessageAdapter {
     private final Duration adminTimeout;
     private final Duration gatewayTimeout;
     private final String environment;
+    private final String internalTestKey;
 
     public EsbMessageAdapter(ObjectMapper json, EsbXmlProtocol xmlProtocol,
                              WebClient.Builder builder, KafkaTemplate<String,String> kafka,
@@ -33,10 +34,12 @@ public class EsbMessageAdapter {
                              @Value("${edsp.esb.response-topic:edsp.esb.response}") String responseTopic,
                              @Value("${edsp.esb.environment:TEST}") String environment,
                              @Value("${edsp.esb.admin-timeout-ms:3000}") long adminTimeoutMs,
-                             @Value("${edsp.esb.gateway-timeout-ms:8000}") long gatewayTimeoutMs) {
+                             @Value("${edsp.esb.gateway-timeout-ms:8000}") long gatewayTimeoutMs,
+                             @Value("${edsp.test-tool.internal-key:demo-internal-test-key}") String internalTestKey) {
         this.json=json; this.xmlProtocol=xmlProtocol; this.gateway=builder.baseUrl(gatewayUri).build(); this.admin=builder.baseUrl(adminUri).build(); this.kafka=kafka; this.responseTopic=responseTopic; this.environment=environment;
         this.adminTimeout = Duration.ofMillis(Math.max(500, adminTimeoutMs));
         this.gatewayTimeout = Duration.ofMillis(Math.max(1000, gatewayTimeoutMs));
+        this.internalTestKey = internalTestKey;
     }
 
     public EsbForwardResult forward(String servicePath, String appId, String apiKey, String xmlRequest) {
@@ -52,27 +55,38 @@ public class EsbMessageAdapter {
     public EsbForwardResult forward(String servicePath, String appId, String apiKey,
                                        String xmlRequest, String traceId, boolean diagnostic) {
         try {
+            long parseStarted = System.nanoTime();
             EsbRequestEnvelope envelope = xmlProtocol.parse(xmlRequest);
             String apiCode = envelope.serviceId();
             String effectiveTraceId = envelope.serviceSn();
             Map<String, Object> request = envelope.requestBody();
+            long parseDurationMs = elapsedMs(parseStarted);
             String effectiveServicePath = servicePath;
             if (effectiveServicePath == null || effectiveServicePath.isBlank()) {
                 if (apiCode == null || apiCode.isBlank()) throw new IllegalArgumentException("ESB XML 必须包含 service_id");
                 Map<?, ?> route = admin.get().uri(uriBuilder -> uriBuilder.path("/api/internal/interfaces/resolve")
-                                .queryParam("apiCode", apiCode).build())
+                                .queryParam("apiCode", apiCode)
+                                .queryParam("includeDraft", diagnostic).build())
                         .retrieve().bodyToMono(Map.class).timeout(adminTimeout).block();
                 effectiveServicePath = route == null ? null : String.valueOf(route.get("service_path"));
                 if (effectiveServicePath == null || effectiveServicePath.isBlank()) {
                     throw new IllegalArgumentException("平台未解析到 apiCode 对应的服务路径：" + apiCode);
                 }
             }
-            Map<?,?> response=gateway.post().uri(effectiveServicePath).contentType(MediaType.APPLICATION_JSON)
+            WebClient.RequestBodySpec gatewayRequest = gateway.post().uri(effectiveServicePath)
+                    .contentType(MediaType.APPLICATION_JSON)
                     .header("X-App-Id",appId).header("X-Api-Key",apiKey)
                     .header("X-Trace-Id", effectiveTraceId)
                     .header("X-Api-Code", apiCode == null ? "" : apiCode)
                     .header("X-Environment", environment)
-                    .header("X-Entry-Channel", "ESB")
+                    .header("X-Entry-Channel", "ESB");
+            if (diagnostic) {
+                gatewayRequest = gatewayRequest
+                        .header("X-Edsp-Execution-Scope", "DRAFT_TEST")
+                        .header("X-Edsp-Internal-Test-Key", internalTestKey);
+            }
+            long gatewayStarted = System.nanoTime();
+            Map<?,?> response=gatewayRequest
                     .bodyValue(request)
                     .retrieve()
                     .onStatus(status -> status.isError(), clientResponse ->
@@ -80,8 +94,13 @@ public class EsbMessageAdapter {
                                     new EsbForwardException(clientResponse.statusCode(),
                                             downstreamErrorMessage(clientResponse.statusCode().value(), body), body)))
                     .bodyToMono(Map.class).timeout(gatewayTimeout).block();
-            Map<String, Object> standardResponse = response == null ? Map.of() : json.convertValue(response, MAP);
+            long gatewayDurationMs = elapsedMs(gatewayStarted);
+            Map<String, Object> execution = response == null ? Map.of() : json.convertValue(response, MAP);
+            Map<String, Object> standardResponse = diagnostic && execution.get("standardResponse") instanceof Map<?, ?> body
+                    ? json.convertValue(body, MAP) : execution;
+            long xmlStarted = System.nanoTime();
             String xmlResponse = xmlProtocol.success(envelope, standardResponse);
+            long xmlDurationMs = elapsedMs(xmlStarted);
             Map<String, Object> diagnosticResponse = new java.util.LinkedHashMap<>();
             diagnosticResponse.put("standardResponse", standardResponse);
             diagnosticResponse.put("xmlResponse", xmlResponse);
@@ -90,17 +109,26 @@ public class EsbMessageAdapter {
             diagnosticResponse.put("traceId", effectiveTraceId);
             diagnosticResponse.put("parsedRequest", request);
             diagnosticResponse.put("xmlRequest", xmlRequest);
+            diagnosticResponse.put("upstreamRequest", execution.getOrDefault("upstreamRequest", Map.of()));
+            diagnosticResponse.put("upstreamResponse", execution.getOrDefault("upstreamResponse", Map.of()));
             String diagnosticApiCode = apiCode == null ? "" : apiCode;
             String diagnosticServicePath = effectiveServicePath == null ? "" : effectiveServicePath;
-            diagnosticResponse.put("nodes", java.util.List.of(
-                    node("ESB_QUEUE", "ESB 请求队列", "SUCCESS", Map.of("protocol", "XML", "queued", true), Map.of("traceId", effectiveTraceId)),
-                    node("ESB_ADAPTER", "ESB Adapter", "SUCCESS", Map.of("apiCode", diagnosticApiCode, "xml", xmlRequest), Map.of("servicePath", diagnosticServicePath, "json", request)),
-                    node("GATEWAY", "统一 Gateway", "SUCCESS", Map.of("apiCode", diagnosticApiCode, "body", request), Map.of("route", diagnosticServicePath)),
-                    node("DATA_APPLICATION", "数据源应用", "SUCCESS", Map.of("apiCode", diagnosticApiCode, "body", request), Map.of("upstreamCall", true)),
-                    node("SUPPLIER", "上游供应商", "SUCCESS", request, Map.of("responseReceived", true)),
-                    node("STANDARD_RESPONSE", "ESB XML 响应", "SUCCESS", standardResponse,
-                            Map.of("contentType", MediaType.APPLICATION_XML_VALUE, "xml", xmlResponse))
-            ));
+            var nodes = new java.util.ArrayList<Map<String, Object>>();
+            nodes.add(node("ESB_ADAPTER", "ESB Adapter", "SUCCESS", parseDurationMs,
+                    Map.of("apiCode", diagnosticApiCode, "xml", xmlRequest), Map.of("servicePath", diagnosticServicePath, "json", request)));
+            nodes.add(node("GATEWAY", "统一 Gateway", "SUCCESS", gatewayDurationMs,
+                    Map.of("apiCode", diagnosticApiCode, "body", request),
+                    Map.of("route", diagnosticServicePath, "executionScope", diagnostic ? "DRAFT_TEST" : "PUBLISHED")));
+            if (diagnostic && execution.get("traceNodes") instanceof java.util.List<?> actualNodes) {
+                for (Object raw : actualNodes) {
+                    if (raw instanceof Map<?, ?> actual && !java.util.Set.of("DOWNSTREAM", "GATEWAY").contains(actual.get("key"))) {
+                        nodes.add(json.convertValue(actual, MAP));
+                    }
+                }
+            }
+            nodes.add(node("STANDARD_RESPONSE", "ESB XML 响应", "SUCCESS", xmlDurationMs, standardResponse,
+                    Map.of("contentType", MediaType.APPLICATION_XML_VALUE, "xml", xmlResponse)));
+            diagnosticResponse.put("nodes", nodes);
             return new EsbForwardResult(envelope, standardResponse, xmlResponse,
                     diagnostic ? diagnosticResponse : Map.of());
         } catch (EsbForwardException e) {
@@ -123,14 +151,16 @@ public class EsbMessageAdapter {
         return "Gateway 转发失败（HTTP " + status + "）";
     }
 
-    private Map<String, Object> node(String key, String name, String status, Object input, Object output) {
+    private long elapsedMs(long started) { return Math.max(0, (System.nanoTime() - started) / 1_000_000); }
+
+    private Map<String, Object> node(String key, String name, String status, long durationMs, Object input, Object output) {
         Map<String, Object> node = new java.util.LinkedHashMap<>();
         node.put("key", key);
         node.put("name", name);
         node.put("category", "PLATFORM");
         node.put("status", status);
         node.put("detail", "ESB 真实链路诊断节点");
-        node.put("durationMs", 1);
+        node.put("durationMs", durationMs);
         node.put("input", input == null ? Map.of() : input);
         node.put("output", output == null ? Map.of() : output);
         return node;

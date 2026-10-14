@@ -751,7 +751,7 @@ public class InterfaceService {
     }
 
     private void invalidateDraftValidation(long interfaceId) {
-        jdbc.update("DELETE FROM interface_validation_record WHERE interface_id=? AND validation_type IN ('ORCHESTRATION','PRE_RELEASE')", interfaceId);
+        jdbc.update("DELETE FROM interface_validation_record WHERE interface_id=? AND validation_type IN ('ORCHESTRATION','PRE_RELEASE','DRAFT_TEST')", interfaceId);
     }
 
     @Transactional
@@ -1085,6 +1085,18 @@ public class InterfaceService {
         return executeTest(interfaceId, request, diagnosticClientId());
     }
 
+    /** Execute the saved draft through the internal full-chain test route. */
+    public TestResult testDraftChain(String interfaceCode, Map<String, Object> request, String traceId) {
+        Map<String, Object> route = resolveInterfaceRoute(interfaceCode, true);
+        Object rawId = route.get("id");
+        if (!(rawId instanceof Number id)) {
+            throw new IllegalStateException("测试路由缺少接口标识：" + interfaceCode);
+        }
+        return executeTest(id.longValue(),
+                new TestRequest(request == null ? Map.of() : request, null, true, null, "E2E"),
+                diagnosticClientId(), traceId);
+    }
+
     private Long diagnosticClientId() {
         List<Long> clientIds = jdbc.queryForList(
                 "SELECT id FROM api_client WHERE status='ACTIVE' ORDER BY id LIMIT 1", Long.class);
@@ -1092,9 +1104,14 @@ public class InterfaceService {
     }
 
     private TestResult executeTest(long interfaceId, TestRequest request, Long clientId) {
+        return executeTest(interfaceId, request, clientId, null);
+    }
+
+    private TestResult executeTest(long interfaceId, TestRequest request, Long clientId, String suppliedTraceId) {
         long started = System.nanoTime();
         List<TraceNode> traceNodes = new ArrayList<>();
-        String traceId = UUID.randomUUID().toString().replace("-", "");
+        String traceId = suppliedTraceId == null || suppliedTraceId.isBlank()
+                ? UUID.randomUUID().toString().replace("-", "") : suppliedTraceId;
         try {
             return executeTestInternal(interfaceId, request, clientId, started, traceId, traceNodes, null);
         } catch (TrackedCallException e) {
@@ -1174,7 +1191,7 @@ public class InterfaceService {
             invalidateDraftValidation(interfaceId);
             if (!Objects.equals(request.request(), detail.requestExample())
                     || (request.mappings() != null && !Objects.equals(request.mappings(), detail.mappings()))) {
-                throw new IllegalStateException("请先保存标准请求与映射配置，再执行发布前链路验证");
+                throw new IllegalStateException("请先保存标准请求与映射配置，再执行草稿链路测试");
             }
             ValidationResult validation = validate(interfaceId);
             if (!validation.valid()) throw new IllegalStateException(String.join("；", validation.errors()));
@@ -1198,9 +1215,12 @@ public class InterfaceService {
         gatewayOutput.put("interfaceCode", executionSummary.interfaceCode());
         gatewayOutput.put("route", "data-source-" + executionSummary.dataSourceId());
         gatewayOutput.put("body", request.request());
-        traceNodes.add(new TraceNode("GATEWAY", "统一 Gateway", "PLATFORM", publishedPlan == null ? "SKIPPED" : "SUCCESS",
-                publishedPlan == null ? "管理端草稿验证不经过 ESB/Gateway，不执行调用方授权与配额校验"
-                        : "已在调用入口完成授权与配额校验", 0, gatewayRequest, gatewayOutput));
+        boolean draftFullChain = publishedPlan == null && "E2E".equals(testMode);
+        traceNodes.add(new TraceNode("GATEWAY", "统一 Gateway", "PLATFORM",
+                publishedPlan == null && !draftFullChain ? "SKIPPED" : "SUCCESS",
+                draftFullChain ? "内部测试通道已路由当前草稿；不检查发布状态和业务授权"
+                        : publishedPlan == null ? "草稿链路测试不经过 ESB/Gateway"
+                        : "正式调用入口已完成授权与配额校验", 0, gatewayRequest, gatewayOutput));
 
         Map<String, Object> schemaOutput = new LinkedHashMap<>();
         schemaOutput.put("valid", true);
@@ -1295,9 +1315,9 @@ public class InterfaceService {
         recordTraceNodes(traceId, traceNodes);
         if (preRelease && Set.of("HIT", "MISS").contains(code.resultStatus())) {
             if (!Objects.equals(checksum(detail), checksum(interfaceDetail(interfaceId)))) {
-                throw new IllegalStateException("验证期间草稿配置已变更，请重新执行发布前链路验证");
+                throw new IllegalStateException("测试期间草稿配置已变更，请重新执行草稿链路测试");
             }
-            saveValidationRecord(interfaceId, "PRE_RELEASE", checksum(detail));
+            saveValidationRecord(interfaceId, "DRAFT_TEST", checksum(detail));
         }
         return new TestResult(upstreamRequest, upstreamResponse, response, steps, traceNodes);
     }
@@ -1406,7 +1426,7 @@ public class InterfaceService {
                 SELECT i.id,i.interface_code,i.interface_name,i.service_path,i.http_method,
                        i.status,i.published_version,i.current_version,ds.source_code,ds.application_name,ds.runtime_url
                 FROM api_interface i JOIN data_source ds ON ds.id=i.data_source_id
-                WHERE i.interface_code=? AND i.status IN ('PUBLISHED','DRAFT','PENDING_APPROVAL')
+                WHERE i.interface_code=? AND i.status<>'DELETED'
                 ORDER BY CASE WHEN i.status='PUBLISHED' THEN 0 ELSE 1 END, i.updated_at DESC,i.id DESC LIMIT 1
                 """, interfaceCode.trim()) : jdbc.queryForList("""
                 SELECT i.id,pr.interface_code,i.interface_name,pr.service_path,pr.http_method,
@@ -2382,7 +2402,7 @@ public class InterfaceService {
     public Map<String, Boolean> validationStatus(long interfaceId) {
         InterfaceDetail detail = interfaceDetail(interfaceId);
         return Map.of("upstreamVerified", hasUpstreamValidation(detail),
-                "orchestrationVerified", hasValidationRecord(interfaceId, "PRE_RELEASE", checksum(detail)),
+                "orchestrationVerified", hasValidationRecord(interfaceId, "DRAFT_TEST", checksum(detail)),
                 "resourceContractChanged", detail.summary().resourceApiId() != null
                         && !Objects.equals(upstreamChecksum(detail), upstreamChecksum(resourceApi(detail.summary().resourceApiId()))));
     }

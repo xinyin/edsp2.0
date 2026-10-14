@@ -13,6 +13,7 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Map;
 
 /**
@@ -22,16 +23,23 @@ import java.util.Map;
  */
 @Component
 public class ExternalApiAuthFilter implements GlobalFilter, Ordered {
+    public static final String EXECUTION_SCOPE_HEADER = "X-Edsp-Execution-Scope";
+    public static final String INTERNAL_TEST_KEY_HEADER = "X-Edsp-Internal-Test-Key";
+    public static final String DRAFT_TEST_SCOPE = "DRAFT_TEST";
+    public static final String DRAFT_TEST_AUTHORIZED_ATTRIBUTE = "edsp.draft-test.authorized";
     private final ObjectMapper mapper;
     private final WebClient admin;
     private final String bootstrapApiKey;
+    private final String internalTestKey;
 
     public ExternalApiAuthFilter(ObjectMapper mapper, WebClient.Builder builder,
                                  @Value("${edsp.admin-url:http://127.0.0.1:8081}") String adminUrl,
-                                 @Value("${edsp.auth.bootstrap-api-key:demo-secret-key}") String bootstrapApiKey) {
+                                 @Value("${edsp.auth.bootstrap-api-key:demo-secret-key}") String bootstrapApiKey,
+                                 @Value("${edsp.test-tool.internal-key:demo-internal-test-key}") String internalTestKey) {
         this.mapper = mapper;
         this.admin = builder.baseUrl(adminUrl).build();
         this.bootstrapApiKey = bootstrapApiKey;
+        this.internalTestKey = internalTestKey;
     }
 
     @Override
@@ -50,6 +58,15 @@ public class ExternalApiAuthFilter implements GlobalFilter, Ordered {
             return reject(exchange, HttpStatus.UNAUTHORIZED, "EDSP-AUTH-401", "调用方认证失败");
         }
 
+        if (DRAFT_TEST_SCOPE.equals(exchange.getRequest().getHeaders().getFirst(EXECUTION_SCOPE_HEADER))) {
+            String suppliedTestKey = exchange.getRequest().getHeaders().getFirst(INTERNAL_TEST_KEY_HEADER);
+            if (!constantTimeEquals(internalTestKey, suppliedTestKey)) {
+                return reject(exchange, HttpStatus.FORBIDDEN, "EDSP-TEST-403", "内部链路测试凭证无效");
+            }
+            exchange.getAttributes().put(DRAFT_TEST_AUTHORIZED_ATTRIBUTE, true);
+            return chain.filter(exchange);
+        }
+
         return admin.get().uri(uriBuilder -> uriBuilder.path("/api/internal/authorizations/check")
                         .queryParam("clientCode", clientCode)
                         .queryParam("servicePath", servicePath)
@@ -63,6 +80,12 @@ public class ExternalApiAuthFilter implements GlobalFilter, Ordered {
                                 String.valueOf(result.getOrDefault("reason", "调用方未获得 API 授权"))))
                 .onErrorResume(error -> reject(exchange, HttpStatus.SERVICE_UNAVAILABLE,
                         "EDSP-AUTH-503", "授权中心暂不可用"));
+    }
+
+    private boolean constantTimeEquals(String expected, String supplied) {
+        if (expected == null || expected.isBlank() || supplied == null) return false;
+        return MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8),
+                supplied.getBytes(StandardCharsets.UTF_8));
     }
 
     private Mono<Void> reject(ServerWebExchange exchange, HttpStatus status, String code, String message) {

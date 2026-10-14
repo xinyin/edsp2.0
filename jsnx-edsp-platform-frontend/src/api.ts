@@ -3,6 +3,7 @@ import type { AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail,
 
 const demoMode = import.meta.env.VITE_DEMO_MODE === 'mock'
 export const isDemoMode = () => demoMode
+let operatorToken = ''
 
 export class ApiRequestError extends Error {
   constructor(message: string, readonly status: number, readonly payload: Record<string, unknown>) {
@@ -51,7 +52,11 @@ async function request<T>(path: string, init?: RequestInit, fallback?: () => T |
 }
 
 export const api = {
-  login: (username: string, password: string) => request<LoginResult>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
+  login: async (username: string, password: string) => {
+    const user = await request<LoginResult>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) })
+    operatorToken = user.token
+    return user
+  },
   dashboard: () => request<DashboardSummary>('/api/dashboard', undefined, () => mock.dashboard),
   securityAlgorithms: () => request<SecurityAlgorithmDescriptor[]>('/api/security-algorithms'),
   providers: () => request<ProviderSummary[]>('/api/providers', undefined, () => [{ id: 1, providerCode: 'QXB', providerName: '企信资源提供商', contactName: '张经理', accessDate: '2026-01-01', messageEncoding: 'UTF-8', chargeRequired: true, encryptionRequired: true, loginRequired: true, status: 'ACTIVE' }]),
@@ -139,8 +144,8 @@ export const api = {
   test: (id: number, body: { request: Record<string, unknown>, upstreamResponse?: Record<string, unknown>, callUpstream?: boolean, mappings?: FieldMapping[], testMode?: 'UPSTREAM' | 'PLATFORM' | 'E2E' }, options?: { timeoutMs?: number; signal?: AbortSignal }) => request<TestResult>(`/api/interfaces/${id}/test`, {
     method: 'POST', body: JSON.stringify(body), signal: options?.signal
   }, () => mock.runMockTest(body.request, body.upstreamResponse ?? {}), options?.timeoutMs),
-  esbDiagnostic: async (clientCode: string, xml: string, traceId: string, options?: { timeoutMs?: number; signal?: AbortSignal }) => request<EsbDiagnosticResult>('/esb/queue/request?diagnostic=true', {
-    method: 'POST', headers: { 'Content-Type': 'application/xml', 'X-App-Id': clientCode, 'X-Api-Key': 'demo-secret-key', 'X-Trace-Id': traceId }, body: xml, signal: options?.signal
+  esbDiagnostic: async (_clientCode: string, xml: string, traceId: string, options?: { timeoutMs?: number; signal?: AbortSignal }) => request<EsbDiagnosticResult>('/api/test-tools/chain', {
+    method: 'POST', headers: { 'Content-Type': 'application/xml', 'X-Edsp-Operator-Token': operatorToken, 'X-Trace-Id': traceId }, body: xml, signal: options?.signal
   }, undefined, options?.timeoutMs),
   submitApproval: (id: number, releaseNote: string) => request<ReleaseApproval>(`/api/interfaces/${id}/approval-requests`, {
     method: 'POST', body: JSON.stringify({ releaseNote, releasedBy: '平台管理员' })
