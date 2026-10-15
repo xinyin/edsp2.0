@@ -16,7 +16,7 @@ DB_PASSWORD="${DB_PASSWORD:-}"
 DB_URL="${DB_URL:-jdbc:mysql://$DB_HOST:$DB_PORT/edsp_demo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}"
 NACOS_SERVER_ADDR="${NACOS_SERVER_ADDR:-127.0.0.1:8848}"
 NACOS_LOCAL_ENV="$DEPLOY_DIR/var/nacos/local.env"
-[[ -f "$NACOS_LOCAL_ENV" ]] || { echo "未找到 $NACOS_LOCAL_ENV，请先安装 Nacos。" >&2; exit 1; }
+[[ -f "$NACOS_LOCAL_ENV" ]] || { echo "未找到 ${NACOS_LOCAL_ENV}，请先安装 Nacos。" >&2; exit 1; }
 set -a
 source "$NACOS_LOCAL_ENV"
 set +a
@@ -34,7 +34,7 @@ mkdir -p "$RUN_DIR" "$LOG_DIR"
 
 for required_command in mysql mvn lsof curl; do
   command -v "$required_command" >/dev/null 2>&1 || {
-    echo "未找到命令：$required_command，请先安装并加入 PATH。" >&2
+    echo "未找到命令：${required_command}，请先安装并加入 PATH。" >&2
     exit 1
   }
 done

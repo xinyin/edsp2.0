@@ -32,7 +32,8 @@ mkdir -p "$(dirname "$NACOS_PID_FILE")" "$(dirname "$NACOS_LOG_FILE")"
 cp "$NACOS_DEPLOY_DIR/config/nacos/application.properties" "$NACOS_HOME/conf/application.properties"
 (
   cd "$NACOS_HOME"
-  nohup "$NACOS_JAVA_HOME/bin/java" -Xms256m -Xmx512m -XX:MaxMetaspaceSize=256m \
+  nohup env -u SERVER_PORT SERVER_PORT=8848 \
+    "$NACOS_JAVA_HOME/bin/java" -Xms256m -Xmx512m -XX:MaxMetaspaceSize=256m \
     --add-opens=java.base/java.io=ALL-UNNAMED -Dsun.io.useCanonCaches=false \
     -Dnacos.standalone=true -Dnacos.home="$NACOS_HOME" -Dfile.encoding=UTF-8 \
     -Dloader.path="$NACOS_HOME/plugins,$NACOS_HOME/plugins/health,$NACOS_HOME/plugins/cmdb,$NACOS_HOME/plugins/selector" \
@@ -74,5 +75,5 @@ for _ in {1..90}; do
   nacos_owned_pid >/dev/null || { echo "Nacos 进程已退出，请查看 $NACOS_LOG_FILE" >&2; tail -35 "$NACOS_LOG_FILE"; exit 1; }
   sleep 1
 done
-echo "Nacos 未在就绪期限内完成启动，请查看 $NACOS_LOG_FILE；不会误报启动成功。" >&2
+echo "Nacos 未在就绪期限内完成启动，请查看 ${NACOS_LOG_FILE}；不会误报启动成功。" >&2
 exit 1

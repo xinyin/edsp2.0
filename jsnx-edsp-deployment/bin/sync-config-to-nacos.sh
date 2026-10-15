@@ -24,7 +24,7 @@ CHECK_ONLY="${CHECK_ONLY:-0}"
 
 for required in curl jq shasum; do
   command -v "$required" >/dev/null 2>&1 || {
-    echo "缺少命令：$required，请先安装并加入 PATH。" >&2
+    echo "缺少命令：${required}，请先安装并加入 PATH。" >&2
     exit 1
   }
 done
@@ -68,7 +68,7 @@ config_exists() {
   case "$status" in
     200) return 0 ;;
     404) return 1 ;;
-    *) echo "[error] $data_id 读取失败（HTTP $status），不执行写入。" >&2; return 2 ;;
+    *) echo "[error] ${data_id} 读取失败（HTTP ${status}），不执行写入。" >&2; return 2 ;;
   esac
 }
 

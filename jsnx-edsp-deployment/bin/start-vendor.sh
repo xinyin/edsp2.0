@@ -28,7 +28,7 @@ mkdir -p "$RUN_DIR" "$LOG_DIR"
 
 for required_command in mysql mvn lsof; do
   command -v "$required_command" >/dev/null 2>&1 || {
-    echo "未找到命令：$required_command，请先安装并加入 PATH。" >&2
+    echo "未找到命令：${required_command}，请先安装并加入 PATH。" >&2
     exit 1
   }
 done

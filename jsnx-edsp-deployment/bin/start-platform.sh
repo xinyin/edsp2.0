@@ -30,7 +30,7 @@ NACOS_SERVER_ADDR="${NACOS_SERVER_ADDR:-127.0.0.1:8848}"
 # generated local.env contains only local credentials and is never committed.
 NACOS_LOCAL_ENV="$DEPLOY_DIR/var/nacos/local.env"
 [[ -f "$NACOS_LOCAL_ENV" ]] || {
-  echo "未找到 $NACOS_LOCAL_ENV，请先执行 bin/install-nacos.sh。" >&2
+  echo "未找到 ${NACOS_LOCAL_ENV}，请先执行 bin/install-nacos.sh。" >&2
   exit 1
 }
 set -a
@@ -59,7 +59,7 @@ mkdir -p "$RUN_DIR" "$LOG_DIR"
 
 for required_command in mysql mvn lsof curl; do
   command -v "$required_command" >/dev/null 2>&1 || {
-    echo "未找到命令：$required_command，请先安装并加入 PATH。" >&2
+    echo "未找到命令：${required_command}，请先安装并加入 PATH。" >&2
     exit 1
   }
 done
@@ -176,7 +176,7 @@ else
     PLATFORM_INIT_SQL="source $PLATFORM_SCHEMA;"
   fi
   if ! mysql "${MYSQL_ARGS[@]}" -e "$PLATFORM_INIT_SQL"; then
-    echo "无法连接 MySQL（$DB_HOST:$DB_PORT），请先启动 MySQL 后重试。" >&2
+    echo "无法连接 MySQL（${DB_HOST}:${DB_PORT}），请先启动 MySQL 后重试。" >&2
     exit 1
   fi
   export JAVA_HOME
