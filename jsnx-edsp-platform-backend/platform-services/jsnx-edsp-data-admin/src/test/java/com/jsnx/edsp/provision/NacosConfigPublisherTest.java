@@ -21,6 +21,20 @@ class NacosConfigPublisherTest {
         verify(client).publishConfigCas("jsnx-edsp-data-credit.yaml", "DEFAULT_GROUP", "generated",
                 "d41d8cd98f00b204e9800998ecf8427e", "yaml");
     }
+    @Test void retriesReadBackWhileNacosConfigPropagationIsStillConverging() throws Exception {
+        when(client.getConfig(any(), any(), anyLong())).thenReturn(null, null, "generated");
+        when(client.publishConfigCas(any(), any(), any(), any(), any())).thenReturn(true);
+
+        assertThat(publisher.publish("jsnx-edsp-data-credit", "generated").status()).isEqualTo("SUCCESS");
+
+        verify(client, times(3)).getConfig("jsnx-edsp-data-credit.yaml", "DEFAULT_GROUP", 3000);
+    }
+    @Test void acceptsCommittedContentWhenNacosCasReturnsFalse() throws Exception {
+        when(client.getConfig(any(), any(), anyLong())).thenReturn(null, "generated");
+        when(client.publishConfigCas(any(), any(), any(), any(), any())).thenReturn(false);
+
+        assertThat(publisher.publish("jsnx-edsp-data-credit", "generated").status()).isEqualTo("SUCCESS");
+    }
     @Test void readFailureDoesNotPublish() throws Exception {
         when(client.getConfig(any(), any(), anyLong())).thenThrow(new com.alibaba.nacos.api.exception.NacosException(403, "denied"));
         assertThatThrownBy(() -> publisher.publish("jsnx-edsp-data-credit", "generated")).hasMessageContaining("denied");

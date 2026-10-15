@@ -15,6 +15,8 @@ import java.util.regex.Pattern;
 
 @Component
 public class NacosConfigPublisher {
+    private static final int READ_BACK_ATTEMPTS = 5;
+    private static final long READ_BACK_INTERVAL_MS = 200L;
     private final Environment environment;
     private ConfigService client;
     @Autowired
@@ -41,12 +43,16 @@ public class NacosConfigPublisher {
         String current = client().getConfig(dataId, group(), 3000);
         if (current != null && !current.isBlank())
             return new ProvisionModels.Nacos("REUSED", "Nacos 配置已存在，保留现有配置；变更请在配置中心维护", dataId, group(), namespace());
-        // CAS prevents replacing a configuration created concurrently by an operator.
-        if (!client().publishConfigCas(dataId, group(), yaml, "d41d8cd98f00b204e9800998ecf8427e", "yaml"))
-            throw new IllegalStateException("Nacos 拒绝发布配置，请重试或检查权限");
-        String stored = client().getConfig(dataId, group(), 3000);
-        if (!normalized(yaml).equals(normalized(stored)))
+        // CAS protects an operator-created config between the initial read and this write. Some
+        // Nacos versions can return false while the create has already committed, so the read-back
+        // content is authoritative before reporting a failure to the page.
+        boolean accepted = client().publishConfigCas(dataId, group(), yaml,
+                "d41d8cd98f00b204e9800998ecf8427e", "yaml");
+        boolean stored = awaitPublishedContent(dataId, yaml);
+        if (!stored) {
+            if (!accepted) throw new IllegalStateException("Nacos 拒绝发布配置，请重试或检查权限");
             throw new IllegalStateException("Nacos 发布后读回不一致，请检查配置中心");
+        }
         return new ProvisionModels.Nacos("SUCCESS", "Nacos 配置已发布", dataId, group(), namespace());
     }
 
@@ -64,8 +70,7 @@ public class NacosConfigPublisher {
         if (!client().publishConfigCas(dataId, group(), updated, md5, "yaml")) {
             throw new IllegalStateException("Nacos 配置已被并发修改，请刷新后重试");
         }
-        String stored = client().getConfig(dataId, group(), 3000);
-        if (!normalized(updated).equals(normalized(stored))) {
+        if (!awaitPublishedContent(dataId, updated)) {
             throw new IllegalStateException("Nacos 监听端口更新后读回不一致，请检查配置中心");
         }
         return new ProvisionModels.Nacos("SUCCESS", "已更新 Nacos 应用监听端口，其他配置保持不变",
@@ -120,6 +125,14 @@ public class NacosConfigPublisher {
     }
     private String normalized(String content) {
         return content == null ? "" : content.replace("\r\n", "\n").stripTrailing();
+    }
+    private boolean awaitPublishedContent(String dataId, String expected) throws Exception {
+        for (int attempt = 1; attempt <= READ_BACK_ATTEMPTS; attempt++) {
+            String stored = client().getConfig(dataId, group(), 3000);
+            if (normalized(expected).equals(normalized(stored))) return true;
+            if (attempt < READ_BACK_ATTEMPTS) Thread.sleep(READ_BACK_INTERVAL_MS);
+        }
+        return false;
     }
     @PreDestroy
     public synchronized void close() throws Exception { if (client != null) client.shutDown(); }
