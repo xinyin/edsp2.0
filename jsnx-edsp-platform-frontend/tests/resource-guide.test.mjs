@@ -581,9 +581,11 @@ test('供应商目录接入不依赖固定主键，空库时先创建提供商�
   assert.equal(s.vendorImportingKey.value, '')
 })
 
-test('数据处理应用路由区分 Gateway 地址与应用监听端口', () => {
-  assert.match(appText, /label="Gateway 路由地址"/)
-  assert.match(appText, /label="应用监听端口"/)
+test('数据应用部署配置明确区分 Gateway 访问地址与 Java 监听端口', () => {
+  assert.match(appText, /label="数据应用访问地址（供 Gateway 调用）"/)
+  assert.match(appText, /label="Java 应用监听端口"/)
+  assert.match(appText, /无 VIP 时可填单实例地址；有 VIP 或代理时填稳定入口地址/)
+  assert.match(appText, /它可以与上方 VIP 或代理地址的端口不同/)
   assert.match(appText, /serverPort: sourceRuntimeForm\.value\.serverPort/)
   assert.match(appText, /已有 Nacos 配置只更新监听端口，其他配置保持不变/)
 })
