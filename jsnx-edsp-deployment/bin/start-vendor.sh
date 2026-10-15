@@ -7,6 +7,7 @@ RUN_DIR="$DEPLOY_DIR/var/run"
 LOG_DIR="$DEPLOY_DIR/var/logs"
 VENDOR_SERVICE="$WORKSPACE_DIR/jsnx-edsp-vendor-backend"
 VENDOR_WEB="$WORKSPACE_DIR/jsnx-edsp-vendor-frontend"
+VENDOR_PORT="${VENDOR_SERVER_PORT:-8090}"
 JAVA_HOME="${JAVA_HOME:-}"
 if [[ -z "$JAVA_HOME" || ! -x "$JAVA_HOME/bin/java" ]]; then
   if command -v /usr/libexec/java_home >/dev/null 2>&1; then
@@ -48,6 +49,10 @@ wait_for_port() {
       echo "$name 已启动：http://127.0.0.1:$port"
       return 0
     fi
+    if [[ -f "$RUN_DIR/$name.pid" ]] && ! kill -0 "$(cat "$RUN_DIR/$name.pid")" 2>/dev/null; then
+      echo "$name 进程已退出，请检查 $LOG_DIR/$name.log" >&2
+      return 1
+    fi
     sleep 1
   done
   echo "$name 启动超时，请检查 $LOG_DIR/$name.log" >&2
@@ -70,8 +75,8 @@ else
   mysql "${MYSQL_ARGS[@]}" -e "source $VENDOR_SCHEMA;"
 fi
 
-if port_is_open 8090; then
-  echo "供应商后端已在 8090 端口运行，跳过启动。"
+if port_is_open "$VENDOR_PORT"; then
+  echo "供应商后端已在 $VENDOR_PORT 端口运行，跳过启动。"
   echo "提示：该进程不是本次启动，stop-vendor.sh 默认不会停止它。"
 else
   rm -f "$RUN_DIR/vendor.pid"
@@ -80,11 +85,12 @@ else
   echo "启动上游供应商后端..."
   (
     cd "$VENDOR_SERVICE"
-    nohup env JAVA_HOME="$JAVA_HOME" DB_URL="$DB_URL" DB_USERNAME="$DB_USERNAME" DB_PASSWORD="$DB_PASSWORD" \
+    nohup env -u SERVER_PORT JAVA_HOME="$JAVA_HOME" VENDOR_SERVER_PORT="$VENDOR_PORT" \
+      DB_URL="$DB_URL" DB_USERNAME="$DB_USERNAME" DB_PASSWORD="$DB_PASSWORD" \
       "$JAVA_HOME/bin/java" -jar target/jsnx-edsp-vendor-simulator-1.0.0-SNAPSHOT.jar >"$LOG_DIR/vendor.log" 2>&1 &
     echo $! >"$RUN_DIR/vendor.pid"
   )
-  wait_for_port 8090 vendor
+  wait_for_port "$VENDOR_PORT" vendor
 fi
 
 if port_is_open 5190; then
