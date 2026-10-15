@@ -35,8 +35,8 @@ public class DataApplicationScaffoldGenerator {
     public void validate(String applicationName, String sourceCode) {
         if (applicationName == null || !applicationName.matches("jsnx-edsp-data-[a-z][a-z0-9-]{0,79}"))
             throw new IllegalArgumentException("处理应用标识须以 jsnx-edsp-data- 开头，仅包含小写字母、数字和连字符");
-        if (sourceCode == null || !sourceCode.matches("[A-Za-z][A-Za-z0-9_-]{0,63}"))
-            throw new IllegalArgumentException("数据源编码须以字母开头，仅包含字母、数字、下划线和连字符");
+        if (sourceCode == null || !sourceCode.matches("[A-Za-z0-9_-]{1,64}"))
+            throw new IllegalArgumentException("数据源编码不能包含空格或特殊字符");
         String segment = applicationName.substring("jsnx-edsp-data-".length()).replace("-", "");
         if (javax.lang.model.SourceVersion.isKeyword(segment))
             throw new IllegalArgumentException("处理应用标识不能使用 Java 保留字作为包名");

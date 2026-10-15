@@ -91,6 +91,24 @@ test('接入向导阻止空基础信息和无效地址，不发起创建请求',
   assert.equal(s.sourceSaving.value, false)
 })
 
+test('数据源编码不限制首字符，但拦截空格和特殊字符', () => {
+  const s = harness()
+  Object.assign(s.sourceForm.value, { providerId: 1, sourceCode: '4093_SOURCE', sourceName: '新数据源' })
+  s.advanceSourceWizard()
+  assert.equal(s.sourceStep.value, 1)
+
+  s.sourceStep.value = 0
+  s.sourceForm.value.sourceCode = '4093 SOURCE'
+  s.advanceSourceWizard()
+  assert.equal(s.sourceStep.value, 0)
+  assert.match(s.sourceError.value, /空格或特殊字符/)
+
+  s.sourceForm.value.sourceCode = '4093@SOURCE'
+  s.advanceSourceWizard()
+  assert.equal(s.sourceStep.value, 0)
+  assert.match(s.sourceError.value, /空格或特殊字符/)
+})
+
 test('授权清单同时按调用系统与接口关键词过滤，单页最多20条', () => {
   const s = harness()
   s.authorizations.value = Array.from({ length: 45 }, (_, i) => ({ id: i, clientId: i < 30 ? 1 : 2, clientName: '系统'+i, interfaceName: '企业查询', interfaceCode: 'ENTERPRISE_'+i }))

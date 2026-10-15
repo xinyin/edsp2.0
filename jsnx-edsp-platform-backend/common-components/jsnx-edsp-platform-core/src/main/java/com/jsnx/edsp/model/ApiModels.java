@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDateTime;
 import java.time.LocalDate;
@@ -164,7 +165,9 @@ public final class ApiModels {
             @NotBlank String status) {}
 
     public record CreateDataSourceRequest(
-            long providerId, @NotBlank String sourceCode, @NotBlank String sourceName,
+            long providerId,
+            @NotBlank @Pattern(regexp = "[A-Za-z0-9_-]+", message = "数据源编码不能包含空格或特殊字符") String sourceCode,
+            @NotBlank String sourceName,
             String applicationName, String runtimeUrl, @Min(1) @Max(65535) Integer serverPort,
             @NotBlank String protocolType, String endpoint, Integer defaultTimeoutMs,
             @NotBlank String environment, int instanceCount) {}

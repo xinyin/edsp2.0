@@ -56,4 +56,13 @@ class DataApplicationScaffoldGeneratorTest {
         Files.createSymbolicLink(root.resolve("jsnx-edsp-data-link"), target);
         assertThatThrownBy(() -> generator().generate(source("jsnx-edsp-data-link"), 8198)).hasMessageContaining("安全");
     }
+
+    @Test void sourceCodeHasNoBusinessPrefixRuleButRejectsWhitespaceAndSpecialCharacters() {
+        assertThatCode(() -> generator().validate("jsnx-edsp-data-source-4093", "4093_SOURCE"))
+                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> generator().validate("jsnx-edsp-data-source-4093", "4093 SOURCE"))
+                .hasMessageContaining("空格或特殊字符");
+        assertThatThrownBy(() -> generator().validate("jsnx-edsp-data-source-4093", "4093@SOURCE"))
+                .hasMessageContaining("空格或特殊字符");
+    }
 }

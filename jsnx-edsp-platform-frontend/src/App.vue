@@ -1222,8 +1222,8 @@ function advanceSourceWizard() {
     sourceError.value = '请先选择资源提供商，并填写数据源名称和编码。'
     return
   }
-  if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(sourceForm.value.sourceCode.trim())) {
-    sourceError.value = '数据源编码以字母开头，可包含字母、数字、下划线和连字符。'
+  if (!/^[A-Za-z0-9_-]+$/.test(sourceForm.value.sourceCode.trim())) {
+    sourceError.value = '数据源编码不能包含空格或特殊字符。'
     return
   }
   sourceError.value = ''
