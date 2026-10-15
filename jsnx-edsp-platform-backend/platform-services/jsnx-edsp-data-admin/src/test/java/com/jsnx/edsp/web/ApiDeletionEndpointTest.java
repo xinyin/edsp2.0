@@ -71,6 +71,27 @@ class ApiDeletionEndpointTest {
     }
 
     @Test
+    void resourceApiMetadataCanBeEditedAfterCreation() throws Exception {
+        mvc.perform(put("/api/resource-apis/7/metadata")
+                        .contentType("application/json")
+                        .content("{\"resourceApiCode\":\"4093_QUERY_V2\",\"resourceApiName\":\"工商查询新版\",\"httpMethod\":\"GET\"}"))
+                .andExpect(status().isOk());
+        verify(service).updateResourceApiMetadata(eq(7L), argThat(request ->
+                request.resourceApiCode().equals("4093_QUERY_V2")
+                        && request.resourceApiName().equals("工商查询新版")
+                        && request.httpMethod().equals("GET")));
+    }
+
+    @Test
+    void resourceApiMetadataRejectsSpecialCharactersInCode() throws Exception {
+        mvc.perform(put("/api/resource-apis/7/metadata")
+                        .contentType("application/json")
+                        .content("{\"resourceApiCode\":\"4093 API@V2\",\"resourceApiName\":\"工商查询新版\",\"httpMethod\":\"GET\"}"))
+                .andExpect(status().isBadRequest());
+        verify(service, never()).updateResourceApiMetadata(eq(7L), any());
+    }
+
+    @Test
     void testExecutionFailureReturnsTraceAndActionableStatusInsteadOfGeneric500() throws Exception {
         String traceId = "trace-123";
         when(service.test(eq(42L), any())).thenThrow(

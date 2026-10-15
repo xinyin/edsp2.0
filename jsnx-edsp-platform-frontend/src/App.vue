@@ -4,7 +4,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { useDisplayPreference } from './composables/useDisplayPreference'
 import {
   Bell, Check, CircleCheck, Connection, DataAnalysis, DataBoard, Delete,
-  DocumentChecked, DocumentCopy, Files, Key, Lock, Monitor, Plus, Promotion, Refresh,
+  DocumentChecked, DocumentCopy, Edit, Files, Key, Lock, Monitor, Plus, Promotion, Refresh,
   Search, Setting, SwitchButton, Tickets, User as UserIcon, Wallet, OfficeBuilding, Warning,
   Fold, Expand,
   Guide, ArrowRight
@@ -185,6 +185,9 @@ const sourceSettingsForm = ref({ providerId: 0, sourceCode: '', sourceName: '', 
 const sourceRuntimeForm = ref({ applicationName: '', runtimeUrl: '', serverPort: 8199 })
 const apiDialog = ref(false)
 const apiCreating = ref(false)
+const apiMetadataDialog = ref(false)
+const apiMetadataSaving = ref(false)
+const apiMetadataForm = ref({ resourceApiCode: '', resourceApiName: '', httpMethod: 'POST' })
 const deletingApi = ref(false)
 const connectionSaving = ref(false)
 const previewUpstreamUrl = computed(() => {
@@ -1440,6 +1443,56 @@ function openApiDialogForSource(sourceId: number) {
   initializeApiDialog(source)
 }
 
+function openResourceApiMetadataEditor() {
+  if (activeMenu.value !== 'resource' || !detail.value) return
+  apiMetadataForm.value = {
+    resourceApiCode: detail.value.summary.interfaceCode,
+    resourceApiName: detail.value.summary.interfaceName,
+    httpMethod: detail.value.summary.httpMethod
+  }
+  apiMetadataDialog.value = true
+}
+
+async function saveResourceApiMetadata() {
+  if (!detail.value || apiMetadataSaving.value) return
+  const resourceApiCode = apiMetadataForm.value.resourceApiCode.trim()
+  const resourceApiName = apiMetadataForm.value.resourceApiName.trim()
+  if (!resourceApiCode || !resourceApiName) {
+    ElMessage.warning('请完整填写资源 API 名称和编码')
+    return
+  }
+  if (!/^[A-Za-z0-9_-]+$/.test(resourceApiCode)) {
+    ElMessage.warning('资源 API 编码不能包含空格或特殊字符')
+    return
+  }
+  apiMetadataSaving.value = true
+  try {
+    const updated = await api.updateResourceApiMetadata(detail.value.summary.id, {
+      resourceApiCode,
+      resourceApiName,
+      httpMethod: apiMetadataForm.value.httpMethod
+    })
+    const index = allResourceApis.value.findIndex(item => item.id === updated.id)
+    if (index >= 0) allResourceApis.value[index] = updated
+    detail.value.summary = {
+      ...detail.value.summary,
+      interfaceCode: updated.resourceApiCode,
+      interfaceName: updated.resourceApiName,
+      httpMethod: updated.httpMethod,
+      currentVersion: updated.currentVersion,
+      upstreamStatus: updated.status,
+      updatedAt: updated.updatedAt
+    }
+    lastUpstreamValidation.value = null
+    apiMetadataDialog.value = false
+    ElMessage.success('资源 API 基本信息已更新，请按需重新验证上游接口')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '资源 API 基本信息保存失败')
+  } finally {
+    apiMetadataSaving.value = false
+  }
+}
+
 async function runCurrentPrimaryAction() {
   if (guideBusy.value || testRunning.value || connectionSaving.value) return false
   guideBusy.value = true
@@ -2476,6 +2529,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                   <div class="api-context-meta"><code>{{ detail.summary.interfaceCode }}</code><template v-if="activeMenu!=='resource'"><span>草稿 V{{ detail.summary.currentVersion }}</span><span v-if="detail.summary.publishedVersion == null">尚未发布</span><button v-else class="version-history-link" type="button" @click="openVersionHistory(detail.summary.publishedVersion)">已发布 V{{ detail.summary.publishedVersion }}</button></template><span v-else>供应商原始接口</span></div>
                 </div>
                 <div class="api-context-actions">
+                  <el-button v-if="activeMenu==='resource'" :icon="Edit" @click="openResourceApiMetadataEditor">编辑 API</el-button>
                   <el-button v-if="activeMenu==='resource'" :icon="Setting" @click="openSourceSettingsEditor">编辑数据源</el-button>
                   <el-button v-if="activeMenu==='resource'" :icon="Connection" @click="openSourceRuntimeEditor">运行路由</el-button>
                   <el-button v-if="activeMenu==='resource'" :icon="Plus" @click="openApiDialogForSource(selectedSource.id)">新增资源 API</el-button>
@@ -2741,6 +2795,14 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
   <el-dialog v-model="apiDialog" title="新增资源 API" width="660px">
     <el-form label-position="top"><div class="form-grid"><el-form-item label="所属数据源"><el-select v-model="apiForm.dataSourceId"><el-option v-for="item in sources" :key="item.id" :label="`${item.sourceName} · 默认 ${item.defaultTimeoutMs ?? 3000}ms`" :value="item.id"/></el-select></el-form-item><el-form-item label="上游 HTTP 方法"><el-select v-model="apiForm.httpMethod"><el-option label="POST" value="POST"/><el-option label="GET" value="GET"/></el-select></el-form-item><el-form-item label="资源 API 名称" required><el-input v-model="apiForm.interfaceName"/></el-form-item><el-form-item label="资源 API 编码" required><el-input v-model="apiForm.interfaceCode"/><small class="form-hint">用于唯一标识资源提供商的原始接口</small></el-form-item></div><section class="api-policy-section"><header><strong>上游连接策略</strong><span>资源 API 只描述供应商原始契约，不在此定义平台服务路径</span></header><el-segmented v-model="apiForm.configScope" :options="[{label:'继承数据源',value:'INHERIT'},{label:'单接口覆盖',value:'OVERRIDE'}]"/><div class="source-default-facts"><span>基础地址<b>{{ selectedApiSource?.endpointUrl || '未配置' }}</b></span><span>默认超时<b>{{ selectedApiSource?.defaultTimeoutMs ?? 3000 }} ms</b></span><span>服务封装<b>保存后单独创建</b></span></div><el-form-item v-if="apiForm.configScope==='INHERIT'" label="供应商接口相对路径" required><el-input v-model="apiForm.upstreamPath" placeholder="/vendor/api/query"/></el-form-item><el-form-item v-else label="接口独立完整地址" required><el-input v-model="apiForm.upstreamUrl" placeholder="https://provider.example.com/vendor/api/query"/></el-form-item><div class="timeout-policy"><div class="timeout-policy-choice"><label>超时策略</label><div class="timeout-choice-group" role="radiogroup" aria-label="超时策略"><button type="button" role="radio" :aria-checked="apiForm.timeoutMode==='INHERIT'" :class="{selected:apiForm.timeoutMode==='INHERIT'}" @click="apiForm.timeoutMode='INHERIT'"><span class="timeout-choice-radio"/><span><strong>继承数据源默认</strong><small>使用当前数据源的 {{ selectedApiSource?.defaultTimeoutMs ?? 3000 }} ms</small></span></button><button type="button" role="radio" :aria-checked="apiForm.timeoutMode==='OVERRIDE'" :class="{selected:apiForm.timeoutMode==='OVERRIDE'}" @click="apiForm.timeoutMode='OVERRIDE'"><span class="timeout-choice-radio"/><span><strong>当前接口覆盖</strong><small>仅修改此资源 API</small></span></button></div></div><div class="timeout-policy-value"><label>接口超时（毫秒）</label><el-input-number v-model="apiForm.timeoutMs" :disabled="apiForm.timeoutMode==='INHERIT'" :min="100" :max="120000" :step="500"/><small>{{ apiForm.timeoutMode==='INHERIT' ? '当前生效值：' + (selectedApiSource?.defaultTimeoutMs ?? 3000) + ' ms' : '设置后仅对此接口生效' }}</small></div></div></section></el-form>
     <template #footer><el-button @click="apiDialog=false">取消</el-button><el-button type="primary" :loading="apiCreating" @click="createInterface">创建资源草稿</el-button></template>
+  </el-dialog>
+  <el-dialog v-model="apiMetadataDialog" title="编辑资源 API" width="560px">
+    <el-form label-position="top">
+      <el-form-item label="资源 API 名称" required><el-input v-model="apiMetadataForm.resourceApiName" maxlength="128" show-word-limit/></el-form-item>
+      <el-form-item label="资源 API 编码" required><el-input v-model="apiMetadataForm.resourceApiCode" maxlength="64"/><small class="form-hint">平台内唯一；允许字母、数字、下划线和半角连字符</small></el-form-item>
+      <el-form-item label="上游 HTTP 方法" required><el-select v-model="apiMetadataForm.httpMethod" style="width:100%"><el-option v-for="method in ['GET','POST','PUT','DELETE','PATCH']" :key="method" :label="method" :value="method"/></el-select></el-form-item>
+    </el-form>
+    <template #footer><el-button @click="apiMetadataDialog=false">取消</el-button><el-button type="primary" :loading="apiMetadataSaving" @click="saveResourceApiMetadata">保存修改</el-button></template>
   </el-dialog>
   <el-dialog v-model="platformServiceDialog" title="基于资源 API 创建平台标准服务" width="680px">
     <div class="platform-service-origin" v-if="selectedResourceApi"><span>来源资源 API</span><strong>{{ selectedResourceApi.resourceApiName }}</strong><code>{{ selectedResourceApi.resourceApiCode }}</code><small>上游请求和响应样例将作为标准服务开发的初始基线，可选择透传或配置转换。</small></div>

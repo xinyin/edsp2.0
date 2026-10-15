@@ -77,6 +77,7 @@ export const api = {
   resourceApi: (id: number) => request<ResourceApiDetail>(`/api/resource-apis/${id}`),
   resourceValidationStatus: (id: number) => request<{ upstreamVerified: boolean }>(`/api/resource-apis/${id}/validation-status`),
   saveResourceApi: (id: number, body: Record<string, unknown>) => request<ResourceApiDetail>(`/api/resource-apis/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  updateResourceApiMetadata: (id: number, body: Record<string, unknown>) => request<ResourceApiSummary>(`/api/resource-apis/${id}/metadata`, { method: 'PUT', body: JSON.stringify(body) }),
   verifyResourceApi: (id: number) => request<TestResult>(`/api/resource-apis/${id}/verify`, { method: 'POST' }),
   createPlatformService: (body: Record<string, unknown>) => request<InterfaceSummary>('/api/platform-services', { method: 'POST', body: JSON.stringify(body) }),
   interfaces: (sourceId?: number) => request<InterfaceSummary[]>(sourceId ? `/api/interfaces?dataSourceId=${sourceId}` : '/api/interfaces', undefined, () => sourceId ? mock.interfaces.filter(item => item.dataSourceId === sourceId) : mock.interfaces),

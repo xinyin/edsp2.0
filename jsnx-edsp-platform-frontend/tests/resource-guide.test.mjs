@@ -41,13 +41,13 @@ function harness(overrides = {}, confirm = async () => true) {
       resourceValidationStatus: async () => ({ upstreamVerified: false }), ...overrides },
       { get: (target, name) => target[name] ?? (() => { throw new Error('Unexpected API call: ' + String(name)) }) })
   })
-  const state = vm.runInNewContext('(() => { ' + appJS + ' return { navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, activeMenu, activeTab, detail, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, providerExpansion, sourceExpansion, isProviderExpanded, isSourceExpanded, sourceInterfaces, filteredProviderGroups, filteredSources, setAllSourcesExpanded, locateSelectedApi, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, bringVendorApiToPlatform, vendorImportingKey, apiForm, apiDialog, mappingDirection, mappingIsPassThrough, mappingModeLabel, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
+  const state = vm.runInNewContext('(() => { ' + appJS + ' return { navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, activeMenu, activeTab, detail, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, allResourceApis, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, providerExpansion, sourceExpansion, isProviderExpanded, isSourceExpanded, sourceInterfaces, filteredProviderGroups, filteredSources, setAllSourcesExpanded, locateSelectedApi, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, bringVendorApiToPlatform, vendorImportingKey, apiForm, apiDialog, apiMetadataDialog, apiMetadataSaving, apiMetadataForm, openResourceApiMetadataEditor, saveResourceApiMetadata, mappingDirection, mappingIsPassThrough, mappingModeLabel, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
   state.selectedSourceId.value = 1
   state.activeMenu.value = 'resource'
   state.selectedInterfaceId.value = 11
   state.providers.value = [{ id: 10, providerCode: 'QX', providerName: '企信资源提供商', status: 'ACTIVE' }]
   state.sources.value = [{ id: 1, providerId: 10, providerName: '企信资源提供商', sourceName: '企业工商数据源', sourceCode: 'ENTERPRISE', endpointUrl: 'http://localhost', defaultTimeoutMs: 5000 }]
-  state.detail.value = { summary: { id: 11, dataSourceId: 1, interfaceCode: 'ENTERPRISE_QUERY', currentVersion: 2, publishedVersion: 1, status: 'DRAFT', upstreamUrl: 'http://localhost/query', servicePath: '/api/query' }, mappings: [mapping('REQUEST'), mapping('RESPONSE')], responseCodes: codes, vendorCodePath: 'result.code', requestExample: { name: '测试企业' }, upstreamRequestExample: { name: '测试企业' }, upstreamResponseExample: { name: '测试企业' }, standardResponseExample: { name: '测试企业' } }
+  state.detail.value = { summary: { id: 11, dataSourceId: 1, interfaceCode: 'ENTERPRISE_QUERY', interfaceName: '企业查询', httpMethod: 'POST', currentVersion: 2, publishedVersion: 1, status: 'DRAFT', upstreamUrl: 'http://localhost/query', servicePath: '/api/query' }, mappings: [mapping('REQUEST'), mapping('RESPONSE')], responseCodes: codes, vendorCodePath: 'result.code', requestExample: { name: '测试企业' }, upstreamRequestExample: { name: '测试企业' }, upstreamResponseExample: { name: '测试企业' }, standardResponseExample: { name: '测试企业' } }
   state.connectionForm.value = { configScope: 'INHERIT', upstreamPath: '/query', upstreamUrl: 'http://localhost/query', timeoutMode: 'INHERIT', timeoutMs: 5000 }
   state.savedConnectionBaseline.value = JSON.stringify(state.connectionForm.value)
   state.upstreamRequestText.value = state.savedUpstreamRequestBaseline.value = '{"name":"测试企业"}'
@@ -107,6 +107,31 @@ test('数据源编码不限制首字符，但拦截空格和特殊字符', () =>
   s.advanceSourceWizard()
   assert.equal(s.sourceStep.value, 0)
   assert.match(s.sourceError.value, /空格或特殊字符/)
+})
+
+test('已创建的资源 API 可从独立入口修改名称、编码和请求方式', async () => {
+  let request
+  const updated = {
+    id: 11, dataSourceId: 1, resourceApiCode: '4093_QUERY_V2', resourceApiName: '工商查询新版',
+    httpMethod: 'GET', upstreamUrl: 'http://localhost/query', upstreamPath: '/query', configScope: 'INHERIT',
+    effectiveTimeoutMs: 5000, status: 'READY', currentVersion: 3, updatedAt: '2026-10-15T14:00:00', platformServiceCount: 1
+  }
+  const s = harness({ updateResourceApiMetadata: async (id, body) => { request = { id, body }; return updated } })
+  s.allResourceApis.value = [{ ...updated, resourceApiCode: 'ENTERPRISE_QUERY', resourceApiName: '企业查询', httpMethod: 'POST', currentVersion: 2 }]
+  s.openResourceApiMetadataEditor()
+  assert.equal(s.apiMetadataDialog.value, true)
+  assert.equal(s.apiMetadataForm.value.resourceApiCode, 'ENTERPRISE_QUERY')
+  Object.assign(s.apiMetadataForm.value, { resourceApiCode: '4093_QUERY_V2', resourceApiName: '工商查询新版', httpMethod: 'GET' })
+
+  await s.saveResourceApiMetadata()
+
+  assert.equal(request.id, 11)
+  assert.equal(request.body.resourceApiCode, '4093_QUERY_V2')
+  assert.equal(s.detail.value.summary.interfaceCode, '4093_QUERY_V2')
+  assert.equal(s.detail.value.summary.interfaceName, '工商查询新版')
+  assert.equal(s.detail.value.summary.httpMethod, 'GET')
+  assert.equal(s.allResourceApis.value[0].resourceApiCode, '4093_QUERY_V2')
+  assert.equal(s.apiMetadataDialog.value, false)
 })
 
 test('授权清单同时按调用系统与接口关键词过滤，单页最多20条', () => {

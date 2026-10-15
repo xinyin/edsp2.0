@@ -191,6 +191,11 @@ public final class ApiModels {
             Integer timeoutMs, @NotNull Map<String, Object> requestExample,
             @NotNull Map<String, Object> responseExample) {}
 
+    public record UpdateResourceApiMetadataRequest(
+            @NotBlank @Pattern(regexp = "[A-Za-z0-9_-]+", message = "资源 API 编码不能包含空格或特殊字符") String resourceApiCode,
+            @NotBlank String resourceApiName,
+            @NotBlank @Pattern(regexp = "(?i)GET|POST|PUT|DELETE|PATCH", message = "不支持的 HTTP 请求方式") String httpMethod) {}
+
     public record CreatePlatformServiceRequest(
             long resourceApiId, @NotBlank String serviceCode, @NotBlank String serviceName,
             @NotBlank String servicePath, @NotBlank String httpMethod) {}

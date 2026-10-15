@@ -103,6 +103,12 @@ public class ApiController {
         return service.saveResourceApi(id, request);
     }
 
+    @PutMapping("/resource-apis/{id}/metadata")
+    public ResourceApiSummary updateResourceApiMetadata(@PathVariable long id,
+                                                         @Valid @RequestBody UpdateResourceApiMetadataRequest request) {
+        return service.updateResourceApiMetadata(id, request);
+    }
+
     @PostMapping("/resource-apis/{id}/verify")
     public TestResult verifyResourceApi(@PathVariable long id) { return service.verifyResourceApi(id); }
 

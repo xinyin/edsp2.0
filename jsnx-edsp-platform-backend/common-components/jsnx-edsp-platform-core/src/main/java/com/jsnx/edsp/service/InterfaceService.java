@@ -509,6 +509,21 @@ public class InterfaceService {
     }
 
     @Transactional
+    public ResourceApiSummary updateResourceApiMetadata(long id, UpdateResourceApiMetadataRequest request) {
+        String code = request.resourceApiCode().trim().toUpperCase(Locale.ROOT);
+        String name = request.resourceApiName().trim();
+        String method = request.httpMethod().trim().toUpperCase(Locale.ROOT);
+        int updated = jdbc.update("""
+                UPDATE resource_api
+                SET resource_api_code=?,resource_api_name=?,http_method=?,
+                    verified_at=NULL,verified_checksum=NULL,current_version=current_version+1
+                WHERE id=?
+                """, code, name, method, id);
+        if (updated == 0) throw new IllegalArgumentException("资源 API 不存在：" + id);
+        return resourceApiSummary(id);
+    }
+
+    @Transactional
     public TestResult verifyResourceApi(long id) {
         jdbc.queryForObject("SELECT id FROM resource_api WHERE id=? FOR UPDATE", Long.class, id);
         ResourceApiDetail resource = resourceApi(id);
