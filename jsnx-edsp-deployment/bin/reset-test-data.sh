@@ -30,7 +30,7 @@ for port in 8080 8081 8083 8084 8090 8181 8182 8183; do
 done
 if (( ${#running_ports[@]} > 0 )); then
   echo "检测到业务服务仍在运行（端口：${running_ports[*]}）。" >&2
-  echo "请先执行 $SCRIPT_DIR/stop-demo.sh，再重新执行清理，避免内存执行计划与数据库状态不一致。" >&2
+  echo "请分别执行 $SCRIPT_DIR/stop-demo.sh 和 $SCRIPT_DIR/stop-vendor.sh，再重新执行清理。" >&2
   exit 1
 fi
 
@@ -120,5 +120,6 @@ UNION ALL SELECT 'vendor_demo.vendor_enterprise_record',COUNT(*) FROM vendor_dem
 
 echo "测试数据已清空。"
 echo "保留操作账号：admin / admin123（代码内置，不在数据库中）。"
-echo "重新启动：cd $DEPLOYMENT_DIR && ./bin/start-demo.sh"
-echo "如需恢复旧演示样例：SEED_DEMO_DATA=1 ./bin/start-demo.sh"
+echo "启动外数平台：cd $DEPLOYMENT_DIR && ./bin/start-demo.sh"
+echo "启动供应商模拟平台：cd $DEPLOYMENT_DIR && ./bin/start-vendor.sh"
+echo "如需恢复供应商演示样例：SEED_DEMO_DATA=1 ./bin/start-vendor.sh"

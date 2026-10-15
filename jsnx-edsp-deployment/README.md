@@ -73,29 +73,28 @@ cd /Users/tommy/Documents/外部数据/demo/jsnx-edsp-deployment
 ./bin/stop-demo.sh
 ```
 
-一键执行完整业务演示：
+以上两个脚本只管理外部数据平台。供应商模拟平台是完全独立的应用，不会随外数平台启动、停止或失败回滚。
+
+供应商模拟平台独立启停：
+
+```bash
+./bin/start-vendor.sh
+./bin/stop-vendor.sh
+```
+
+两个平台均已独立启动后，可执行跨系统完整业务演示：
 
 ```bash
 ./bin/run-full-demo.sh
 ```
 
-执行服务健康、全链路和数据库落库验收：
+执行跨系统服务健康、全链路和数据库落库验收：
 
 ```bash
 ./bin/verify-demo.sh
 ```
 
-一键启动会先启动独立的上游供应商模拟应用，再启动外部数据平台；一键停止会按相反顺序停止两组应用。完整演示流程、样例请求报文、命中/未命中场景和页面操作步骤见 [`DEMO_RUNBOOK.md`](DEMO_RUNBOOK.md)。
-
-如需分组启停：
-
-```bash
-./bin/start-vendor.sh
-./bin/start-platform.sh
-
-./bin/stop-platform.sh
-./bin/stop-vendor.sh
-```
+`run-full-demo.sh` 和 `verify-demo.sh` 只执行联调或验收，不会隐式启停任一平台。完整演示流程、样例请求报文、命中/未命中场景和页面操作步骤见 [`DEMO_RUNBOOK.md`](DEMO_RUNBOOK.md)。
 
 MySQL 默认连接为 `127.0.0.1:3306`、`root`、无密码。可使用 `DB_HOST`、`DB_PORT`、`DB_USERNAME`、`DB_PASSWORD` 和 `DB_URL` 覆盖。
 

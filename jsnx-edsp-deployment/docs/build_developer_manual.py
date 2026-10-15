@@ -349,15 +349,15 @@ def build():
     ], [2.2, 0.65, 1.2, 2.7], 8)
 
     heading(doc, "10 本地构建、启动与停止")
-    code(doc, "cd /Users/tommy/Documents/外部数据/demo/jsnx-edsp-deployment\n./bin/start-demo.sh\n# 完整演示（载入样例并执行链路）\n./bin/run-full-demo.sh\n# 停止全部\n./bin/stop-demo.sh")
-    p(doc, "start-demo.sh 默认只建表，不自动灌入平台演示数据。它启动供应商模拟端和平台端；start-platform.sh 会检查 JDK 17、MySQL、Maven、Node、固定端口，并在无后端运行时构建。检测到平台后端已运行时会跳过数据库初始化和 Maven 构建，避免覆盖正在加载的 JAR。")
+    code(doc, "cd /Users/tommy/Documents/外部数据/demo/jsnx-edsp-deployment\n# 外部数据平台独立启停\n./bin/start-demo.sh\n./bin/stop-demo.sh\n# 供应商模拟平台独立启停\n./bin/start-vendor.sh\n./bin/stop-vendor.sh\n# 两套平台均已启动后执行跨系统联调\n./bin/run-full-demo.sh")
+    p(doc, "start-demo.sh 只启动外部数据平台，start-vendor.sh 只启动供应商模拟平台，两套平台的启动、停止和失败处理互不联动。start-platform.sh 会检查 JDK 17、MySQL、Maven、Node、固定端口，并在无后端运行时构建。检测到平台后端已运行时会跳过数据库初始化和 Maven 构建，避免覆盖正在加载的 JAR。")
     table(doc, ["脚本", "用途", "是否重置数据"], [
-        ("start-demo.sh / stop-demo.sh", "整套供应商与平台启停", "否"),
-        ("start-platform.sh / stop-platform.sh", "仅平台启停", "启动时空库建表，不主动删数据"),
+        ("start-demo.sh / stop-demo.sh", "仅外部数据平台启停", "启动时空库建表，不主动删数据"),
+        ("start-vendor.sh / stop-vendor.sh", "仅供应商模拟平台启停", "启动时空库建表，不主动删数据"),
         ("reload-integration-stack.sh", "重建并重启 Admin、数据应用、Adapter、Gateway 等联调栈", "否"),
         ("restart-admin.sh", "仅重启 Admin", "否"),
         ("reset-test-data.sh", "清理测试业务数据", "是，慎用"),
-        ("verify-demo.sh", "健康、全链路和落库验收", "可能产生验证记录"),
+        ("verify-demo.sh", "两套平台已独立启动后的跨系统验收", "可能产生验证记录"),
     ], [2.2, 3.15, 1.4], 8.2)
     code(doc, "# 单独构建一个数据应用及其依赖\ncd ../jsnx-edsp-platform-backend\nexport JAVA_HOME=$(/usr/libexec/java_home -v 17)\nmvn -pl data-applications/jsnx-edsp-data-source-lhzx -am clean package -DskipTests")
 

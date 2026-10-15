@@ -18,13 +18,16 @@ demo/
 - VS Code/WebStorm：分别打开两个前端目录。
 - 不要将 `demo/` 根目录作为单个 IDEA Java 工程导入，否则会混入前端依赖和运行产物。
 
-## 一键启动与全链路验证
+## 独立启动与全链路验证
 
 ```bash
 cd jsnx-edsp-deployment
 ./bin/start-demo.sh
+./bin/start-vendor.sh
 ./bin/run-full-demo.sh
 ```
+
+`start-demo.sh` 只启动外部数据平台，`start-vendor.sh` 只启动上游供应商模拟平台；二者启动、停止和失败处理完全独立。只有执行跨系统联调时才需要两套平台同时处于运行状态。
 
 完整请求链为：
 

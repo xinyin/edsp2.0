@@ -33,36 +33,33 @@
 
 ## 二、启动和停止
 
-先确认本机 MySQL 已启动，然后执行：
+先确认本机 MySQL 已启动。外部数据平台独立启动：
 
 ```bash
 cd /Users/tommy/Documents/外部数据/demo/jsnx-edsp-deployment
 ./bin/start-demo.sh
 ```
 
-脚本会依次完成：
+该脚本只会：
 
-1. 初始化 `vendor_demo` 数据库和供应商样例数据；
-2. 构建并启动供应商后端 `8090`；
-3. 启动供应商前端 `5190`；
-4. 初始化 `edsp_demo` 数据库和平台样例数据；
-5. 构建并启动 Admin、Observability、可选能力服务、三个独立数据应用、ESB Adapter、Gateway；
-6. 启动平台前端 `5173`。
+1. 初始化 `edsp_demo` 数据库；
+2. 构建并启动 Admin、Observability、可选能力服务、独立数据应用、ESB Adapter、Gateway；
+3. 启动平台前端 `5173`。
 
-停止全部 Demo：
+停止外部数据平台：
 
 ```bash
 ./bin/stop-demo.sh
 ```
 
-分开启动或停止：
+供应商模拟平台拥有独立生命周期，需要联调时单独执行：
 
 ```bash
 ./bin/start-vendor.sh
-./bin/start-platform.sh
-./bin/stop-platform.sh
 ./bin/stop-vendor.sh
 ```
+
+任一平台启动或停止都不会联动另一平台。`run-full-demo.sh` 和 `verify-demo.sh` 仅在两套平台均已启动后用于跨系统联调，不负责启动或停止服务。
 
 日志位置：
 
