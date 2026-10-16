@@ -217,6 +217,14 @@ const apiForm = ref({ dataSourceId: 1, interfaceCode: '', interfaceName: '', ser
 const platformServiceDialog = ref(false)
 const platformServiceCreating = ref(false)
 const platformServiceForm = ref({ resourceApiId: 0, serviceCode: '', serviceName: '', servicePath: '', httpMethod: 'POST' })
+const serviceResourceOptions = computed(() => allResourceApis.value
+  .filter(resource => resource.status === 'READY')
+  .map(resource => {
+    const source = sources.value.find(item => item.id === resource.dataSourceId)
+    const provider = providers.value.find(item => item.id === source?.providerId)
+    return { ...resource, lineage: `${provider?.providerName ?? source?.providerName ?? '未知提供商'} / ${source?.sourceName ?? '未知数据源'}` }
+  }))
+const serviceCreationResource = computed(() => serviceResourceOptions.value.find(item => item.id === platformServiceForm.value.resourceApiId))
 const connectionForm = ref({ configScope: 'INHERIT' as 'INHERIT'|'OVERRIDE', upstreamPath: '', upstreamUrl: '', timeoutMode: 'INHERIT' as 'INHERIT'|'OVERRIDE', timeoutMs: 3000 })
 const vendorRequestExample = ref<Record<string, unknown> | null>(null)
 const vendorResponseExample = ref<Record<string, unknown> | null>(null)
@@ -1574,6 +1582,9 @@ async function validateUpstreamCapability() {
     if (!detail.value || testRunning.value) return false
     testRunning.value = true
     testError.value = ''
+    testResult.value = null
+    testSucceeded.value = false
+    lastUpstreamValidation.value = null
     try {
       const result = await api.verifyResourceApi(detail.value.summary.id)
       testResult.value = result
@@ -1732,12 +1743,12 @@ async function saveConnectionConfig() {
   } finally { connectionSaving.value = false }
 }
 
-function openPlatformServiceDialog() {
-  if (!selectedResourceApi.value || selectedResourceApi.value.status !== 'READY') {
-    ElMessage.warning('请先保存当前资源 API，再创建平台标准服务')
+function selectServiceResource(resourceApiId: number) {
+  const resource = serviceResourceOptions.value.find(item => item.id === resourceApiId)
+  if (!resource) {
+    platformServiceForm.value = { resourceApiId: 0, serviceCode: '', serviceName: '', servicePath: '', httpMethod: 'POST' }
     return
   }
-  const resource = selectedResourceApi.value
   const sequence = String(resource.platformServiceCount + 1).padStart(2, '0')
   platformServiceForm.value = {
     resourceApiId: resource.id,
@@ -1746,11 +1757,24 @@ function openPlatformServiceDialog() {
     servicePath: `/api/v1/${resource.resourceApiCode.toLowerCase().replace(/_/g, '-')}/${sequence}`,
     httpMethod: 'POST'
   }
+}
+
+function openPlatformServiceDialog() {
+  const resource = activeMenu.value === 'resource' ? selectedResourceApi.value : undefined
+  if (activeMenu.value === 'resource' && (!resource || resource.status !== 'READY' || upstreamSaveRequired.value)) {
+    ElMessage.warning('请先保存当前资源 API，再创建平台标准服务')
+    return
+  }
+  selectServiceResource(resource?.id ?? 0)
   platformServiceDialog.value = true
 }
 
 async function createPlatformService() {
   const form = platformServiceForm.value
+  if (!serviceCreationResource.value) {
+    ElMessage.warning('请选择已保存的资源 API')
+    return
+  }
   if (!form.serviceCode.trim() || !form.serviceName.trim() || !form.servicePath.trim()) {
     ElMessage.warning('请完整填写平台服务名称、编码和标准路径')
     return
@@ -2546,6 +2570,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
               <button v-if="resourceCatalogCollapsed" class="api-catalog-rail" type="button" title="展开 API 资源目录" aria-label="展开 API 资源目录" @click="resourceCatalogCollapsed=false"><Expand/><span>API</span></button>
               <template v-else>
               <div class="panel-title"><div><span>{{ activeMenu==='resource' ? '资源 API 目录' : '平台服务目录' }}</span><small>{{ filteredProviderGroups.length }} 个资源提供商 · {{ sources.length }} 个数据源 · {{ workspaceInterfaceRows.length }} 个{{ activeMenu==='resource' ? '资源 API' : '标准服务' }}</small></div><div class="catalog-heading-actions"><el-button v-if="activeMenu==='resource'" :icon="Plus" text aria-label="新增数据源" @click="openSourceWizard"/><el-button :icon="Fold" text title="收起 API 目录" aria-label="收起 API 目录" @click="resourceCatalogCollapsed=true"/></div></div>
+              <el-button v-if="activeMenu==='service-development'" class="create-standard-service" type="primary" plain :icon="Plus" @click="openPlatformServiceDialog">新增标准服务</el-button>
               <el-input v-model="sourceSearch" :prefix-icon="Search" placeholder="搜索提供商、数据源、API 或路径" clearable aria-label="搜索资源目录" />
               <div class="resource-tree-tools"><button :disabled="!!sourceSearch.trim()" @click="setAllSourcesExpanded(true)">展开全部</button><button :disabled="!!sourceSearch.trim()" @click="setAllSourcesExpanded(false)">收起全部</button><button :disabled="!selectedInterfaceId" @click="locateSelectedApi">定位当前</button></div>
               <p v-if="sourceSearch.trim()" class="resource-search-hint">找到 {{ filteredProviderGroups.length }} 个资源提供商、{{ filteredSources.length }} 个数据源，已展开匹配结果</p>
@@ -2597,8 +2622,8 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
               </nav>
               <nav v-if="serviceDevelopmentStage==='ORCHESTRATION'" class="developer-tabs" aria-label="标准服务配置"><button v-for="step in orchestrationGuideSteps" :key="step.key" :class="{active:activeTab===step.key,changed:activeTab===step.key && hasUnsavedChanges}" :aria-current="activeTab===step.key ? 'page' : undefined" :disabled="guideBusy || testRunning || connectionSaving" @click="openGuideStep(step.key)">{{ step.title }}</button></nav>
               <div class="api-request-bar" :class="{standard:serviceDevelopmentStage==='ORCHESTRATION'}">
-                <span class="request-method">{{ serviceDevelopmentStage==='UPSTREAM' ? detail.summary.httpMethod : standardServiceForm.httpMethod }}</span>
-                <code>{{ serviceDevelopmentStage==='UPSTREAM' ? (previewUpstreamUrl || '尚未配置接口地址') : standardServiceForm.servicePath }}</code>
+                <span class="request-method">{{ serviceDevelopmentStage==='UPSTREAM' ? detail.summary.httpMethod : 'XML' }}</span>
+                <code>{{ serviceDevelopmentStage==='UPSTREAM' ? (previewUpstreamUrl || '尚未配置接口地址') : 'ESB 队列 · service_id：' + detail.summary.interfaceCode }}</code>
                 <span v-if="serviceDevelopmentStage==='UPSTREAM'" class="request-timeout">{{ previewTimeoutMs }} ms</span>
                 <el-button v-if="serviceDevelopmentStage==='UPSTREAM'" :loading="testRunning" :disabled="connectionSaving || !previewUpstreamUrl" @click="validateUpstreamCapability">测试接口</el-button>
                 <el-button v-else :disabled="guideBusy || testRunning" @click="activeTab='test';testMode='PLATFORM'">打开联调</el-button>
@@ -2625,14 +2650,15 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                       </button>
                       <div v-show="timeoutExpanded" id="api-timeout-options" class="api-card-body">
                           <span class="api-field-label">超时配置方式</span>
-                          <div class="api-mode-options" role="group" aria-label="超时配置方式"><button type="button" :class="{selected:connectionForm.timeoutMode==='INHERIT'}" :aria-pressed="connectionForm.timeoutMode==='INHERIT'" @click="connectionForm.timeoutMode='INHERIT'">继承数据源</button><button type="button" :class="{selected:connectionForm.timeoutMode==='OVERRIDE'}" :aria-pressed="connectionForm.timeoutMode==='OVERRIDE'" @click="connectionForm.timeoutMode='OVERRIDE'">独立地址</button></div>
+                          <div class="api-mode-options" role="group" aria-label="超时配置方式"><button type="button" :class="{selected:connectionForm.timeoutMode==='INHERIT'}" :aria-pressed="connectionForm.timeoutMode==='INHERIT'" @click="connectionForm.timeoutMode='INHERIT'">继承数据源</button><button type="button" :class="{selected:connectionForm.timeoutMode==='OVERRIDE'}" :aria-pressed="connectionForm.timeoutMode==='OVERRIDE'" @click="connectionForm.timeoutMode='OVERRIDE'">独立超时</button></div>
                           <p class="api-field-help">数据源默认 {{ selectedSource.defaultTimeoutMs ?? 3000 }} ms，可为当前接口单独调整。</p>
                           <el-form label-position="top"><el-form-item label="超时时间"><div class="api-timeout-input"><el-input-number :model-value="previewTimeoutMs" @update:model-value="(value: number | undefined) => { if (value != null) connectionForm.timeoutMs = value }" :disabled="connectionForm.timeoutMode==='INHERIT'" :min="100" :max="120000" :step="500" controls-position="right"/><span>毫秒（ms）</span></div></el-form-item></el-form>
                         </div>
                     </section>
                     <section v-show="upstreamSection===0" class="api-preview-panel">
                       <header><div><h3>生效配置</h3></div><el-tag :type="hasUnsavedChanges ? 'warning' : detail.summary.upstreamStatus==='READY' ? 'success' : 'info'" effect="plain">{{ hasUnsavedChanges ? '待保存' : detail.summary.upstreamStatus==='READY' ? '已保存' : '草稿' }}</el-tag></header>
-                      <dl><div><dt>完整上游地址</dt><dd><code>{{ previewUpstreamUrl || '请填写上游地址' }}</code><el-button v-if="previewUpstreamUrl" text :icon="DocumentCopy" aria-label="复制上游地址" @click="copyApiValue(previewUpstreamUrl)">复制</el-button></dd></div><div><dt>请求超时</dt><dd><strong>{{ previewTimeoutMs }} ms</strong><span>{{ connectionForm.timeoutMode==='INHERIT' ? '继承数据源' : '单接口覆盖' }}</span></dd></div></dl>
+                      <div class="resource-route-summary"><span>提供商处理应用<HelpTip title="应用路由" content="测试请求先发送到资源提供商的独立应用，再由该应用访问供应商接口。此地址在资源方管理的“配置应用路由”中维护，同一提供商的数据源共用。"/></span><code>{{ selectedSource.runtimeUrl || '尚未配置' }}</code><el-button text type="primary" @click="goToProviderManagement()">配置应用路由</el-button></div>
+                      <dl><div><dt>供应商接口地址</dt><dd><code>{{ previewUpstreamUrl || '请填写上游地址' }}</code><el-button v-if="previewUpstreamUrl" text :icon="DocumentCopy" aria-label="复制上游地址" @click="copyApiValue(previewUpstreamUrl)">复制</el-button></dd></div><div><dt>请求超时</dt><dd><strong>{{ previewTimeoutMs }} ms</strong><span>{{ connectionForm.timeoutMode==='INHERIT' ? '继承数据源' : '单接口覆盖' }}</span></dd></div></dl>
                     </section>
                     <section v-show="upstreamSection===1" class="upstream-contract-panel">
                       <header><div><div><h3>供应商原始报文</h3></div></div><el-tag size="small" type="info">JSON</el-tag></header>
@@ -2642,10 +2668,17 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                       </div>
                     </section>
                     <section v-show="upstreamSection===2" class="upstream-validation-panel" :class="{'has-error':!!testError && !currentUpstreamVerified}">
-                      <div class="upstream-validation-copy"><div><h3>接口联调</h3></div></div>
+                      <div class="upstream-validation-copy"><div><h3>原始接口测试<HelpTip title="测试范围" content="通过提供商处理应用发送已保存的原始请求，展示供应商原始响应，不执行标准服务的字段转换、签名或加解密。测试结果不限制标准服务开发。"/></h3></div></div>
                       <el-button class="upstream-validation-action" type="primary" :icon="Promotion" :loading="testRunning" :disabled="testRunning || connectionSaving" @click="validateUpstreamCapability">测试资源接口</el-button>
                       <div class="upstream-validation-result success" v-if="currentUpstreamVerified"><span class="status-dot"></span><strong>当前连接验证通过</strong><small>已收到上游原始响应</small></div>
                       <div class="upstream-validation-result error" v-else-if="testError" role="alert"><span class="status-dot offline"></span><div><strong>验证失败</strong><small>{{ testError }}</small></div></div>
+                    </section>
+                    <section v-if="upstreamSection===2" class="resource-test-detail">
+                      <div class="resource-route-summary"><span>测试路由</span><code>平台 → {{ selectedSource.applicationName || '未配置应用' }} → {{ previewUpstreamUrl }}</code></div>
+                      <div class="test-grid">
+                        <div class="code-pane readonly"><div class="code-title"><span>{{ testResult ? '本次原始请求' : '原始请求样例' }}</span></div><pre>{{ testResult ? formatJson(testResult.upstreamRequest) : upstreamRequestText }}</pre></div>
+                        <div class="code-pane readonly"><div class="code-title"><span>供应商原始响应</span></div><pre>{{ testResult ? formatJson(testResult.upstreamResponse) : testError || '等待执行测试' }}</pre></div>
+                      </div>
                     </section>
                     <div v-if="upstreamSection===2" class="upstream-handoff">
                       <h3>标准服务</h3>
@@ -2662,11 +2695,8 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                     <el-tag v-if="resourceContractChanged" type="warning" effect="plain">资源契约已变更</el-tag><HelpTip title="资源契约同步" content="资源接口保存的请求、响应报文是标准服务的开发基准。同步仅更新当前草稿，已发布版本不变；同步后请核对字段映射。"/>
                     <el-button v-if="detail.summary.resourceApiId" :type="resourceContractChanged ? 'warning' : 'primary'" plain :disabled="guideBusy || testRunning" @click="syncResourceContract">同步资源契约</el-button>
                   </section>
-                  <section class="standard-contract-strip">
-                    <div><strong>标准服务入口</strong><HelpTip title="标准服务入口" content="定义平台对行内提供的 HTTP 方法和服务路径。ESB 请求使用服务编码识别接口，不直接使用此路径。"/></div>
-                    <el-select v-model="standardServiceForm.httpMethod" aria-label="平台 API HTTP 方法"><el-option label="POST" value="POST"/><el-option label="GET" value="GET"/><el-option label="PUT" value="PUT"/><el-option label="PATCH" value="PATCH"/></el-select>
-                    <el-input v-model="standardServiceForm.servicePath" placeholder="/api/v1/enterprise/query" aria-label="平台标准服务路径"/>
-                  </section>
+                  <section class="esb-contract-strip"><span>行内服务契约<HelpTip title="XML 服务契约" content="行内系统通过 IBM MQ 的 ESB 请求队列发送 XML，Service_Header/service_id 指定服务编码。平台解析 Service_Body/request 后执行编排，将标准响应封装为 XML 写入 ESB 响应队列。以下 JSON 样例用于编辑 XML 中的业务字段。"/></span><code>service_id：{{ detail.summary.interfaceCode }}</code><span>XML 请求 / XML 响应</span></section>
+                  <details class="advanced-settings internal-service-route"><summary>内部转发配置<HelpTip title="内部转发配置" content="ESB Adapter 根据服务编码查询此路径，将解析后的请求经 Gateway 转发至提供商应用。行内调用系统使用 ESB 队列，无需填写此 HTTP 路径。"/></summary><div class="form-grid"><el-form-item label="内部 HTTP 方法"><el-select v-model="standardServiceForm.httpMethod" aria-label="内部 HTTP 方法"><el-option v-for="method in ['POST','GET','PUT','PATCH']" :key="method" :label="method" :value="method"/></el-select></el-form-item><el-form-item label="内部服务路径"><el-input v-model="standardServiceForm.servicePath" aria-label="内部服务路径"/></el-form-item></div></details>
                   <div class="mapping-toolbar refined">
                     <div class="mapping-mode"><el-segmented v-model="mappingDirection" :options="[{ label: '请求转换', value: 'REQUEST' }, { label: '响应标准化', value: 'RESPONSE' }]" /><el-tag :type="mappingIsPassThrough ? 'success' : 'warning'" effect="plain">{{ mappingModeLabel }}</el-tag><span>{{ mappingDirection === 'REQUEST' ? '行内标准请求 → 上游原始请求' : '上游原始响应 → 行内标准响应' }}</span></div>
                     <div><el-button :icon="DocumentChecked" @click="validateConfig">校验配置</el-button><el-button :icon="Plus" @click="startMappingConfiguration">{{ mappingIsPassThrough ? '配置字段转换' : '新增一行' }}</el-button></div>
@@ -2776,7 +2806,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
             </div>
             <div v-else class="empty-editor" v-loading="detailLoading">
               <template v-if="detailLoading"><el-icon><Refresh /></el-icon><strong>正在加载接口配置</strong><span>加载完成前不会保留上一接口的映射数据</span></template>
-              <template v-else><el-icon><Files /></el-icon><strong>{{ activeMenu==='resource' ? '该数据源暂无资源 API' : '该数据源暂无平台标准服务' }}</strong><span>{{ activeMenu==='resource' ? '先完善数据源信息，再定义资源提供商的原始请求与响应接口' : '请从已保存的资源 API 创建平台标准服务' }}</span><div v-if="activeMenu==='resource' && selectedSource" class="empty-editor-actions"><el-button :icon="Setting" @click="openSourceSettingsEditor">编辑数据源</el-button><el-button type="primary" :icon="Plus" @click="openApiDialog">新增资源 API</el-button></div><el-button v-else-if="activeMenu!=='resource'" type="primary" @click="navigate('resource')">前往数据资源接入</el-button></template>
+              <template v-else><el-icon><Files /></el-icon><strong>{{ activeMenu==='resource' ? '该数据源暂无资源 API' : '暂无标准服务' }}</strong><span>{{ activeMenu==='resource' ? '先完善数据源信息，再定义资源提供商的原始请求与响应接口' : '从已保存的资源 API 创建标准服务' }}</span><div v-if="activeMenu==='resource' && selectedSource" class="empty-editor-actions"><el-button :icon="Setting" @click="openSourceSettingsEditor">编辑数据源</el-button><el-button type="primary" :icon="Plus" @click="openApiDialog">新增资源 API</el-button></div><el-button v-else-if="activeMenu!=='resource'" type="primary" :icon="Plus" @click="openPlatformServiceDialog">新增标准服务</el-button></template>
             </div>
           </section>
         </template>
@@ -2855,9 +2885,15 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
     <template #footer><el-button @click="apiMetadataDialog=false">取消</el-button><el-button type="primary" :loading="apiMetadataSaving" @click="saveResourceApiMetadata">保存修改</el-button></template>
   </el-dialog>
   <el-dialog v-model="platformServiceDialog" title="基于资源 API 创建平台标准服务" width="680px">
-    <div class="platform-service-origin" v-if="selectedResourceApi"><span>来源资源 API</span><strong>{{ selectedResourceApi.resourceApiName }}</strong><code>{{ selectedResourceApi.resourceApiCode }}</code><small>上游请求和响应样例将作为标准服务开发的初始基线，可选择透传或配置转换。</small></div>
-    <el-form label-position="top"><div class="form-grid"><el-form-item label="平台服务名称" required><el-input v-model="platformServiceForm.serviceName"/></el-form-item><el-form-item label="平台服务编码" required><el-input v-model="platformServiceForm.serviceCode"/></el-form-item><el-form-item label="平台 HTTP 方法"><el-select v-model="platformServiceForm.httpMethod"><el-option label="POST" value="POST"/><el-option label="GET" value="GET"/></el-select></el-form-item><el-form-item label="平台标准路径" required><el-input v-model="platformServiceForm.servicePath" placeholder="/api/v1/enterprise/query"/></el-form-item></div></el-form>
-    <template #footer><el-button @click="platformServiceDialog=false">取消</el-button><el-button type="primary" :loading="platformServiceCreating" @click="createPlatformService">创建并进入服务开发</el-button></template>
+    <el-form label-position="top">
+      <el-form-item required><template #label>来源资源 API<HelpTip title="来源资源 API" content="可选择任意已保存的资源 API，不要求测试通过。同一资源 API 可封装为多个标准服务。创建时复制原始请求和响应作为开发基准，后续资源变更可手动同步至服务草稿。"/></template><el-select :model-value="platformServiceForm.resourceApiId || undefined" filterable placeholder="搜索提供商、数据源、接口名称或编码" class="service-resource-select" @change="selectServiceResource(Number($event))"><el-option v-for="resource in serviceResourceOptions" :key="resource.id" :value="resource.id" :label="resource.lineage + ' / ' + resource.resourceApiName + ' · ' + resource.resourceApiCode"><div class="service-resource-option"><strong>{{ resource.resourceApiName }} · {{ resource.resourceApiCode }}</strong><small>{{ resource.lineage }}</small></div></el-option></el-select></el-form-item>
+      <el-empty v-if="!serviceResourceOptions.length" description="暂无已保存的资源 API" :image-size="56"><el-button @click="platformServiceDialog=false;navigate('resource')">前往数据资源接入</el-button></el-empty>
+      <div v-if="serviceCreationResource" class="service-resource-lineage"><span>{{ serviceCreationResource.lineage }}</span><code>{{ serviceCreationResource.resourceApiCode }}</code><span>{{ serviceCreationResource.verifiedAt ? '曾测试通过' : '未验证' }}</span></div>
+      <div class="form-grid"><el-form-item label="标准服务名称" required><el-input v-model="platformServiceForm.serviceName"/></el-form-item><el-form-item required><template #label>标准服务编码<HelpTip title="标准服务编码" content="行内接口文档中的服务唯一标识，对应 XML 的 Service_Header/service_id。"/></template><el-input v-model="platformServiceForm.serviceCode" maxlength="100"/></el-form-item></div>
+      <div class="esb-contract-strip"><span>接入方式：ESB 队列（IBM MQ）</span><span>XML 请求 / XML 响应</span></div>
+      <details class="advanced-settings"><summary>内部转发配置</summary><div class="form-grid"><el-form-item label="内部 HTTP 方法"><el-select v-model="platformServiceForm.httpMethod"><el-option label="POST" value="POST"/><el-option label="GET" value="GET"/></el-select></el-form-item><el-form-item label="内部服务路径" required><el-input v-model="platformServiceForm.servicePath" placeholder="选择资源 API 后自动生成"/></el-form-item></div></details>
+    </el-form>
+    <template #footer><el-button @click="platformServiceDialog=false">取消</el-button><el-button type="primary" :disabled="!serviceCreationResource" :loading="platformServiceCreating" @click="createPlatformService">创建并进入服务开发</el-button></template>
   </el-dialog>
   <el-dialog v-model="providerDialog" :title="providerForm.id ? '编辑资源提供商' : '新增资源提供商'" width="760px" class="provider-editor-dialog">
     <el-form label-position="top">

@@ -754,6 +754,23 @@ button:focus-visible { outline: 2px solid #6ca8ec; outline-offset: 2px; }
   .el-dialog { margin-top: 4vh; }
 }
 
+.create-standard-service { width: 100%; margin: 8px 0 12px; }
+.resource-route-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; padding: 10px 12px; border-bottom: 1px solid var(--border); color: var(--text-regular); font-size: 12px; }
+.resource-route-summary > span { display: inline-flex; align-items: center; gap: 6px; }
+.resource-route-summary code { flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; font-size: 12px; }
+.resource-test-detail { margin: 10px 0; border: 1px solid var(--border); background: #fff; }
+.resource-test-detail .test-grid { margin: 0; border: 0; }
+.resource-test-detail pre { min-height: 140px; max-height: 380px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.service-resource-select { width: 100%; }
+.service-resource-select .el-select__selected-item { white-space: normal; overflow-wrap: anywhere; }
+.el-select-dropdown__item:has(.service-resource-option) { height: auto; min-height: 54px; padding-top: 7px; padding-bottom: 7px; line-height: 1.5; }
+.service-resource-option { display: flex; flex-direction: column; gap: 3px; max-width: min(620px, 75vw); white-space: normal; overflow-wrap: anywhere; }
+.service-resource-option strong { font-size: 13px; font-weight: 500; }
+.service-resource-option small { color: var(--muted); font-size: 12px; }
+.service-resource-lineage { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 16px; padding: 10px 12px; border: 1px solid var(--border); background: var(--workspace-chrome); color: var(--text-regular); font-size: 12px; overflow-wrap: anywhere; }
+.internal-service-route { margin: 0 0 12px; }
+.internal-service-route summary { display: flex; align-items: center; gap: 6px; list-style-position: inside; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0s !important; animation-duration: 0s !important; }
 }

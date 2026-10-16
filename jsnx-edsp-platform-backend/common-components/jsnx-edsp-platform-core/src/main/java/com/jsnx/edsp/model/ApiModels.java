@@ -199,8 +199,10 @@ public final class ApiModels {
             @NotBlank @Pattern(regexp = "(?i)GET|POST|PUT|DELETE|PATCH", message = "不支持的 HTTP 请求方式") String httpMethod) {}
 
     public record CreatePlatformServiceRequest(
-            long resourceApiId, @NotBlank String serviceCode, @NotBlank String serviceName,
-            @NotBlank String servicePath, @NotBlank String httpMethod) {}
+            @Min(value = 1, message = "请选择来源资源 API") long resourceApiId,
+            @NotBlank @Pattern(regexp = "[A-Za-z0-9_-]+", message = "服务编码不能包含空格或特殊字符") String serviceCode,
+            @NotBlank String serviceName, @NotBlank String servicePath,
+            @NotBlank @Pattern(regexp = "(?i)GET|POST|PUT|DELETE|PATCH", message = "不支持的内部 HTTP 请求方式") String httpMethod) {}
 
     public record SaveInterfaceConnectionRequest(
             @NotBlank String configScope, String upstreamPath, String upstreamUrl,

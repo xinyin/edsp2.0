@@ -83,6 +83,30 @@ class DraftAdapterExecutorTest {
     }
 
     @Test
+    void originalResourcePayloadDoesNotRunStandardServiceMappingOrSecurity() {
+        Map<String, Object> request = Map.of("query_key", "001", "filters", java.util.List.of(Map.of("kind", "risk")));
+        Map<String, Object> response = Map.of("vendorCode", "A1", "data", java.util.List.of(Map.of("value", 0)));
+        UpstreamClient upstream = new UpstreamClient(new ObjectMapper()) {
+            @Override
+            public Map<String, Object> execute(Map<String, Object> connection, String method, String url,
+                                               Map<String, Object> body, String traceId, int timeoutMs) {
+                assertThat(method).isEqualTo("PUT");
+                assertThat(body).isEqualTo(request);
+                assertThat(connection).containsEntry("accessMode", "HTTP");
+                return response;
+            }
+        };
+        Map<String, Object> result = DraftAdapterExecutor.executeForProvider("RAEX", Map.of(
+                "providerCode", "RAEX", "dataSourceCode", "raex-risk", "interfaceCode", "RISK_QUERY",
+                "upstreamUrl", "https://provider.example/risk", "upstreamHttpMethod", "PUT",
+                "requestBody", request, "providerConnection", Map.of("accessMode", "HTTP"),
+                "mappings", java.util.List.of(Map.of("sourcePath", "query_key", "targetPath", "other_key")),
+                "securityPolicy", Map.of("enabled", true)
+        ), upstream);
+        assertThat(result).containsEntry("upstreamResponse", response).containsEntry("success", true);
+    }
+
+    @Test
     void providerApplicationRejectsRequestOwnedByAnotherProvider() {
         assertThatThrownBy(() -> DraftAdapterExecutor.executeForProvider("BAIRONG", Map.of(
                 "providerCode", "OTHER_PROVIDER", "dataSourceCode", "ANTI_FRAUD",

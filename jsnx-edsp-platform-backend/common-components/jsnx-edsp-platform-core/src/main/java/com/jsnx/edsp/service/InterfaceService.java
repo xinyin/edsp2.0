@@ -599,9 +599,15 @@ public class InterfaceService {
         Map<String, Object> safeResponse = response == null ? Map.of() : response;
         jdbc.update("UPDATE resource_api SET status='READY',verified_at=CURRENT_TIMESTAMP,verified_checksum=? WHERE id=?",
                 upstreamChecksum(resource), id);
+        Map<String, Object> invocation = new LinkedHashMap<>();
+        invocation.put("application", dataApplicationName(executionResource));
+        invocation.put("applicationEndpoint", dataApplicationEndpoint(executionResource));
+        invocation.put("method", summary.httpMethod());
+        invocation.put("url", summary.upstreamUrl());
+        invocation.put("body", resource.requestExample());
         List<TraceNode> nodes = List.of(
                 new TraceNode("DATA_SOURCE", "资源提供商处理应用", "ADAPTER", "SUCCESS", "装载资源接口连接配置", 1,
-                        resource.requestExample(), Map.of("endpoint", resource.summary().upstreamUrl())),
+                        resource.requestExample(), invocation),
                 new TraceNode("VENDOR", "上游资源接口", "EXTERNAL", "SUCCESS", "收到资源提供商原始响应", duration,
                         resource.requestExample(), safeResponse));
         return new TestResult(resource.requestExample(), safeResponse, safeResponse,
@@ -610,6 +616,8 @@ public class InterfaceService {
 
     @Transactional
     public InterfaceSummary createPlatformService(CreatePlatformServiceRequest request) {
+        // Keep the inherited request/response contract from one saved resource revision.
+        jdbc.queryForObject("SELECT id FROM resource_api WHERE id=? FOR UPDATE", Long.class, request.resourceApiId());
         ResourceApiDetail resource = resourceApi(request.resourceApiId());
         if (!"READY".equals(resource.summary().status())) {
             throw new IllegalStateException("资源 API 尚未保存为可用状态，不能创建平台服务");
@@ -623,7 +631,7 @@ public class InterfaceService {
                     upstream_status,status,current_version)
                 VALUES(?,?,?,?,?, ?,?,?,?,'DIRECT',?,?,?,?,?,?,?,0,'READY','DRAFT',1)
                 """, resource.summary().id(), resource.summary().dataSourceId(), request.serviceCode().trim().toUpperCase(Locale.ROOT),
-                request.serviceName().trim(), servicePath, request.httpMethod(), resource.summary().upstreamUrl(),
+                request.serviceName().trim(), servicePath, request.httpMethod().toUpperCase(Locale.ROOT), resource.summary().upstreamUrl(),
                 resource.summary().upstreamPath(), resource.summary().configScope(),
                 json.write(Map.of("type", "object")), json.write(Map.of("type", "object")),
                 json.write(resource.requestExample()), json.write(resource.requestExample()), json.write(resource.responseExample()),
@@ -1591,7 +1599,7 @@ public class InterfaceService {
         Map<String, Object> invocation = new LinkedHashMap<>();
         invocation.put("application", dataApplicationName(detail.summary()));
         invocation.put("applicationEndpoint", dataApplicationEndpoint(detail.summary()));
-        invocation.put("method", "POST");
+        invocation.put("method", upstreamHttpMethod(detail.summary()));
         invocation.put("url", detail.summary().upstreamUrl());
         invocation.put("timeoutMs", detail.timeoutMs());
         invocation.put("body", upstreamRequest);

@@ -41,7 +41,7 @@ function harness(overrides = {}, confirm = async () => true) {
       resourceValidationStatus: async () => ({ upstreamVerified: false }), ...overrides },
       { get: (target, name) => target[name] ?? (() => { throw new Error('Unexpected API call: ' + String(name)) }) })
   })
-  const state = vm.runInNewContext('(() => { ' + appJS + ' return { navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, activeMenu, activeTab, detail, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, allResourceApis, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, providerExpansion, sourceExpansion, isProviderExpanded, isSourceExpanded, sourceInterfaces, filteredProviderGroups, filteredSources, setAllSourcesExpanded, locateSelectedApi, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, bringVendorApiToPlatform, vendorImportingKey, apiForm, apiDialog, apiMetadataDialog, apiMetadataSaving, apiMetadataForm, openResourceApiMetadataEditor, saveResourceApiMetadata, mappingDirection, mappingIsPassThrough, mappingModeLabel, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
+  const state = vm.runInNewContext('(() => { ' + appJS + ' return { platformServiceDialog, platformServiceForm, serviceResourceOptions, serviceCreationResource, selectServiceResource, openPlatformServiceDialog, createPlatformService, validateUpstreamCapability, testResult, testError, testSucceeded, navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, activeMenu, activeTab, detail, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, allResourceApis, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, providerExpansion, sourceExpansion, isProviderExpanded, isSourceExpanded, sourceInterfaces, filteredProviderGroups, filteredSources, setAllSourcesExpanded, locateSelectedApi, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, bringVendorApiToPlatform, vendorImportingKey, apiForm, apiDialog, apiMetadataDialog, apiMetadataSaving, apiMetadataForm, openResourceApiMetadataEditor, saveResourceApiMetadata, mappingDirection, mappingIsPassThrough, mappingModeLabel, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
   state.selectedSourceId.value = 1
   state.activeMenu.value = 'resource'
   state.selectedInterfaceId.value = 11
@@ -61,6 +61,56 @@ function harness(overrides = {}, confirm = async () => true) {
   state.savedStandardServiceBaseline.value = JSON.stringify(state.standardServiceForm.value)
   return { ...state, messages }
 }
+
+test('标准服务可以独立选择已保存的资源 API，不以测试通过为前提', () => {
+  const s = harness()
+  s.activeMenu.value = 'service-development'
+  s.allResourceApis.value = [
+    { id: 21, dataSourceId: 1, resourceApiCode: 'RAEX_RISK', resourceApiName: '风险查询', status: 'READY', platformServiceCount: 1 },
+    { id: 22, dataSourceId: 1, resourceApiCode: 'UNSAVED', resourceApiName: '未保存接口', status: 'DRAFT', platformServiceCount: 0 },
+    { id: 23, dataSourceId: 1, resourceApiCode: 'RELATION', resourceApiName: '关系查询', status: 'READY', platformServiceCount: 0, verifiedAt: '2026-10-16T10:00:00' }
+  ]
+  assert.deepEqual(Array.from(s.serviceResourceOptions.value, item => item.id), [21, 23])
+  s.openPlatformServiceDialog()
+  assert.equal(s.platformServiceDialog.value, true)
+  assert.equal(s.platformServiceForm.value.resourceApiId, 0)
+  s.selectServiceResource(21)
+  assert.equal(s.platformServiceForm.value.resourceApiId, 21)
+  assert.equal(s.platformServiceForm.value.serviceCode, 'RAEX_RISK_SERVICE_02')
+  assert.match(s.serviceCreationResource.value.lineage, /企信资源提供商.*企业工商数据源/)
+  s.selectServiceResource(23)
+  assert.equal(s.platformServiceForm.value.serviceCode, 'RELATION_SERVICE_01')
+  assert.equal(s.platformServiceForm.value.servicePath, '/api/v1/relation/01')
+  s.selectServiceResource(22)
+  assert.equal(s.platformServiceForm.value.resourceApiId, 0)
+})
+
+test('未选择有效资源 API 时不允许绕过页面创建标准服务', async () => {
+  let called = false
+  const s = harness({ createPlatformService: async () => { called = true } })
+  Object.assign(s.platformServiceForm.value, { resourceApiId: 999, serviceCode: 'SERVICE', serviceName: '测试服务', servicePath: '/api/v1/test' })
+  await s.createPlatformService()
+  assert.equal(called, false)
+  assert.match(s.messages.at(-1).message, /请选择已保存的资源 API/)
+})
+
+test('资源 API 本次测试失败时清除上一次成功响应，但不阻止标准服务开发', async () => {
+  const s = harness({ verifyResourceApi: async () => { throw new Error('上游连接失败') } })
+  s.activeTab.value = 'overview'
+  s.detail.value.summary.upstreamStatus = 'READY'
+  s.allResourceApis.value = [{ id: 11, dataSourceId: 1, resourceApiCode: 'RISK', resourceApiName: '风险查询', status: 'READY', platformServiceCount: 0 }]
+  s.testResult.value = result()
+  s.testSucceeded.value = true
+  s.lastUpstreamValidation.value = { interfaceId: 11, connectionFingerprint: [s.savedConnectionBaseline.value, s.savedUpstreamRequestBaseline.value, s.savedUpstreamResponseBaseline.value].join('|') }
+  assert.equal(await s.validateUpstreamCapability(), false)
+  assert.equal(s.testResult.value, null)
+  assert.equal(s.testSucceeded.value, false)
+  assert.equal(s.currentUpstreamVerified.value, false)
+  assert.match(s.testError.value, /验证失败/)
+  s.openPlatformServiceDialog()
+  assert.equal(s.platformServiceDialog.value, true)
+  assert.equal(s.platformServiceForm.value.resourceApiId, 11)
+})
 
 test('跨模块导航取消时保留未保存报文，确认放弃后才能离开', async () => {
   const blocked = harness({}, async () => { throw 'cancel' })
