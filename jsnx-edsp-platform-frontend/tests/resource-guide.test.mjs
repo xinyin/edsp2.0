@@ -635,11 +635,21 @@ test('数据应用部署配置明确区分 Gateway 访问地址与 Java 监听�
   assert.match(appText, /写入 Nacos 的 server\.port/)
 })
 
-test('处理应用路由仅在资源方管理提供编辑入口', () => {
+test('应用路由配置仅在资源方管理提供编辑入口', () => {
   assert.equal((appText.match(/@click="openSourceRuntimeEditor"/g) || []).length, 1)
+  assert.match(appText, />配置应用路由<\/el-button>/)
   assert.match(appText, /const provider = selectedProvider\.value/)
   assert.match(appText, /function editReleaseRuntime\(\)[\s\S]*?goToProviderManagement/)
   assert.doesNotMatch(appText, />运行路由<\/el-button>/)
+})
+
+test('再次打开应用路由配置只读查询既有工程和 Nacos 状态', () => {
+  const apiText = readFileSync(new URL('../src/api.ts', import.meta.url), 'utf8')
+  assert.match(apiText, /providerRuntimeStatus.*\/runtime\/status/)
+  assert.match(appText, /api\.providerRuntimeStatus\(provider\.id\)/)
+  assert.match(appText, /已保存的执行信息/)
+  assert.match(appText, /sourceRuntimeResult\.value\?\.generation\.outputDirectory/)
+  assert.match(appText, /重新生成并同步/)
 })
 
 test('配置说明按需点击展示，字段映射窄屏仍有语义标签', () => {

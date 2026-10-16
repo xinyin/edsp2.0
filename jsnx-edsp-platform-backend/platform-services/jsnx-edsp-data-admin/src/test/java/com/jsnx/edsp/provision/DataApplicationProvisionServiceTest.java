@@ -56,4 +56,19 @@ class DataApplicationProvisionServiceTest {
         assertThatThrownBy(() -> service.save(3, request)).isInstanceOf(IllegalArgumentException.class);
         verify(interfaces, never()).saveProviderRuntime(anyLong(), any());
     }
+    @Test void statusReadsPersistedArtifactsWithoutSavingOrRefreshing() {
+        var provider = DataApplicationScaffoldGeneratorTest.provider(request.applicationName());
+        var generation = new ProvisionModels.Generation("REUSED", "found", "/tmp/generated/app", "pkg", List.of("pom.xml"));
+        var nacos = new ProvisionModels.Nacos("REUSED", "found", "app.yaml", "DEFAULT_GROUP", "");
+        when(generator.inspect(provider)).thenReturn(generation);
+        when(publisher.inspect(provider.applicationName())).thenReturn(nacos);
+
+        var result = service.status(3);
+
+        assertThat(result.routeSave().status()).isEqualTo("SUCCESS");
+        assertThat(result.generation().outputDirectory()).isEqualTo("/tmp/generated/app");
+        assertThat(result.nacos().dataId()).isEqualTo("app.yaml");
+        assertThat(result.routeRefresh().status()).isEqualTo("SKIPPED");
+        verify(interfaces, never()).saveProviderRuntime(anyLong(), any());
+    }
 }

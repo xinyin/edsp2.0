@@ -40,6 +40,16 @@ class NacosConfigPublisherTest {
         assertThatThrownBy(() -> publisher.publish("jsnx-edsp-data-credit", "generated")).hasMessageContaining("denied");
         verify(client, never()).publishConfigCas(any(), any(), any(), any(), any());
     }
+    @Test void inspectsExistingConfigWithoutPublishing() throws Exception {
+        when(client.getConfig(any(), any(), anyLong())).thenReturn("server:\n  port: 8198\n");
+
+        var result = publisher.inspect("jsnx-edsp-data-credit-v2");
+
+        assertThat(result.status()).isEqualTo("REUSED");
+        assertThat(result.dataId()).isEqualTo("jsnx-edsp-data-credit-v2.yaml");
+        verify(client, never()).publishConfig(any(), any(), any());
+        verify(client, never()).publishConfigCas(any(), any(), any(), any(), any());
+    }
     @Test void updatesOnlyManagedServerPortInExistingConfig() throws Exception {
         String current = "server:\n  port: \"${SERVER_PORT:8199}\"\nspring:\n  application:\n    name: custom\n";
         String updated = "server:\n  port: \"${SERVER_PORT:8205}\"\nspring:\n  application:\n    name: custom\n";

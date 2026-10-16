@@ -24,6 +24,20 @@ public class DataApplicationProvisionService {
                 generator.outputRoot().toString(), publisher.group(), publisher.namespace());
     }
 
+    public ProvisionModels.Result status(long id) {
+        var provider = interfaces.provider(id);
+        var route = provider.applicationName() == null || provider.applicationName().isBlank()
+                || provider.runtimeUrl() == null || provider.runtimeUrl().isBlank()
+                ? new ProvisionModels.Step("SKIPPED", "尚未保存完整的应用路由配置")
+                : new ProvisionModels.Step("SUCCESS", "应用路由配置已保存到 MySQL");
+        var generation = generator.inspect(provider);
+        var nacos = provider.applicationName() == null || provider.applicationName().isBlank()
+                ? new ProvisionModels.Nacos("SKIPPED", "尚未配置处理应用标识", null, publisher.group(), publisher.namespace())
+                : publisher.inspect(provider.applicationName());
+        return new ProvisionModels.Result(provider, route, generation, nacos,
+                new ProvisionModels.Step("SKIPPED", "本次仅查询状态，未触发 Gateway 路由刷新"));
+    }
+
     public synchronized ProvisionModels.Result save(long id, SaveProviderRuntimeRequest request) {
         var before = interfaces.provider(id);
         generator.validate(request.applicationName().trim(), before.providerCode());

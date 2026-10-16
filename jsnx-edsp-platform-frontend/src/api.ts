@@ -68,6 +68,7 @@ export const api = {
   dataSources: () => request<DataSourceSummary[]>('/api/data-sources', undefined, () => mock.dataSources),
   createDataSource: (body: Record<string, unknown>) => request<DataSourceSummary>('/api/data-sources', { method: 'POST', body: JSON.stringify(body) }),
   dataApplicationProvisionSettings: () => request<DataApplicationProvisionSettings>('/api/data-application-provision/settings'),
+  providerRuntimeStatus: (id: number) => request<DataApplicationProvisionResult>(`/api/providers/${id}/runtime/status`),
   saveProviderRuntime: (id: number, body: { applicationName: string; runtimeUrl: string; serverPort: number }) =>
     request<DataApplicationProvisionResult>(`/api/providers/${id}/runtime`, { method: 'PUT', body: JSON.stringify(body) }, undefined, 60_000),
   saveDataSourceSettings: (id: number, body: { providerId: number; sourceName: string; protocolType: string; endpoint: string; defaultTimeoutMs: number }) =>

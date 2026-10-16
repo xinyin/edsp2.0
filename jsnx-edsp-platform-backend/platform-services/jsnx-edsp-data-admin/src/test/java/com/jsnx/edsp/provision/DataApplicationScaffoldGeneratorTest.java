@@ -50,6 +50,18 @@ class DataApplicationScaffoldGeneratorTest {
         assertThat(generator().generate(provider("jsnx-edsp-data-credit-v2"), 8205).status()).isEqualTo("REUSED");
         assertThat(Files.readString(pom)).isEqualTo("developer changes");
     }
+    @Test void inspectsExistingGeneratedProjectWithoutWritingIt() throws Exception {
+        var generated = generator().generate(provider("jsnx-edsp-data-credit-v2"), 8198);
+        Path pom = Path.of(generated.outputDirectory()).resolve("pom.xml");
+        Files.writeString(pom, "developer changes");
+
+        var status = generator().inspect(provider("jsnx-edsp-data-credit-v2"));
+
+        assertThat(status.status()).isEqualTo("REUSED");
+        assertThat(status.outputDirectory()).isEqualTo(generated.outputDirectory());
+        assertThat(status.generatedFiles()).contains("pom.xml");
+        assertThat(Files.readString(pom)).isEqualTo("developer changes");
+    }
     @Test void rejectsTraversalForeignDirectoriesAndSymlinks() throws Exception {
         assertThatThrownBy(() -> generator().generate(provider("../../escape"), 8198)).isInstanceOf(IllegalArgumentException.class);
         Path target = Files.createDirectory(root.resolve("jsnx-edsp-data-existing"));

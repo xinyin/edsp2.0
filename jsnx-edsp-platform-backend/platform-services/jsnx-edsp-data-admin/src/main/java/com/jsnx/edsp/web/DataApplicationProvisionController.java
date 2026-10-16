@@ -13,6 +13,8 @@ public class DataApplicationProvisionController {
     public DataApplicationProvisionController(DataApplicationProvisionService service) { this.service = service; }
     @GetMapping("/data-application-provision/settings")
     public ProvisionModels.Settings settings() { return service.settings(); }
+    @GetMapping("/providers/{id}/runtime/status")
+    public ProvisionModels.Result status(@PathVariable long id) { return service.status(id); }
     @PutMapping("/providers/{id}/runtime")
     public ProvisionModels.Result save(@PathVariable long id, @Valid @RequestBody SaveProviderRuntimeRequest request) {
         return service.save(id, request);

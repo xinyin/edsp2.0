@@ -111,6 +111,37 @@ public class DataApplicationScaffoldGenerator {
         }
     }
 
+    public ProvisionModels.Generation inspect(ProviderSummary provider) {
+        if (provider.applicationName() == null || provider.applicationName().isBlank()) {
+            return new ProvisionModels.Generation("SKIPPED", "尚未配置处理应用标识", null, null, List.of());
+        }
+        try {
+            validate(provider.applicationName(), provider.providerCode());
+            Path root = outputRoot();
+            if (Files.isDirectory(root)) root = root.toRealPath();
+            Path target = root.resolve(provider.applicationName()).normalize();
+            if (!target.startsWith(root) || Files.isSymbolicLink(target) || !Files.isDirectory(target)) {
+                return new ProvisionModels.Generation("SKIPPED", "尚未生成 Java 工程", null, null, List.of());
+            }
+            Path manifest = target.resolve(".edsp-generation.json");
+            if (Files.isSymbolicLink(manifest) || !Files.isRegularFile(manifest)) {
+                return new ProvisionModels.Generation("FAILED", "工程目录存在，但缺少平台生成清单", target.toString(), null, List.of());
+            }
+            var identity = mapper.readTree(Files.readString(manifest));
+            if (!provider.applicationName().equals(identity.path("applicationName").asText())
+                    || !provider.providerCode().equals(identity.path("providerCode").asText())) {
+                return new ProvisionModels.Generation("FAILED", "工程生成清单与当前资源提供商不匹配", target.toString(), null, List.of());
+            }
+            String suffix = provider.applicationName().substring("jsnx-edsp-data-".length()).replace("-", "");
+            List<String> files = mapper.convertValue(identity.path("files"),
+                    mapper.getTypeFactory().constructCollectionType(List.class, String.class));
+            return new ProvisionModels.Generation("REUSED", "已查询到平台生成的 Java 工程", target.toString(),
+                    "com.jsnx.edsp.data." + suffix, files);
+        } catch (Exception ex) {
+            return new ProvisionModels.Generation("FAILED", "工程状态读取失败：" + ex.getMessage(), null, null, List.of());
+        }
+    }
+
     private String yamlQuote(String value) throws IOException { return mapper.writeValueAsString(value); }
 
     public String renderNacosYaml(ProviderSummary provider, int serverPort) throws IOException {

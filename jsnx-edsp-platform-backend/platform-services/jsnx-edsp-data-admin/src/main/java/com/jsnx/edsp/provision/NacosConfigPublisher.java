@@ -38,6 +38,20 @@ public class NacosConfigPublisher {
     public String group() { return environment.getProperty("spring.cloud.nacos.config.group", "DEFAULT_GROUP"); }
     public String namespace() { return environment.getProperty("spring.cloud.nacos.config.namespace", ""); }
 
+    public synchronized ProvisionModels.Nacos inspect(String applicationName) {
+        String dataId = applicationName + ".yaml";
+        try {
+            String current = client().getConfig(dataId, group(), 3000);
+            if (current == null || current.isBlank()) {
+                return new ProvisionModels.Nacos("SKIPPED", "Nacos 中尚未查询到该应用配置", dataId, group(), namespace());
+            }
+            return new ProvisionModels.Nacos("REUSED", "已查询到 Nacos 配置", dataId, group(), namespace());
+        } catch (Exception ex) {
+            return new ProvisionModels.Nacos("FAILED", "Nacos 配置状态读取失败：" + ex.getMessage(),
+                    dataId, group(), namespace());
+        }
+    }
+
     public synchronized ProvisionModels.Nacos publish(String applicationName, String yaml) throws Exception {
         String dataId = applicationName + ".yaml";
         String current = client().getConfig(dataId, group(), 3000);
