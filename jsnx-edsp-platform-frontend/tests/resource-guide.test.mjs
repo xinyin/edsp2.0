@@ -200,7 +200,8 @@ test('只有用户主动配置字段转换时才创建第一条映射，删除�
   assert.equal(s.mappingIsPassThrough.value, false)
   s.deleteMapping(s.detail.value.mappings[0])
   assert.equal(s.mappingIsPassThrough.value, true)
-  assert.match(appText, /平台请求将按原路径一对一发送给上游，无需逐条配置映射/)
+  assert.match(appText, /当前采用自动透传/)
+  assert.match(appText, /title="字段处理模式" content="不配置映射时，报文按原字段名和路径透传/)
 })
 
 test('请求转换和响应标准化已有映射时仍可继续新增行', () => {
@@ -490,8 +491,9 @@ test('服务开发三阶段可以从上游接入切换到标准编排，发布�
 test('主页面使用新的三阶段产品名称和运行管理名称', () => {
   assert.match(appText, /数据资源接入/)
   assert.match(appText, /标准服务开发/)
-  assert.match(appText, /上游接口验证/)
-  assert.match(appText, /草稿链路测试/)
+  assert.match(appText, /资源接口测试/)
+  assert.match(appText, /服务编排测试/)
+  assert.match(appText, /全链路测试/)
   assert.match(appText, /链路追踪/)
   assert.match(appText, /运行监控/)
   assert.match(appText, /@click\.stop="sidebarCollapsed=!sidebarCollapsed"/)
@@ -505,7 +507,7 @@ test('ESB 联调使用生产 Service XML 且最终响应仍为 XML', () => {
   assert.match(appText, /<requester_id>/)
   assert.match(appText, /<Service_Body>/)
   assert.match(appText, /ESB XML 响应/)
-  assert.match(appText, /平台内部和 Kafka 使用结构化 JSON/)
+  assert.match(appText, /响应由 Adapter 封装为 XML 并写回响应队列/)
   assert.doesNotMatch(appText, /<edspRequest>/)
   assert.doesNotMatch(appText, /不将 XML 返回给行内系统/)
 })
@@ -625,10 +627,28 @@ test('供应商目录接入不依赖固定主键，空库时先创建提供商�
 })
 
 test('数据应用部署配置明确区分 Gateway 访问地址与 Java 监听端口', () => {
-  assert.match(appText, /label="数据应用访问地址（供 Gateway 调用）"/)
-  assert.match(appText, /label="Java 应用监听端口"/)
-  assert.match(appText, /无 VIP 时可填单实例地址；有 VIP 或代理时填稳定入口地址/)
-  assert.match(appText, /它可以与上方 VIP 或代理地址的端口不同/)
+  assert.match(appText, /#label>应用访问地址<HelpTip/)
+  assert.match(appText, /#label>应用监听端口<HelpTip/)
+  assert.match(appText, /Gateway 和管理服务访问处理应用的基础地址，非供应商接口地址/)
+  assert.match(appText, /直接访问时应与应用访问地址端口一致；有 VIP 转发时可以不同/)
   assert.match(appText, /serverPort: sourceRuntimeForm\.value\.serverPort/)
-  assert.match(appText, /已有 Nacos 配置只更新监听端口，其他配置保持不变/)
+  assert.match(appText, /写入 Nacos 的 server\.port/)
+})
+
+test('处理应用路由仅在资源方管理提供编辑入口', () => {
+  assert.equal((appText.match(/@click="openSourceRuntimeEditor"/g) || []).length, 1)
+  assert.match(appText, /const provider = selectedProvider\.value/)
+  assert.match(appText, /function editReleaseRuntime\(\)[\s\S]*?goToProviderManagement/)
+  assert.doesNotMatch(appText, />运行路由<\/el-button>/)
+})
+
+test('配置说明按需点击展示，字段映射窄屏仍有语义标签', () => {
+  const help = readFileSync(new URL('../src/components/HelpTip.vue', import.meta.url), 'utf8')
+  const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
+  assert.match(help, /trigger="click"/)
+  assert.match(help, /:aria-label="`查看\$\{title\}`"/)
+  assert.match(appText, /aria-label="转换规则"/)
+  assert.match(consoleThemeText, /mapping-rule-label/)
+  assert.match(consoleThemeText, /container-type: inline-size/)
+  assert.match(main, /locale: zhCn/)
 })
