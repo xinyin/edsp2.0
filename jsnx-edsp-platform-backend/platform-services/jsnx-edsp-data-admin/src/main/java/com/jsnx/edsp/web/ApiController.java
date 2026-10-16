@@ -232,8 +232,7 @@ public class ApiController {
 
     @GetMapping("/interfaces/{interfaceId}/published-plan")
     public Object publishedPlan(@PathVariable long interfaceId) {
-        var plan = plans.get(interfaceId);
-        return plan == null ? Map.of("active", false) : plan;
+        return service.publishedPlanConfiguration(interfaceId);
     }
 
     @GetMapping("/clients")

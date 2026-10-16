@@ -163,10 +163,44 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='edsp_demo' AND table_name='data_provider' AND column_name='description') THEN
         ALTER TABLE data_provider ADD COLUMN description VARCHAR(500) AFTER office_address;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='edsp_demo' AND table_name='data_provider' AND column_name='access_mode') THEN
+        ALTER TABLE data_provider ADD COLUMN access_mode VARCHAR(32) NOT NULL DEFAULT 'HTTP' AFTER description;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='edsp_demo' AND table_name='data_provider' AND column_name='access_config') THEN
+        ALTER TABLE data_provider ADD COLUMN access_config JSON NULL AFTER access_mode;
+        UPDATE data_provider SET access_config=JSON_OBJECT() WHERE access_config IS NULL;
+        ALTER TABLE data_provider MODIFY access_config JSON NOT NULL;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='edsp_demo' AND table_name='data_provider' AND column_name='application_name') THEN
+        ALTER TABLE data_provider ADD COLUMN application_name VARCHAR(128) NULL AFTER access_config;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='edsp_demo' AND table_name='data_provider' AND column_name='runtime_url') THEN
+        ALTER TABLE data_provider ADD COLUMN runtime_url VARCHAR(500) NULL AFTER application_name;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='edsp_demo' AND table_name='data_provider' AND column_name='server_port') THEN
+        ALTER TABLE data_provider ADD COLUMN server_port INT NOT NULL DEFAULT 8199 AFTER runtime_url;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='edsp_demo' AND table_name='data_provider' AND column_name='config_version') THEN
+        ALTER TABLE data_provider ADD COLUMN config_version INT NOT NULL DEFAULT 1 AFTER server_port;
+    END IF;
 END$$
 DELIMITER ;
 CALL migrate_provider_management();
 DROP PROCEDURE migrate_provider_management;
+
+UPDATE data_provider p
+JOIN (
+    SELECT ds.provider_id,ds.application_name,ds.runtime_url,ds.server_port
+    FROM data_source ds
+    JOIN (
+        SELECT provider_id,MIN(id) id FROM data_source GROUP BY provider_id
+        HAVING COUNT(DISTINCT CONCAT(COALESCE(application_name,''),'|',COALESCE(runtime_url,''),'|',server_port))=1
+    ) first_source ON first_source.id=ds.id
+) legacy_route ON legacy_route.provider_id=p.id
+SET p.application_name=COALESCE(p.application_name,legacy_route.application_name),
+    p.server_port=CASE WHEN p.runtime_url IS NULL THEN legacy_route.server_port ELSE p.server_port END,
+    p.runtime_url=COALESCE(p.runtime_url,legacy_route.runtime_url)
+WHERE p.application_name IS NULL OR p.runtime_url IS NULL;
 
 DROP PROCEDURE IF EXISTS migrate_usage_record;
 DELIMITER $$
@@ -210,6 +244,16 @@ contact_email=VALUES(contact_email),service_phone=VALUES(service_phone),contract
 contract_start_date=VALUES(contract_start_date),contract_end_date=VALUES(contract_end_date),
 security_level=VALUES(security_level),settlement_mode=VALUES(settlement_mode),
 office_address=VALUES(office_address),description=VALUES(description);
+
+-- Clean demo databases need a provider-owned route immediately. Existing databases keep
+-- their explicitly configured provider route and are only backfilled when it is absent.
+UPDATE data_provider
+SET access_config=CASE WHEN access_mode='HTTP' AND (access_config IS NULL OR JSON_LENGTH(access_config)=0)
+                       THEN JSON_OBJECT('baseUrl','http://127.0.0.1:8090') ELSE access_config END,
+    application_name=COALESCE(application_name,'jsnx-edsp-data-enterprise'),
+    server_port=CASE WHEN runtime_url IS NULL THEN 8181 ELSE server_port END,
+    runtime_url=COALESCE(runtime_url,'http://127.0.0.1:8181')
+WHERE id=1;
 
 INSERT INTO provider_account(provider_id,username,display_name,mobile,email,role_code,permissions,status,last_login_at)
 VALUES

@@ -23,8 +23,15 @@ CREATE TABLE IF NOT EXISTS data_provider (
     settlement_mode VARCHAR(32) NOT NULL DEFAULT 'MONTHLY',
     office_address VARCHAR(256),
     description VARCHAR(500),
+    access_mode VARCHAR(32) NOT NULL DEFAULT 'HTTP',
+    access_config JSON NOT NULL DEFAULT (JSON_OBJECT()),
+    application_name VARCHAR(128),
+    runtime_url VARCHAR(500),
+    server_port INT NOT NULL DEFAULT 8199,
+    config_version INT NOT NULL DEFAULT 1,
     status VARCHAR(16) NOT NULL DEFAULT 'ACTIVE',
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_provider_application (application_name)
 );
 
 CREATE TABLE IF NOT EXISTS provider_account (

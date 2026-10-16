@@ -18,7 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
-import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestClient;
 
 import java.nio.charset.StandardCharsets;
@@ -180,6 +179,7 @@ public class InterfaceService {
                     ELSE runtime_url END
                 WHERE runtime_url IS NULL
                 """);
+        ensureProviderRoutingColumns();
         jdbc.execute("""
                 CREATE TABLE IF NOT EXISTS resource_api (
                     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -270,6 +270,50 @@ public class InterfaceService {
         }
     }
 
+    private void ensureProviderRoutingColumns() {
+        Map<String, String> definitions = new LinkedHashMap<>();
+        definitions.put("access_mode", "VARCHAR(32) NOT NULL DEFAULT 'HTTP'");
+        definitions.put("access_config", "JSON NULL");
+        definitions.put("application_name", "VARCHAR(128) NULL");
+        definitions.put("runtime_url", "VARCHAR(500) NULL");
+        definitions.put("server_port", "INT NOT NULL DEFAULT 8199");
+        definitions.put("config_version", "INT NOT NULL DEFAULT 1");
+        definitions.forEach((column, definition) -> {
+            Integer count = jdbc.queryForObject("""
+                    SELECT COUNT(*) FROM information_schema.columns
+                    WHERE table_schema=DATABASE() AND table_name='data_provider' AND column_name=?
+                    """, Integer.class, column);
+            if (count == null || count == 0) jdbc.execute("ALTER TABLE data_provider ADD COLUMN " + column + " " + definition);
+        });
+        jdbc.update("UPDATE data_provider SET access_config=JSON_OBJECT() WHERE access_config IS NULL");
+        jdbc.update("""
+                UPDATE data_provider p
+                JOIN (
+                    SELECT provider_id,MIN(id) first_id FROM data_source GROUP BY provider_id
+                    HAVING COUNT(DISTINCT CONCAT(COALESCE(application_name,''),'|',COALESCE(runtime_url,''),'|',server_port))=1
+                ) consistent ON consistent.provider_id=p.id
+                JOIN data_source ds ON ds.id=consistent.first_id
+                SET p.application_name=COALESCE(p.application_name,ds.application_name),
+                    p.server_port=CASE WHEN p.runtime_url IS NULL THEN ds.server_port ELSE p.server_port END,
+                    p.runtime_url=COALESCE(p.runtime_url,ds.runtime_url)
+                WHERE p.application_name IS NULL OR p.runtime_url IS NULL
+                """);
+        Integer routeIndex = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM information_schema.statistics
+                WHERE table_schema=DATABASE() AND table_name='data_provider' AND index_name='uk_provider_application'
+                """, Integer.class);
+        if (routeIndex == null || routeIndex == 0) {
+            jdbc.update("UPDATE data_provider SET application_name=NULL WHERE TRIM(application_name)=''");
+            List<Map<String, Object>> duplicates = jdbc.queryForList("""
+                    SELECT application_name FROM data_provider WHERE application_name IS NOT NULL
+                    GROUP BY application_name HAVING COUNT(*)>1
+                    """);
+            if (!duplicates.isEmpty()) throw new IllegalStateException(
+                    "多个资源提供商共用同一处理应用，请先拆分提供商路由：" + duplicates);
+            jdbc.execute("CREATE UNIQUE INDEX uk_provider_application ON data_provider(application_name)");
+        }
+    }
+
     public DashboardSummary dashboard() {
         return new DashboardSummary(
                 count("data_provider", null), count("data_source", null), count("api_interface", "status <> 'DELETED'"),
@@ -296,12 +340,13 @@ public class InterfaceService {
 
     @Transactional
     public ProviderSummary createProvider(CreateProviderRequest request) {
+        String accessMode = normalizeAccessMode(request.accessMode());
         jdbc.update("""
                 INSERT INTO data_provider(provider_code,provider_name,credit_code,provider_type,contact_name,
                 contact_phone,contact_email,service_phone,contract_no,contract_start_date,contract_end_date,
                 security_level,settlement_mode,office_address,description,access_date,message_encoding,
-                charge_required,encryption_required,login_required,status)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                charge_required,encryption_required,login_required,status,access_mode,access_config)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, request.providerCode().trim().toUpperCase(Locale.ROOT), request.providerName(), request.creditCode(),
                 valueOr(request.providerType(), "DATA_VENDOR"), request.contactName(), request.contactPhone(),
                 request.contactEmail(), request.servicePhone(), request.contractNo(), request.contractStartDate(),
@@ -309,7 +354,7 @@ public class InterfaceService {
                 valueOr(request.settlementMode(), "MONTHLY"), request.officeAddress(), request.description(),
                 request.accessDate(), valueOr(request.messageEncoding(), "UTF-8"), request.chargeRequired(),
                 request.encryptionRequired(), request.loginRequired(),
-                valueOr(request.status(), "ACTIVE"));
+                valueOr(request.status(), "ACTIVE"), accessMode, json.write(normalizeAccessConfig(accessMode, request.accessConfig())));
         long id = Objects.requireNonNull(jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class));
         return provider(id);
     }
@@ -321,11 +366,16 @@ public class InterfaceService {
 
     @Transactional
     public ProviderSummary updateProvider(long id, CreateProviderRequest request) {
+        String accessMode = normalizeAccessMode(request.accessMode());
+        ProviderSummary before = provider(id);
+        if (before.applicationName() != null && !before.providerCode().equalsIgnoreCase(request.providerCode().trim())) {
+            throw new IllegalArgumentException("已绑定处理应用的资源提供商不能直接修改编码，请先完成应用归属迁移");
+        }
         jdbc.update("""
                 UPDATE data_provider SET provider_code=?,provider_name=?,credit_code=?,provider_type=?,contact_name=?,
                 contact_phone=?,contact_email=?,service_phone=?,contract_no=?,contract_start_date=?,contract_end_date=?,
                 security_level=?,settlement_mode=?,office_address=?,description=?,access_date=?,message_encoding=?,
-                charge_required=?,encryption_required=?,login_required=?,status=? WHERE id=?
+                charge_required=?,encryption_required=?,login_required=?,status=?,access_mode=?,access_config=? WHERE id=?
                 """, request.providerCode().trim().toUpperCase(Locale.ROOT), request.providerName(), request.creditCode(),
                 valueOr(request.providerType(), "DATA_VENDOR"), request.contactName(), request.contactPhone(),
                 request.contactEmail(), request.servicePhone(), request.contractNo(), request.contractStartDate(),
@@ -333,8 +383,29 @@ public class InterfaceService {
                 valueOr(request.settlementMode(), "MONTHLY"), request.officeAddress(), request.description(),
                 request.accessDate(), valueOr(request.messageEncoding(), "UTF-8"), request.chargeRequired(),
                 request.encryptionRequired(), request.loginRequired(),
-                valueOr(request.status(), "ACTIVE"), id);
+                valueOr(request.status(), "ACTIVE"), accessMode,
+                json.write(normalizeAccessConfig(accessMode, request.accessConfig())), id);
+        runAfterCommit(() -> refreshProviderPlans(id));
         return provider(id);
+    }
+
+    @Transactional
+    public ProviderSummary saveProviderRuntime(long providerId, SaveProviderRuntimeRequest request) {
+        String runtimeUrl = normalizeRuntimeUrl(request.runtimeUrl(), true);
+        int updated = jdbc.update("""
+                UPDATE data_provider
+                SET application_name=?,runtime_url=?,server_port=?,config_version=config_version+1
+                WHERE id=?
+                """, request.applicationName().trim(), runtimeUrl, request.serverPort(), providerId);
+        if (updated == 0) throw new IllegalArgumentException("资源提供商不存在：" + providerId);
+        // Retain legacy columns as a readable mirror during migration. Runtime routing never reads them.
+        jdbc.update("""
+                UPDATE data_source SET application_name=?,runtime_url=?,server_port=?,config_version=config_version+1
+                WHERE provider_id=?
+                """, request.applicationName().trim(), runtimeUrl, request.serverPort(), providerId);
+        notifyGatewayRouteRefreshAfterCommit();
+        runAfterCommit(() -> refreshProviderPlans(providerId));
+        return provider(providerId);
     }
 
     public List<ProviderAccount> providerAccounts(long providerId) {
@@ -372,11 +443,10 @@ public class InterfaceService {
 
     @Transactional
     public DataSourceSummary createDataSource(CreateDataSourceRequest request) {
-        String generatedName = "jsnx-edsp-data-source-" + request.sourceCode().toLowerCase(Locale.ROOT).replace('_', '-');
-        String applicationName = valueOr(request.applicationName(), generatedName).trim();
-        String runtimeUrl = normalizeRuntimeUrl(request.runtimeUrl(), false);
-        int serverPort = request.serverPort() == null
-                ? (runtimeUrl == null ? 8199 : inferRuntimePort(runtimeUrl)) : request.serverPort();
+        ProviderSummary provider = provider(request.providerId());
+        String applicationName = valueOr(provider.applicationName(), "jsnx-edsp-data-provider-unassigned");
+        String runtimeUrl = provider.runtimeUrl();
+        int serverPort = provider.serverPort();
         int defaultTimeoutMs = validTimeout(request.defaultTimeoutMs(), 3000);
         jdbc.update("""
                 INSERT INTO data_source(provider_id,source_code,source_name,application_name,protocol_type,
@@ -387,17 +457,6 @@ public class InterfaceService {
                 request.environment(), Math.max(1, request.instanceCount()));
         long id = Objects.requireNonNull(jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class));
         return dataSources().stream().filter(item -> item.id() == id).findFirst().orElseThrow();
-    }
-
-    @Transactional
-    public DataSourceSummary saveDataSourceRuntime(long dataSourceId, SaveDataSourceRuntimeRequest request) {
-        String runtimeUrl = normalizeRuntimeUrl(request.runtimeUrl(), true);
-        int updated = jdbc.update("""
-                UPDATE data_source SET application_name=?,runtime_url=?,server_port=?,config_version=config_version+1 WHERE id=?
-                """, request.applicationName().trim(), runtimeUrl, request.serverPort(), dataSourceId);
-        if (updated == 0) throw new IllegalArgumentException("数据源不存在：" + dataSourceId);
-        notifyGatewayRouteRefreshAfterCommit();
-        return dataSources().stream().filter(item -> item.id() == dataSourceId).findFirst().orElseThrow();
     }
 
     @Transactional
@@ -541,7 +600,7 @@ public class InterfaceService {
         jdbc.update("UPDATE resource_api SET status='READY',verified_at=CURRENT_TIMESTAMP,verified_checksum=? WHERE id=?",
                 upstreamChecksum(resource), id);
         List<TraceNode> nodes = List.of(
-                new TraceNode("DATA_SOURCE", "数据源应用", "ADAPTER", "SUCCESS", "装载资源接口连接配置", 1,
+                new TraceNode("DATA_SOURCE", "资源提供商处理应用", "ADAPTER", "SUCCESS", "装载资源接口连接配置", 1,
                         resource.requestExample(), Map.of("endpoint", resource.summary().upstreamUrl())),
                 new TraceNode("VENDOR", "上游资源接口", "EXTERNAL", "SUCCESS", "收到资源提供商原始响应", duration,
                         resource.requestExample(), safeResponse));
@@ -579,13 +638,15 @@ public class InterfaceService {
 
     public List<DataSourceSummary> dataSources() {
         return jdbc.query("""
-                SELECT ds.*, p.provider_name, COUNT(ai.id) interface_count
+                SELECT ds.*, p.provider_name,
+                       p.application_name provider_application_name,p.runtime_url provider_runtime_url,
+                       p.server_port provider_server_port,COUNT(ai.id) interface_count
                 FROM data_source ds JOIN data_provider p ON p.id=ds.provider_id
                 LEFT JOIN api_interface ai ON ai.data_source_id=ds.id AND ai.status <> 'DELETED'
-                GROUP BY ds.id, p.provider_name ORDER BY ds.id
+                GROUP BY ds.id, p.provider_name,p.application_name,p.runtime_url,p.server_port ORDER BY ds.id
                 """, (rs, rowNum) -> new DataSourceSummary(
                 rs.getLong("id"), rs.getLong("provider_id"), rs.getString("provider_name"), rs.getString("source_code"),
-                rs.getString("source_name"), rs.getString("application_name"), rs.getString("runtime_url"), rs.getInt("server_port"), rs.getString("protocol_type"),
+                rs.getString("source_name"), rs.getString("provider_application_name"), rs.getString("provider_runtime_url"), rs.getInt("provider_server_port"), rs.getString("protocol_type"),
                 rs.getString("endpoint_url"), rs.getInt("default_timeout_ms"), rs.getString("environment"),
                 rs.getString("status"), rs.getInt("instance_count"),
                 rs.getInt("config_version"), rs.getInt("interface_count")));
@@ -883,7 +944,10 @@ public class InterfaceService {
                 rs.getString("office_address"), rs.getString("description"),
                 rs.getDate("access_date") == null ? null : rs.getDate("access_date").toLocalDate(),
                 rs.getString("message_encoding"), rs.getBoolean("charge_required"),
-                rs.getBoolean("encryption_required"), rs.getBoolean("login_required"), rs.getString("status"));
+                rs.getBoolean("encryption_required"), rs.getBoolean("login_required"), rs.getString("status"),
+                valueOr(rs.getString("access_mode"), "HTTP"), json.readMap(rs.getString("access_config")),
+                rs.getString("application_name"), rs.getString("runtime_url"), rs.getInt("server_port"),
+                rs.getInt("config_version"));
     }
 
     private ProviderAccount providerAccount(long id) {
@@ -1289,8 +1353,8 @@ public class InterfaceService {
         dataSourceOutput.put("endpoint", executionSummary.upstreamUrl());
         dataSourceOutput.put("timeoutMs", detail.timeoutMs());
         dataSourceOutput.put("requestBody", securedBody);
-        traceNodes.add(new TraceNode("DATA_SOURCE", "数据源应用", "ADAPTER", "SUCCESS",
-                "独立数据源部署单元执行供应商协议适配", 1, securedRequest, dataSourceOutput));
+        traceNodes.add(new TraceNode("DATA_SOURCE", "资源提供商处理应用", "ADAPTER", "SUCCESS",
+                "资源提供商独立处理应用执行协议适配", 1, securedRequest, dataSourceOutput));
         long callStarted = System.nanoTime();
         Map<String, Object> upstreamResponse = invokeThroughDataApplication(executionSummary, securedBody, traceId);
         upstreamDurationMs = Math.max(1, (System.nanoTime() - callStarted) / 1_000_000);
@@ -1359,7 +1423,7 @@ public class InterfaceService {
                 new String[]{"SCHEMA", "Schema 校验", "PLATFORM"},
                 new String[]{"REQUEST_MAPPING", "请求标准化", "PLATFORM"},
                 new String[]{"SECURITY", "安全处理", "PLATFORM"},
-                new String[]{"DATA_SOURCE", "数据源应用", "ADAPTER"},
+                new String[]{"DATA_SOURCE", "资源提供商处理应用", "ADAPTER"},
                 new String[]{"VENDOR", "上游供应商", "EXTERNAL"},
                 new String[]{"RESPONSE_MAPPING", "响应标准化", "PLATFORM"},
                 new String[]{"BILLING", "计量计费", "PLATFORM"});
@@ -1452,15 +1516,19 @@ public class InterfaceService {
         }
         List<Map<String, Object>> rows = includeDraft ? jdbc.queryForList("""
                 SELECT i.id,i.interface_code,i.interface_name,i.service_path,i.http_method,
-                       i.status,i.published_version,i.current_version,ds.source_code,ds.application_name,ds.runtime_url
+                       i.status,i.published_version,i.current_version,ds.source_code,p.provider_code,
+                       p.application_name,p.runtime_url
                 FROM api_interface i JOIN data_source ds ON ds.id=i.data_source_id
+                JOIN data_provider p ON p.id=ds.provider_id
                 WHERE i.interface_code=? AND i.status<>'DELETED'
                 ORDER BY CASE WHEN i.status='PUBLISHED' THEN 0 ELSE 1 END, i.updated_at DESC,i.id DESC LIMIT 1
                 """, interfaceCode.trim()) : jdbc.queryForList("""
                 SELECT i.id,pr.interface_code,i.interface_name,pr.service_path,pr.http_method,
-                       i.status,i.published_version,i.current_version,ds.source_code,ds.application_name,ds.runtime_url
+                       i.status,i.published_version,i.current_version,ds.source_code,p.provider_code,
+                       p.application_name,p.runtime_url
                 FROM published_route pr JOIN api_interface i ON i.id=pr.interface_id
                 JOIN data_source ds ON ds.id=pr.data_source_id
+                JOIN data_provider p ON p.id=ds.provider_id
                 WHERE pr.interface_code=? LIMIT 1
                 """, interfaceCode.trim());
         if (rows.isEmpty()) throw new IllegalArgumentException("未找到可用的接口 apiCode：" + interfaceCode);
@@ -1474,9 +1542,10 @@ public class InterfaceService {
     public List<Map<String, Object>> publishedRoutes() {
         return jdbc.queryForList("""
                 SELECT pr.interface_id,pr.interface_code,pr.service_path,pr.http_method,
-                       pr.route_version,ds.id data_source_id,ds.source_code,
-                       ds.application_name,ds.runtime_url
+                       pr.route_version,ds.id data_source_id,ds.source_code,p.provider_code,
+                       p.application_name,p.runtime_url
                 FROM published_route pr JOIN data_source ds ON ds.id=pr.data_source_id
+                JOIN data_provider p ON p.id=ds.provider_id
                 ORDER BY pr.interface_id
                 """);
     }
@@ -1505,7 +1574,7 @@ public class InterfaceService {
                 new String[]{"SCHEMA", "Schema 校验", "PLATFORM"},
                 new String[]{"REQUEST_MAPPING", "请求标准化", "PLATFORM"},
                 new String[]{"SECURITY", "安全处理", "PLATFORM"},
-                new String[]{"DATA_SOURCE", "数据源应用", "ADAPTER"},
+                new String[]{"DATA_SOURCE", "资源提供商处理应用", "ADAPTER"},
                 new String[]{"VENDOR", "上游供应商", "EXTERNAL"},
                 new String[]{"RESPONSE_MAPPING", "响应标准化", "PLATFORM"},
                 new String[]{"BILLING", "计量计费", "PLATFORM"})) {
@@ -1526,7 +1595,7 @@ public class InterfaceService {
         invocation.put("url", detail.summary().upstreamUrl());
         invocation.put("timeoutMs", detail.timeoutMs());
         invocation.put("body", upstreamRequest);
-        traceNodes.add(new TraceNode("DATA_SOURCE", "数据源应用", "ADAPTER", "SUCCESS",
+        traceNodes.add(new TraceNode("DATA_SOURCE", "资源提供商处理应用", "ADAPTER", "SUCCESS",
                 "装载供应商连接、认证和超时配置", 1, upstreamRequest, invocation));
         long callStarted = System.nanoTime();
         Map<String, Object> upstreamResponse = invokeThroughDataApplication(
@@ -1539,54 +1608,21 @@ public class InterfaceService {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> invokeUpstream(String url, Map<String, Object> request, int timeoutMs) {
-        try {
-            Map<String, Object> response = restClient(timeoutMs).post().uri(url)
-                    .body(request).retrieve().body(Map.class);
-            if (response == null) throw new IllegalStateException("上游返回空响应");
-            return response;
-        } catch (RestClientResponseException e) {
-            throw new IllegalStateException(describeUpstreamError(e), e);
-        } catch (Exception e) {
-            throw new IllegalStateException("上游调用失败：" + e.getMessage(), e);
-        }
-    }
-
-    private String describeUpstreamError(RestClientResponseException error) {
-        String status = "HTTP " + error.getStatusCode().value();
-        try {
-            var body = mapper.readTree(error.getResponseBodyAsString());
-            var result = body.path("result");
-            String message = result.path("message").asText("");
-            List<String> details = new ArrayList<>();
-            var errors = body.path("errors");
-            if (errors.isArray()) errors.forEach(item -> details.add(item.asText()));
-            if (!details.isEmpty()) {
-                return "上游返回 " + status + "：" + (message.isBlank() ? "请求校验失败" : message)
-                        + "（" + String.join("；", details) + "）。请按供应商字段名修正上游请求样例。";
-            }
-            if (!message.isBlank()) return "上游返回 " + status + "：" + message;
-        } catch (Exception ignored) {
-            // Fall through to a bounded response detail when the provider body is not JSON.
-        }
-        String responseBody = error.getResponseBodyAsString();
-        if (responseBody.length() > 500) responseBody = responseBody.substring(0, 500) + "…";
-        return "上游返回 " + status + (responseBody.isBlank() ? "" : "：" + responseBody);
-    }
-
-    @SuppressWarnings("unchecked")
     Map<String, Object> invokeThroughDataApplication(InterfaceSummary summary,
                                                               Map<String, Object> request,
                                                               String traceId) {
         String applicationEndpoint = dataApplicationEndpoint(summary);
         if (applicationEndpoint == null) {
-            return invokeUpstream(summary.upstreamUrl(), request, summary.effectiveTimeoutMs());
+            throw new IllegalStateException("资源提供商尚未配置处理应用访问地址，不允许绕过应用直连外围系统");
         }
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("traceId", traceId);
+        payload.put("providerCode", dataProviderCode(summary));
         payload.put("dataSourceCode", dataApplicationCode(summary));
         payload.put("interfaceCode", summary.interfaceCode());
         payload.put("upstreamUrl", summary.upstreamUrl());
+        payload.put("upstreamHttpMethod", upstreamHttpMethod(summary));
+        payload.put("providerConnection", providerConnection(summary));
         payload.put("timeoutMs", summary.effectiveTimeoutMs());
         payload.put("requestBody", request);
         try {
@@ -1600,7 +1636,7 @@ public class InterfaceService {
                 throw new IllegalStateException(describeUpstreamError(result));
             }
             if (result == null || !(result.get("upstreamResponse") instanceof Map<?, ?> response)) {
-                throw new IllegalStateException("数据源应用返回结构不完整");
+                throw new IllegalStateException("资源提供商处理应用返回结构不完整");
             }
             return (Map<String, Object>) response;
         } catch (Exception e) {
@@ -1645,15 +1681,29 @@ public class InterfaceService {
 
     private String dataApplicationName(InterfaceSummary summary) {
         List<String> names = jdbc.queryForList(
-                "SELECT application_name FROM data_source WHERE id=?", String.class, summary.dataSourceId());
-        return names.isEmpty() ? "jsnx-edsp-data-source-" + summary.dataSourceId() : names.get(0);
+                """
+                SELECT p.application_name FROM data_source ds JOIN data_provider p ON p.id=ds.provider_id
+                WHERE ds.id=? AND p.application_name IS NOT NULL AND p.application_name<>''
+                """, String.class, summary.dataSourceId());
+        return names.isEmpty() ? "资源提供商处理应用" : names.get(0);
     }
 
     private String dataApplicationEndpoint(InterfaceSummary summary) {
         List<String> endpoints = jdbc.queryForList(
-                "SELECT runtime_url FROM data_source WHERE id=? AND runtime_url IS NOT NULL AND runtime_url<>''",
+                """
+                SELECT p.runtime_url FROM data_source ds JOIN data_provider p ON p.id=ds.provider_id
+                WHERE ds.id=? AND p.runtime_url IS NOT NULL AND p.runtime_url<>''
+                """,
                 String.class, summary.dataSourceId());
         return endpoints.isEmpty() ? null : trimTrailingSlash(endpoints.get(0));
+    }
+
+    private String dataProviderCode(InterfaceSummary summary) {
+        List<String> codes = jdbc.queryForList("""
+                SELECT p.provider_code FROM data_source ds JOIN data_provider p ON p.id=ds.provider_id
+                WHERE ds.id=?
+                """, String.class, summary.dataSourceId());
+        return codes.isEmpty() ? null : codes.get(0);
     }
 
     public VendorMockConfig vendorMock(long interfaceId) {
@@ -2012,7 +2062,7 @@ public class InterfaceService {
         Map<String, Object> context = Map.of("traceId", record.traceId(), "interfaceCode", record.interfaceCode());
         return List.of(
                 new TraceNode("GATEWAY", "统一 Gateway", "PLATFORM", "SUCCESS", "认证、授权与路由", Math.max(1, record.gatewayDurationMs() / 2), context, context),
-                new TraceNode("DATA_SOURCE", "数据源应用", "ADAPTER", success ? "SUCCESS" : "ERROR", "协议适配与字段转换", Math.max(1, record.gatewayDurationMs() / 2), context, context),
+                new TraceNode("DATA_SOURCE", "资源提供商处理应用", "ADAPTER", success ? "SUCCESS" : "ERROR", "协议适配与字段转换", Math.max(1, record.gatewayDurationMs() / 2), context, context),
                 new TraceNode("VENDOR", "上游供应商", "EXTERNAL", finalStatus, success ? "上游调用完成" : "调用失败，请结合标准返回码定位", record.upstreamDurationMs(), context, Map.of("standardCode", record.standardCode()))
         );
     }
@@ -2310,9 +2360,59 @@ public class InterfaceService {
                 summary.httpMethod(), version, summary.dataSourceId());
     }
 
+    public Map<String, Object> publishedPlanConfiguration(long interfaceId) {
+        var plan = plans.get(interfaceId);
+        if (plan == null) return Map.of("active", false);
+        Map<String, Object> result = mapper.convertValue(plan, new TypeReference<>() {});
+        result.put("providerConnection", providerConnection(plan.summary()));
+        result.put("upstreamHttpMethod", publishedUpstreamMethod(plan.summary(), plan.version()));
+        return result;
+    }
+
+    private String publishedUpstreamMethod(InterfaceSummary summary, int version) {
+        List<Map<String, Object>> snapshots = jdbc.queryForList("""
+                SELECT JSON_UNQUOTE(JSON_EXTRACT(plan_json,'$.upstreamHttpMethod')) upstream_method
+                FROM release_plan_snapshot WHERE interface_id=? AND release_version=?
+                """, summary.id(), version);
+        if (!snapshots.isEmpty() && snapshots.get(0).get("upstream_method") instanceof String method && !method.isBlank()) {
+            return method;
+        }
+        return upstreamHttpMethod(summary);
+    }
+
+    private Map<String, Object> providerConnection(InterfaceSummary summary) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT p.provider_code,p.access_mode,p.access_config FROM data_source ds
+                JOIN data_provider p ON p.id=ds.provider_id WHERE ds.id=?
+                """, summary.dataSourceId());
+        if (rows.isEmpty()) throw new IllegalStateException("未找到数据源所属的资源提供商");
+        Map<String, Object> row = rows.get(0);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("providerCode", row.get("provider_code"));
+        result.put("accessMode", valueOr(Objects.toString(row.get("access_mode"), null), "HTTP"));
+        result.put("accessConfig", row.get("access_config") == null ? Map.of()
+                : json.readMap(String.valueOf(row.get("access_config"))));
+        return result;
+    }
+
+    private String upstreamHttpMethod(InterfaceSummary summary) {
+        if (summary.resourceApiId() == null) return summary.httpMethod();
+        return jdbc.queryForObject("SELECT http_method FROM resource_api WHERE id=?", String.class, summary.resourceApiId());
+    }
+
+    private void refreshProviderPlans(long providerId) {
+        jdbc.queryForList("""
+                SELECT i.id FROM api_interface i JOIN data_source ds ON ds.id=i.data_source_id
+                WHERE ds.provider_id=? AND i.published_version IS NOT NULL AND i.status NOT IN ('OFFLINE','DELETED')
+                """, providerId).forEach(row -> {
+            var plan = plans.get(((Number) row.get("id")).longValue());
+            if (plan != null) pushPlanToDataApplication(plan.summary());
+        });
+    }
+
     private void requireDataApplicationRoute(InterfaceSummary summary) {
         if (dataApplicationEndpoint(summary) == null) {
-            throw new IllegalStateException("数据源尚未登记处理应用运行地址，不能上线；请先配置数据源运行路由");
+            throw new IllegalStateException("资源提供商尚未登记处理应用访问地址，不能上线；请先配置提供商应用路由");
         }
     }
 
@@ -2372,6 +2472,7 @@ public class InterfaceService {
         snapshot.put("requestMappings", detail.mappings().stream().filter(m -> "REQUEST".equals(m.direction())).toList());
         snapshot.put("responseMappings", detail.mappings().stream().filter(m -> "RESPONSE".equals(m.direction())).toList());
         snapshot.put("summary", detail.summary());
+        snapshot.put("upstreamHttpMethod", upstreamHttpMethod(detail.summary()));
         snapshot.put("vendorCodePath", detail.vendorCodePath());
         snapshot.put("responseCodes", detail.responseCodes());
         snapshot.put("securityPolicy", detail.securityPolicy());
@@ -2603,6 +2704,22 @@ public class InterfaceService {
         } catch (IllegalArgumentException error) {
             throw new IllegalArgumentException("数据源基础地址必须是合法的 HTTP/HTTPS 地址", error);
         }
+    }
+
+    private String normalizeAccessMode(String value) {
+        String mode = valueOr(value, "HTTP").trim().toUpperCase(Locale.ROOT);
+        if (!Set.of("HTTP", "DATABASE", "PLATFORM_SERVICE", "KAFKA").contains(mode)) {
+            throw new IllegalArgumentException("不支持的提供商接入类型：" + value);
+        }
+        return mode;
+    }
+
+    private Map<String, Object> normalizeAccessConfig(String accessMode, Map<String, Object> source) {
+        Map<String, Object> config = source == null ? new LinkedHashMap<>() : new LinkedHashMap<>(source);
+        // Credentials must be resolved by the provider application from a controlled secret reference.
+        config.remove("password");
+        if ("DATABASE".equals(accessMode) && config.containsKey("passwordValue")) config.remove("passwordValue");
+        return config;
     }
 
     private String normalizePath(String value) {

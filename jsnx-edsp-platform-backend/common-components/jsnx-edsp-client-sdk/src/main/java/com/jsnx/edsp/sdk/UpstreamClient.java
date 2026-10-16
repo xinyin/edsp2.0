@@ -8,19 +8,80 @@ import org.springframework.web.client.RestClientResponseException;
 import java.time.Duration;
 import java.util.Map;
 import java.util.List;
+import java.util.Locale;
+import java.util.LinkedHashMap;
+import java.util.ServiceLoader;
+import org.springframework.http.HttpMethod;
+import org.springframework.web.util.UriComponentsBuilder;
 
-/** Data-source-local HTTP adapter used by each independently deployed application. */
+/** Provider-local protocol dispatch used by each independently deployed application. */
 public class UpstreamClient {
     private final ObjectMapper mapper;
+    private final Map<String, ProviderConnector> connectors;
 
-    public UpstreamClient(ObjectMapper mapper) { this.mapper = mapper; }
+    public UpstreamClient(ObjectMapper mapper) {
+        this(mapper, ServiceLoader.load(ProviderConnector.class).stream().map(ServiceLoader.Provider::get).toList());
+    }
+
+    public UpstreamClient(ObjectMapper mapper, List<ProviderConnector> extensions) {
+        this.mapper = mapper;
+        Map<String, ProviderConnector> registered = new LinkedHashMap<>();
+        for (ProviderConnector connector : extensions) {
+            String mode = connector.accessMode().trim().toUpperCase(Locale.ROOT);
+            if (registered.putIfAbsent(mode, connector) != null) {
+                throw new IllegalArgumentException("重复的提供商连接器：" + mode);
+            }
+        }
+        this.connectors = Map.copyOf(registered);
+    }
+
+    public Map<String, Object> execute(Map<String, Object> connection, String method, String url,
+                                       Map<String, Object> body, String traceId, int timeoutMs) {
+        Map<String, Object> config = connection == null ? Map.of() : connection;
+        String mode = String.valueOf(config.getOrDefault("accessMode", "HTTP")).toUpperCase(Locale.ROOT);
+        ProviderConnector connector = connectors.get(mode);
+        if (connector != null) return connector.execute(config, method, url, body, traceId, timeoutMs);
+        if (!"HTTP".equals(mode)) {
+            throw new IllegalStateException("当前资源提供商应用未安装 " + mode + " 连接器；禁止回退为 HTTP 调用");
+        }
+        String normalized = method == null ? "POST" : method.trim().toUpperCase(Locale.ROOT);
+        return "POST".equals(normalized) ? post(url, body, traceId, timeoutMs)
+                : exchange(normalized, url, body, traceId, timeoutMs);
+    }
 
     public Map<String, Object> post(String url, Map<String, Object> body, String traceId, int timeoutMs) {
+        return exchange("POST", url, body, traceId, timeoutMs);
+    }
+
+    private Map<String, Object> exchange(String method, String url, Map<String, Object> body, String traceId, int timeoutMs) {
+        if (url == null || !(url.startsWith("http://") || url.startsWith("https://"))) {
+            throw new IllegalArgumentException("缺少有效的上游 HTTP 地址");
+        }
+        if (!List.of("GET", "POST", "PUT", "PATCH", "DELETE").contains(method)) {
+            throw new IllegalArgumentException("不支持的上游 HTTP 方法：" + method);
+        }
         try {
-            Map<String, Object> response = RestClient.builder().requestFactory(factory(timeoutMs)).build().post().uri(url)
-                    .header("X-Trace-Id", traceId == null ? "" : traceId)
-                    .contentType(MediaType.APPLICATION_JSON).body(body == null ? Map.of() : body)
-                    .retrieve().body(Map.class);
+            Map<String, Object> values = body == null ? Map.of() : body;
+            java.net.URI target;
+            if ("GET".equals(method)) {
+                var builder = UriComponentsBuilder.fromUriString(url);
+                values.forEach((key, value) -> {
+                    if (value instanceof Map<?, ?>) throw new IllegalArgumentException("GET 查询参数不支持嵌套对象：" + key);
+                    if (value instanceof Iterable<?> items) items.forEach(item -> {
+                        if (item instanceof Map<?, ?> || item instanceof Iterable<?>) {
+                            throw new IllegalArgumentException("GET 查询参数不支持嵌套集合：" + key);
+                        }
+                        builder.queryParam(key, item);
+                    });
+                    else if (value != null) builder.queryParam(key, value);
+                });
+                target = builder.build().encode().toUri();
+            } else target = java.net.URI.create(url);
+            var request = RestClient.builder().requestFactory(factory(timeoutMs)).build()
+                    .method(HttpMethod.valueOf(method)).uri(target)
+                    .header("X-Trace-Id", traceId == null ? "" : traceId);
+            if (!"GET".equals(method)) request.contentType(MediaType.APPLICATION_JSON).body(values);
+            Map<String, Object> response = request.retrieve().body(Map.class);
             if (response == null) throw new IllegalStateException("上游返回空响应");
             return response;
         } catch (RestClientResponseException e) {
@@ -65,9 +126,13 @@ public class UpstreamClient {
     }
 
     private org.springframework.http.client.ClientHttpRequestFactory factory(int timeoutMs) {
-        var requestFactory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(Duration.ofMillis(Math.max(100, timeoutMs)));
-        requestFactory.setReadTimeout(Duration.ofMillis(Math.max(100, timeoutMs)));
+        Duration timeout = Duration.ofMillis(Math.max(100, Math.min(120_000, timeoutMs)));
+        var client = java.net.http.HttpClient.newBuilder().connectTimeout(timeout)
+                .followRedirects(java.net.http.HttpClient.Redirect.NEVER).build();
+        // HttpURLConnection cannot issue PATCH on JDK17. Use the JDK HTTP client
+        // so the advertised method is the method actually sent to the provider.
+        var requestFactory = new org.springframework.http.client.JdkClientHttpRequestFactory(client);
+        requestFactory.setReadTimeout(timeout);
         return requestFactory;
     }
 }

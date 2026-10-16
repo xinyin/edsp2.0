@@ -57,4 +57,38 @@ class DraftAdapterExecutorTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("HTTP 地址");
     }
+
+    @Test
+    void providerApplicationAcceptsDifferentDataSourcesOwnedByTheSameProvider() {
+        UpstreamClient upstream = new UpstreamClient(new ObjectMapper()) {
+            @Override
+            public Map<String, Object> post(String url, Map<String, Object> body, String traceId, int timeoutMs) {
+                return Map.of("code", "0000");
+            }
+        };
+
+        Map<String, Object> first = DraftAdapterExecutor.executeForProvider("BAIRONG", Map.of(
+                "providerCode", "BAIRONG", "dataSourceCode", "ANTI_FRAUD",
+                "upstreamUrl", "http://provider.example/anti-fraud"
+        ), upstream);
+        Map<String, Object> second = DraftAdapterExecutor.executeForProvider("BAIRONG", Map.of(
+                "providerCode", "BAIRONG", "dataSourceCode", "CREDIT_SCORE",
+                "upstreamUrl", "http://provider.example/credit-score"
+        ), upstream);
+
+        assertThat(first).containsEntry("providerCode", "BAIRONG")
+                .containsEntry("dataSourceCode", "ANTI_FRAUD");
+        assertThat(second).containsEntry("providerCode", "BAIRONG")
+                .containsEntry("dataSourceCode", "CREDIT_SCORE");
+    }
+
+    @Test
+    void providerApplicationRejectsRequestOwnedByAnotherProvider() {
+        assertThatThrownBy(() -> DraftAdapterExecutor.executeForProvider("BAIRONG", Map.of(
+                "providerCode", "OTHER_PROVIDER", "dataSourceCode", "ANTI_FRAUD",
+                "upstreamUrl", "http://provider.example/anti-fraud"
+        ), new UpstreamClient(new ObjectMapper())))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("资源提供商");
+    }
 }

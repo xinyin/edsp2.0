@@ -20,34 +20,51 @@ public final class DraftAdapterExecutor {
         if (!expectedDataSourceCode.equalsIgnoreCase(dataSourceCode)) {
             throw new IllegalArgumentException("请求数据源与当前应用不匹配：" + dataSourceCode);
         }
-        String upstreamUrl = text(payload.get("upstreamUrl"));
-        if (!(upstreamUrl.startsWith("http://") || upstreamUrl.startsWith("https://"))) {
-            throw new IllegalArgumentException("草稿联调缺少有效的上游 HTTP 地址");
+        Map<String, Object> result = executeRequest(payload, upstream);
+        result.put("dataSourceCode", expectedDataSourceCode);
+        return result;
+    }
+
+    /** Execute a draft in the application owned by one provider and shared by all its data sources. */
+    public static Map<String, Object> executeForProvider(String expectedProviderCode,
+                                                         Map<String, Object> payload,
+                                                         UpstreamClient upstream) {
+        if (payload == null) throw new IllegalArgumentException("草稿联调请求不能为空");
+        String providerCode = text(payload.get("providerCode"));
+        if (!expectedProviderCode.equalsIgnoreCase(providerCode)) {
+            throw new IllegalArgumentException("请求资源提供商与当前应用不匹配：" + providerCode);
         }
+        String dataSourceCode = text(payload.get("dataSourceCode"));
+        if (dataSourceCode.isBlank()) throw new IllegalArgumentException("草稿联调缺少数据源编码");
+        Map<String, Object> result = executeRequest(payload, upstream);
+        result.put("providerCode", expectedProviderCode);
+        result.put("dataSourceCode", dataSourceCode);
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> executeRequest(Map<String, Object> payload, UpstreamClient upstream) {
+        String upstreamUrl = text(payload.get("upstreamUrl"));
+        Map<String, Object> connection = payload.get("providerConnection") instanceof Map<?, ?> config
+                ? new LinkedHashMap<>((Map<String, Object>) config) : Map.of();
         int timeoutMs = timeout(payload.get("timeoutMs"));
         Map<String, Object> requestBody = payload.get("requestBody") instanceof Map<?, ?> body
                 ? new LinkedHashMap<>((Map<String, Object>) body) : Map.of();
         String traceId = text(payload.get("traceId"));
-        Map<String, Object> upstreamResponse;
-        try {
-            upstreamResponse = upstream.post(upstreamUrl, requestBody, traceId, timeoutMs);
-        } catch (UpstreamClient.UpstreamCallException error) {
-            Map<String, Object> failed = new LinkedHashMap<>();
-            failed.put("success", false);
-            failed.put("traceId", traceId);
-            failed.put("dataSourceCode", expectedDataSourceCode);
-            failed.put("interfaceCode", text(payload.get("interfaceCode")));
-            failed.put("upstreamStatus", error.statusCode());
-            failed.put("upstreamError", error.responseBody());
-            return failed;
-        }
-        if (upstreamResponse == null) throw new IllegalStateException("上游返回空响应");
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("success", true);
+        try {
+            Map<String, Object> response = upstream.execute(connection,
+                    text(payload.getOrDefault("upstreamHttpMethod", "POST")), upstreamUrl, requestBody, traceId, timeoutMs);
+            if (response == null) throw new IllegalStateException("上游返回空响应");
+            result.put("success", true);
+            result.put("upstreamResponse", response);
+        } catch (UpstreamClient.UpstreamCallException error) {
+            result.put("success", false);
+            result.put("upstreamStatus", error.statusCode());
+            result.put("upstreamError", error.responseBody());
+        }
         result.put("traceId", traceId);
-        result.put("dataSourceCode", expectedDataSourceCode);
         result.put("interfaceCode", text(payload.get("interfaceCode")));
-        result.put("upstreamResponse", upstreamResponse);
         return result;
     }
 

@@ -4,6 +4,7 @@ import com.jsnx.edsp.plan.PlanSnapshot;
 import com.jsnx.edsp.sdk.LocalPlanRuntime;
 import com.jsnx.edsp.sdk.DraftAdapterExecutor;
 import com.jsnx.edsp.sdk.UpstreamClient;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -12,20 +13,23 @@ import java.util.Map;
 public class EnterpriseAdapterController {
     private final LocalPlanRuntime plans;
     private final UpstreamClient upstream;
+    private final String providerCode;
 
-    public EnterpriseAdapterController(LocalPlanRuntime plans, UpstreamClient upstream) {
+    public EnterpriseAdapterController(LocalPlanRuntime plans, UpstreamClient upstream,
+                                       @Value("${edsp.data-application.provider-code:QXB}") String providerCode) {
         this.plans = plans;
         this.upstream = upstream;
+        this.providerCode = providerCode;
     }
 
     @GetMapping("/internal/adapter/info")
     public Map<String, Object> info() {
-        return Map.of("application", "jsnx-edsp-data-enterprise", "dataSourceCode", "ENTERPRISE", "status", "UP");
+        return Map.of("application", "jsnx-edsp-data-enterprise", "providerCode", providerCode, "status", "UP");
     }
 
     @PostMapping("/internal/adapter/execute")
     public Map<String, Object> executeDraft(@RequestBody Map<String, Object> payload) {
-        return DraftAdapterExecutor.execute("ENTERPRISE", payload, upstream);
+        return DraftAdapterExecutor.executeForProvider(providerCode, payload, upstream);
     }
 
     @PostMapping("/internal/adapter/plans/{interfaceCode}/refresh")

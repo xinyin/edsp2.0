@@ -14,14 +14,14 @@
 
 Gateway 不再维护企业、征信、反欺诈等固定业务前缀。Admin 发布接口时，把线上路由快照写入
 `published_route`；Gateway 拉取完整快照后使用 `AtomicReference` 一次性替换本地只读路由表。
-每次业务调用必须同时匹配 `X-Api-Code`、HTTP Method 和 URL Path，再转发到数据源登记的
+每次业务调用必须同时匹配 `X-Api-Code`、HTTP Method 和 URL Path，再转发到资源提供商登记的
 `runtime_url + /internal/adapter/published`。
 
 ```text
 apiCode + Method + Path
   → Gateway 本地已发布路由快照
-  → data_source.runtime_url（生产填写行内 VIP）
-  → 数据源应用统一执行入口
+  → data_provider.runtime_url（生产填写行内 VIP）
+  → 资源提供商处理应用统一执行入口
 ```
 
 新增数据源或接口不修改 Gateway YAML、不重新构建 Gateway、不重启 Gateway。发布事务提交后由
@@ -34,7 +34,7 @@ Admin 主动通知所有 Gateway 实例刷新；每个实例还会按 5 秒周�
 ## 关键组件
 
 - `PublishedRouteRegistry`：加载、校验并原子切换已发布路由快照，异常时保留 last-good 快照。
-- `DynamicDataApplicationRoutingFilter`：执行 `apiCode + Method + Path` 强一致校验并选择数据应用 VIP。
+- `DynamicDataApplicationRoutingFilter`：执行 `apiCode + Method + Path` 强一致校验并选择资源提供商处理应用 VIP。
 - `ExternalApiAuthFilter`：校验调用凭证，并核对调用系统、API 授权、有效期和日配额。
 - `RouteRefreshController`：提供发布后主动刷新和实例路由状态检查。
 - `TraceGlobalFilter`：Trace ID、调用耗时和入口日志。

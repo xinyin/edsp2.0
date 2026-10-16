@@ -42,7 +42,7 @@ class PublicationValidationTest {
         doReturn(new ValidationResult(true, List.of(), List.of())).when(service).validate(SERVICE_ID);
         when(jdbc.queryForObject(anyString(), org.mockito.ArgumentMatchers.<RowMapper<InterfaceSummary>>any(), eq(SERVICE_ID)))
                 .thenReturn(detail().summary());
-        when(jdbc.queryForList(contains("SELECT runtime_url FROM data_source"), eq(String.class), eq(1L)))
+        when(jdbc.queryForList(contains("SELECT p.runtime_url FROM data_source"), eq(String.class), eq(1L)))
                 .thenReturn(List.of("http://127.0.0.1:1"));
     }
 
@@ -61,6 +61,60 @@ class PublicationValidationTest {
         verify(jdbc, never()).queryForList(contains("FROM interface_validation_record"), eq(String.class),
                 eq(SERVICE_ID), anyString());
         assertThat(plans.size()).isEqualTo(1);
+    }
+
+    @Test
+    void refusesToPublishWithoutProviderApplicationRoute() {
+        when(jdbc.queryForList(contains("SELECT p.runtime_url FROM data_source"), eq(String.class), eq(1L)))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.publishDirect(SERVICE_ID, new PublishRequest("管理员", "上线")))
+                .hasMessageContaining("资源提供商")
+                .hasMessageContaining("处理应用");
+        assertThat(plans.size()).isZero();
+    }
+
+    @Test
+    void upstreamTestRefusesDirectConnectionWhenProviderRouteIsMissing() {
+        when(jdbc.queryForList(contains("SELECT p.runtime_url FROM data_source"), eq(String.class), eq(1L)))
+                .thenReturn(List.of());
+        assertThatThrownBy(() -> service.invokeThroughDataApplication(detail().summary(), REQUEST, "TEST-NO-ROUTE"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("不允许绕过应用直连外围系统");
+    }
+
+    @Test
+    void upstreamTestSendsRequestToProviderApplicationNotToVendorUrl() throws Exception {
+        var received = new java.util.concurrent.atomic.AtomicReference<Map<?, ?>>();
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/internal/adapter/execute", exchange -> {
+            received.set(mapper.readValue(exchange.getRequestBody(), Map.class));
+            byte[] response = mapper.writeValueAsBytes(Map.of("success", true, "upstreamResponse", RESPONSE));
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            when(jdbc.queryForList(contains("SELECT p.runtime_url FROM data_source"), eq(String.class), eq(1L)))
+                    .thenReturn(List.of("http://127.0.0.1:" + server.getAddress().getPort()));
+            when(jdbc.queryForList(contains("SELECT p.provider_code FROM"), eq(String.class), eq(1L)))
+                    .thenReturn(List.of("BAIRONG"));
+            when(jdbc.queryForList(contains("SELECT source_code FROM"), eq(String.class), eq(1L)))
+                    .thenReturn(List.of("COMPANY"));
+            when(jdbc.queryForList(contains("p.access_mode,p.access_config"), eq(1L)))
+                    .thenReturn(List.of(Map.of("provider_code", "BAIRONG", "access_mode", "HTTP", "access_config", "{}")));
+            when(jdbc.queryForObject("SELECT http_method FROM resource_api WHERE id=?", String.class, RESOURCE_ID))
+                    .thenReturn("GET");
+            assertThat(service.invokeThroughDataApplication(detail().summary(), REQUEST, "APP-ROUTE-TEST"))
+                    .isEqualTo(RESPONSE);
+            assertThat(received.get().get("providerCode")).isEqualTo("BAIRONG");
+            assertThat(received.get().get("dataSourceCode")).isEqualTo("COMPANY");
+            assertThat(received.get().get("upstreamUrl")).isEqualTo(URL);
+            assertThat(received.get().get("upstreamHttpMethod")).isEqualTo("GET");
+            assertThat(received.get().get("requestBody")).isEqualTo(REQUEST);
+        } finally { server.stop(0); }
     }
 
     @Test

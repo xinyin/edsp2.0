@@ -32,7 +32,7 @@ class InterfaceOnlineTest {
         plans = new PublishedPlanRegistry();
         MockEnvironment environment = new MockEnvironment().withProperty("edsp.gateway-refresh-urls", "");
         service = spy(new InterfaceService(jdbc, new JsonSupport(mapper), mapper, plans, environment));
-        when(jdbc.queryForList(contains("SELECT runtime_url FROM data_source"), eq(String.class), eq(1L)))
+        when(jdbc.queryForList(contains("SELECT p.runtime_url FROM data_source"), eq(String.class), eq(1L)))
                 .thenReturn(List.of("disabled"));
     }
 

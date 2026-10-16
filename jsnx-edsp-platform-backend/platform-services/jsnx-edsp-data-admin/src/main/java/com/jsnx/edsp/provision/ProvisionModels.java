@@ -1,6 +1,6 @@
 package com.jsnx.edsp.provision;
 
-import com.jsnx.edsp.model.ApiModels.DataSourceSummary;
+import com.jsnx.edsp.model.ApiModels.ProviderSummary;
 import java.util.List;
 
 public final class ProvisionModels {
@@ -9,7 +9,7 @@ public final class ProvisionModels {
     public record Generation(String status, String message, String outputDirectory,
                              String packageName, List<String> generatedFiles) {}
     public record Nacos(String status, String message, String dataId, String group, String namespace) {}
-    public record Result(DataSourceSummary dataSource, Step routeSave, Generation generation,
+    public record Result(ProviderSummary provider, Step routeSave, Generation generation,
                          Nacos nacos, Step routeRefresh) {}
     public record Settings(boolean enabled, String outputRoot, String group, String namespace) {}
 }

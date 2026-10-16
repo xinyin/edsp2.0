@@ -17,6 +17,21 @@ class PlanCoreTest {
             key -> "edsp.security.keys.test".equals(key) ? KEY : null);
 
     @Test
+    void adminBootstrapPreservesProviderConnectionAndUpstreamMethod() {
+        PlanSnapshot plan = PlanBootstrap.fromAdmin(Map.of(
+                "interfaceId", 12, "interfaceCode", "COMPANY_QUERY", "version", 3,
+                "summary", Map.of("upstreamUrl", "http://provider/query", "effectiveTimeoutMs", 800),
+                "upstreamHttpMethod", "GET",
+                "providerConnection", Map.of("providerCode", "BAIRONG", "accessMode", "HTTP",
+                        "accessConfig", Map.of("baseUrl", "http://provider"))
+        ), new ObjectMapper());
+        assertEquals("GET", plan.upstreamHttpMethod());
+        assertEquals("BAIRONG", plan.providerConnection().get("providerCode"));
+        assertEquals(800, plan.timeoutMs());
+        assertThrows(UnsupportedOperationException.class, () -> plan.providerConnection().put("accessMode", "KAFKA"));
+    }
+
+    @Test
     void replacesOneInterfaceAtomicallyAndMapsNestedFields() {
         PlanRegistry registry = new PlanRegistry();
         registry.activate(new PlanSnapshot(1, "ENTERPRISE_BASIC", 2, "v2", "http://upstream", 3000,

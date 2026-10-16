@@ -36,7 +36,7 @@ public class TemplateAdapterController {
     public Map<String, Object> info() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("application", applicationName);
-        result.put("dataSourceCode", properties.dataSourceCode());
+        result.put("providerCode", properties.providerCode());
         result.put("displayName", properties.displayName());
         result.put("status", "UP");
         return result;
@@ -44,7 +44,7 @@ public class TemplateAdapterController {
 
     @PostMapping("/internal/adapter/execute")
     public Map<String, Object> executeDraft(@RequestBody Map<String, Object> payload) {
-        return DraftAdapterExecutor.execute(properties.dataSourceCode(), payload, upstream);
+        return DraftAdapterExecutor.executeForProvider(properties.providerCode(), payload, upstream);
     }
 
     @PostMapping("/internal/adapter/plans/{interfaceCode}/refresh")

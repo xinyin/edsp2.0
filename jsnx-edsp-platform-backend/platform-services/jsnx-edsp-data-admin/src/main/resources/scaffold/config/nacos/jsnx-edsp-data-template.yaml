@@ -18,8 +18,8 @@ management:
       application: "${spring.application.name}"
 edsp:
   data-application:
-    # 必须与平台 data_source.code 完全一致。
-    data-source-code: TEMPLATE
+    # 必须与平台 data_provider.provider_code 完全一致。
+    provider-code: TEMPLATE
     display-name: 独立数据应用样例
   admin-url: "${ADMIN_URL:http://127.0.0.1:8081}"
   observability-url: "${OBSERVABILITY_URL:http://127.0.0.1:8083}"

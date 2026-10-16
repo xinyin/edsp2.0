@@ -1,6 +1,6 @@
-# 独立数据应用模板
+# 资源提供商处理应用模板
 
-本目录是新增独立数据应用的可运行骨架，不是生产数据应用，不应直接部署。复制后只修改应用身份和环境配置；标准执行链路继续复用 `jsnx-edsp-client-sdk`。
+本目录是新增资源提供商处理应用的可运行骨架，不是生产应用，不应直接部署。一个资源提供商复制并部署一个应用，其下多个数据源和 API 共用该应用；标准执行链路继续复用 `jsnx-edsp-client-sdk`。
 
 ## 已提供的能力
 
@@ -9,7 +9,7 @@
 - `POST /internal/adapter/execute`：上游能力草稿联调。
 - `POST /internal/adapter/plans/{interfaceCode}/refresh`：刷新本地不可变执行计划。
 - `DELETE /internal/adapter/plans/{interfaceCode}/refresh`：停用本地执行计划。
-- `GET /internal/adapter/info`：返回应用名、数据源编码和运行状态。
+- `GET /internal/adapter/info`：返回应用名、资源提供商编码和运行状态。
 - Actuator 健康检查、指标采集和调用事件上报。
 
 ## 复制示例
@@ -29,7 +29,7 @@ cp -R jsnx-edsp-data-application-template jsnx-edsp-data-credit-v2
 | `jsnx-edsp-data-template` | `jsnx-edsp-data-credit-v2` | `application.yml`、Nacos YAML |
 | `com.jsnx.edsp.data.template` | `com.jsnx.edsp.data.creditv2` | Java目录和 `package` |
 | `TemplateDataApplication` | `CreditV2DataApplication` | 启动类文件名和类名 |
-| `TEMPLATE` | `CREDIT_V2` | Nacos YAML 的 `data-source-code` |
+| `TEMPLATE` | `CREDIT_PROVIDER` | Nacos YAML 的 `provider-code` |
 | `独立数据应用样例` | `征信2.0` | Nacos YAML 的 `display-name` |
 | `8199` | 分配的唯一端口 | Nacos YAML 的 `server.port` |
 
@@ -69,14 +69,14 @@ cp -R jsnx-edsp-data-application-template jsnx-edsp-data-credit-v2
    curl --fail http://127.0.0.1:8192/internal/adapter/info
    ```
 
-6. 在平台数据源设置中登记：
+6. 在平台“资源方管理 → 处理应用路由”中登记：
 
    ```text
    处理应用标识：jsnx-edsp-data-credit-v2
    运行地址：http://127.0.0.1:8192
    ```
 
-生产环境的运行地址填写该数据应用的 F5/VIP，不绑定单个实例地址。
+生产环境的运行地址填写该资源提供商处理应用的 F5/VIP，不绑定单个实例地址。
 
 ## 何时需要编写Java代码
 
@@ -85,7 +85,7 @@ cp -R jsnx-edsp-data-application-template jsnx-edsp-data-credit-v2
 ## 上线检查
 
 - 应用名、Nacos Data ID、`spring.application.name` 三者一致。
-- 数据源编码与平台 `data_source.code` 完全一致。
+- `edsp.data-application.provider-code` 与平台 `data_provider.provider_code` 完全一致；该提供商下的数据源共用此应用，不再逐数据源绑定应用。
 - 端口未被其他进程占用，启停脚本已登记新应用。
 - Nacos 配置已发布，服务列表中存在健康实例。
 - 平台运行地址健康检查通过，动态路由可解析。

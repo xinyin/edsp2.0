@@ -50,8 +50,8 @@ public final class StandardDataApplicationExecutor {
             upstreamUrl = prepared.upstreamUrl();
             long planDuration = elapsed(planStarted);
             long upstreamStarted = System.nanoTime();
-            Map<String, Object> upstreamResponse = upstream.post(
-                    prepared.upstreamUrl(), prepared.upstreamRequest(), traceId, prepared.timeoutMs());
+            Map<String, Object> upstreamResponse = upstream.execute(selectedPlan.providerConnection(),
+                    selectedPlan.upstreamHttpMethod(), prepared.upstreamUrl(), prepared.upstreamRequest(), traceId, prepared.timeoutMs());
             long upstreamDuration = elapsed(upstreamStarted);
             long responseStarted = System.nanoTime();
             // Keep the same immutable plan for the complete request. A concurrent

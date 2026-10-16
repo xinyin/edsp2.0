@@ -1,7 +1,7 @@
 package com.jsnx.edsp.provision;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.jsnx.edsp.model.ApiModels.DataSourceSummary;
+import com.jsnx.edsp.model.ApiModels.ProviderSummary;
 import org.springframework.core.env.Environment;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
@@ -32,26 +32,26 @@ public class DataApplicationScaffoldGenerator {
                 .toAbsolutePath().normalize();
     }
 
-    public void validate(String applicationName, String sourceCode) {
+    public void validate(String applicationName, String providerCode) {
         if (applicationName == null || !applicationName.matches("jsnx-edsp-data-[a-z][a-z0-9-]{0,79}"))
             throw new IllegalArgumentException("处理应用标识须以 jsnx-edsp-data- 开头，仅包含小写字母、数字和连字符");
-        if (sourceCode == null || !sourceCode.matches("[A-Za-z0-9_-]{1,64}"))
-            throw new IllegalArgumentException("数据源编码不能包含空格或特殊字符");
+        if (providerCode == null || !providerCode.matches("[A-Za-z0-9_-]{1,64}"))
+            throw new IllegalArgumentException("资源提供商编码不能包含空格或特殊字符");
         String segment = applicationName.substring("jsnx-edsp-data-".length()).replace("-", "");
         if (javax.lang.model.SourceVersion.isKeyword(segment))
             throw new IllegalArgumentException("处理应用标识不能使用 Java 保留字作为包名");
     }
 
-    public synchronized ProvisionModels.Generation generate(DataSourceSummary source, int serverPort) throws IOException {
-        validate(source.applicationName(), source.sourceCode());
+    public synchronized ProvisionModels.Generation generate(ProviderSummary provider, int serverPort) throws IOException {
+        validate(provider.applicationName(), provider.providerCode());
         validateServerPort(serverPort);
         Path root = outputRoot();
         Files.createDirectories(root);
         root = root.toRealPath();
-        Path target = root.resolve(source.applicationName());
-        String suffix = source.applicationName().substring("jsnx-edsp-data-".length()).replace("-", "");
+        Path target = root.resolve(provider.applicationName());
+        String suffix = provider.applicationName().substring("jsnx-edsp-data-".length()).replace("-", "");
         String packageName = "com.jsnx.edsp.data." + suffix;
-        String className = Arrays.stream(source.applicationName().substring("jsnx-edsp-data-".length()).split("-"))
+        String className = Arrays.stream(provider.applicationName().substring("jsnx-edsp-data-".length()).split("-"))
                 .filter(part -> !part.isEmpty())
                 .map(part -> Character.toUpperCase(part.charAt(0)) + part.substring(1)).reduce("", String::concat);
         String applicationClass = className.endsWith("Data") ? className + "Application" : className + "DataApplication";
@@ -62,9 +62,9 @@ public class DataApplicationScaffoldGenerator {
             if (Files.isSymbolicLink(manifest) || !Files.isRegularFile(manifest))
                 throw new IOException("目录已存在但没有平台生成标识，禁止覆盖");
             var identity = mapper.readTree(Files.readString(manifest));
-            if (!source.applicationName().equals(identity.path("applicationName").asText())
-                    || !source.sourceCode().equals(identity.path("sourceCode").asText()))
-                throw new IOException("已有工程归属与当前数据源不一致，禁止覆盖");
+            if (!provider.applicationName().equals(identity.path("applicationName").asText())
+                    || !provider.providerCode().equals(identity.path("providerCode").asText()))
+                throw new IOException("已有工程归属与当前资源提供商不一致，禁止覆盖");
             return new ProvisionModels.Generation("REUSED", "已有工程已保留，未覆盖任何代码", target.toString(), packageName,
                     mapper.convertValue(identity.path("files"), mapper.getTypeFactory().constructCollectionType(List.class, String.class)));
         }
@@ -76,30 +76,30 @@ public class DataApplicationScaffoldGenerator {
                 String name = original.replace("com/jsnx/edsp/data/template", packageName.replace('.', '/'))
                         .replace("TemplateDataApplication", applicationClass)
                         .replace("TemplateAdapterController", className + "AdapterController")
-                        .replace("jsnx-edsp-data-template.yaml", source.applicationName() + ".yaml");
+                        .replace("jsnx-edsp-data-template.yaml", provider.applicationName() + ".yaml");
                 String content;
                 try (var stream = new ClassPathResource("scaffold/" + original).getInputStream()) {
                     content = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
                 }
-                content = content.replace("jsnx-edsp-data-application-template", source.applicationName())
-                        .replace("jsnx-edsp-data-template", source.applicationName())
+                content = content.replace("jsnx-edsp-data-application-template", provider.applicationName())
+                        .replace("jsnx-edsp-data-template", provider.applicationName())
                         .replace("com.jsnx.edsp.data.template", packageName)
                         .replace("TemplateDataApplication", applicationClass)
                         .replace("TemplateAdapterController", className + "AdapterController");
                 if (original.endsWith(".yaml")) {
-                    content = content.replace("data-source-code: TEMPLATE", "data-source-code: " + yamlQuote(source.sourceCode()))
-                            .replace("display-name: 独立数据应用样例", "display-name: " + yamlQuote(source.sourceName()))
+                    content = content.replace("provider-code: TEMPLATE", "provider-code: " + yamlQuote(provider.providerCode()))
+                            .replace("display-name: 独立数据应用样例", "display-name: " + yamlQuote(provider.providerName()))
                             .replace("${SERVER_PORT:8199}", "${SERVER_PORT:" + serverPort + "}");
                 }
-                if (original.equals("README.md")) content = readme(source, packageName, serverPort);
+                if (original.equals("README.md")) content = readme(provider, packageName, serverPort);
                 Path file = staging.resolve(name);
                 Files.createDirectories(file.getParent());
                 Files.writeString(file, content, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW);
                 generated.add(name);
             }
             Files.writeString(staging.resolve(".edsp-generation.json"), mapper.writeValueAsString(Map.of(
-                    "applicationName", source.applicationName(), "sourceCode", source.sourceCode(),
-                    "dataSourceId", source.id(), "templateVersion", "1", "files", generated)));
+                    "applicationName", provider.applicationName(), "providerCode", provider.providerCode(),
+                    "providerId", provider.id(), "templateVersion", "2", "files", generated)));
             // Same filesystem, no fallback to partially visible copy.
             Files.move(staging, target, StandardCopyOption.ATOMIC_MOVE);
             moved = true;
@@ -113,14 +113,14 @@ public class DataApplicationScaffoldGenerator {
 
     private String yamlQuote(String value) throws IOException { return mapper.writeValueAsString(value); }
 
-    public String renderNacosYaml(DataSourceSummary source, int serverPort) throws IOException {
-        validate(source.applicationName(), source.sourceCode());
+    public String renderNacosYaml(ProviderSummary provider, int serverPort) throws IOException {
+        validate(provider.applicationName(), provider.providerCode());
         validateServerPort(serverPort);
         try (var stream = new ClassPathResource("scaffold/config/nacos/jsnx-edsp-data-template.yaml").getInputStream()) {
             return new String(stream.readAllBytes(), StandardCharsets.UTF_8)
-                    .replace("jsnx-edsp-data-template", source.applicationName())
-                    .replace("data-source-code: TEMPLATE", "data-source-code: " + yamlQuote(source.sourceCode()))
-                    .replace("display-name: 独立数据应用样例", "display-name: " + yamlQuote(source.sourceName()))
+                    .replace("jsnx-edsp-data-template", provider.applicationName())
+                    .replace("provider-code: TEMPLATE", "provider-code: " + yamlQuote(provider.providerCode()))
+                    .replace("display-name: 独立数据应用样例", "display-name: " + yamlQuote(provider.providerName()))
                     .replace("${SERVER_PORT:8199}", "${SERVER_PORT:" + serverPort + "}");
         }
     }
@@ -131,11 +131,11 @@ public class DataApplicationScaffoldGenerator {
         }
     }
 
-    private String readme(DataSourceSummary source, String packageName, int serverPort) {
+    private String readme(ProviderSummary provider, String packageName, int serverPort) {
         return """
                 # %s
 
-                平台生成的 JDK 17 独立数据应用工程。数据源编码：`%s`，Java 包：`%s`。
+                平台生成的 JDK 17 资源提供商独立处理应用。提供商编码：`%s`，Java 包：`%s`。
 
                 ## 接入正式工程
 
@@ -154,7 +154,7 @@ public class DataApplicationScaffoldGenerator {
                 源码及 YAML 不保存密码和密钥，使用部署环境变量或受控密钥引用。
                 平台重复保存仅复用本生成目录，不覆盖开发人员修改过的文件；Nacos 仅同步平台管理的监听端口。
                 生成工程不代表已部署，必须完成开发、测试、打包和上线流程。
-                """.formatted(source.applicationName(), source.sourceCode(), packageName, source.applicationName(),
-                source.applicationName(), source.applicationName(), serverPort, source.applicationName(), source.runtimeUrl());
+                """.formatted(provider.applicationName(), provider.providerCode(), packageName, provider.applicationName(),
+                provider.applicationName(), provider.applicationName(), serverPort, provider.applicationName(), provider.runtimeUrl());
     }
 }

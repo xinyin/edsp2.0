@@ -16,6 +16,8 @@ management:
     tags:
       application: "${spring.application.name}"
 edsp:
+  data-application:
+    provider-code: "QXB"
   security:
     keys:
       enterprise-encryption: "${EDSP_ENTERPRISE_ENCRYPTION_KEY:}"

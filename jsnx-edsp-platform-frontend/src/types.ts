@@ -8,7 +8,8 @@ export interface DashboardSummary {
 }
 
 export interface LoginResult { token: string; displayName: string; role: string; institution: string }
-export interface ProviderSummary { id: number; providerCode: string; providerName: string; creditCode?: string; providerType?: string; contactName?: string; contactPhone?: string; contactEmail?: string; servicePhone?: string; contractNo?: string; contractStartDate?: string; contractEndDate?: string; securityLevel?: string; settlementMode?: string; officeAddress?: string; description?: string; accessDate?: string; messageEncoding?: string; chargeRequired?: boolean; encryptionRequired?: boolean; loginRequired?: boolean; status: string }
+export type ProviderAccessMode = 'HTTP' | 'DATABASE' | 'PLATFORM_SERVICE' | 'KAFKA'
+export interface ProviderSummary { id: number; providerCode: string; providerName: string; creditCode?: string; providerType?: string; contactName?: string; contactPhone?: string; contactEmail?: string; servicePhone?: string; contractNo?: string; contractStartDate?: string; contractEndDate?: string; securityLevel?: string; settlementMode?: string; officeAddress?: string; description?: string; accessDate?: string; messageEncoding?: string; chargeRequired?: boolean; encryptionRequired?: boolean; loginRequired?: boolean; status: string; accessMode?: ProviderAccessMode; accessConfig?: Record<string, unknown>; applicationName?: string; runtimeUrl?: string; serverPort?: number; configVersion?: number }
 export interface ProviderAccount { id: number; providerId: number; providerName?: string; username: string; displayName: string; mobile?: string; email?: string; roleCode: string; permissions: string[]; status: string; lastLoginAt?: string; createdAt?: string }
 export interface ClientApp { id: number; clientCode: string; clientName: string; institutionCode: string; institutionName: string; ownerName?: string; status: string }
 export interface AuthorizationRecord { id: number; clientId: number; clientName: string; interfaceId: number; interfaceName: string; interfaceCode: string; environment: string; dailyQuota: number; validFrom: string; validTo: string; status: string; approvedBy?: string }
@@ -44,7 +45,7 @@ export interface DataSourceSummary {
 export interface ProvisionStep { status: string; message: string }
 export interface DataApplicationProvisionSettings { enabled: boolean; outputRoot: string; group: string; namespace: string }
 export interface DataApplicationProvisionResult {
-  dataSource: DataSourceSummary
+  provider: ProviderSummary
   routeSave: ProvisionStep
   generation: ProvisionStep & { outputDirectory?: string; packageName?: string; generatedFiles: string[] }
   nacos: ProvisionStep & { dataId: string; group: string; namespace: string }

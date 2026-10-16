@@ -193,9 +193,8 @@ start_application data-enterprise 8181 jsnx-edsp-data-enterprise jsnx-edsp-data-
 start_application data-antifraud 8183 jsnx-edsp-data-antifraud jsnx-edsp-data-antifraud-2.0.0-SNAPSHOT.jar
 start_application data-credit 8182 jsnx-edsp-data-credit jsnx-edsp-data-credit-2.0.0-SNAPSHOT.jar
 start_application data-lhzx 8191 jsnx-edsp-data-source-lhzx jsnx-edsp-data-source-lhzx-2.0.0-SNAPSHOT.jar
-# Local deployment registration. Production must configure the LHZX F5/VIP in
-# data_source.runtime_url instead of using this loopback address.
-mysql "${MYSQL_ARGS[@]}" -D edsp_demo -e "UPDATE data_source SET application_name='jsnx-edsp-data-source-lhzx',runtime_url='http://127.0.0.1:8191',config_version=config_version+1 WHERE source_code='LHZX' AND (runtime_url IS NULL OR runtime_url='' OR application_name<>'jsnx-edsp-data-source-lhzx');"
+# Provider-owned routes are business configuration and are never rewritten at startup.
+# Configure the local address or production F5/VIP from 资源方管理 → 处理应用路由.
 start_service esb-adapter 8084 jsnx-edsp-esb-adapter jsnx-edsp-esb-adapter-2.0.0-SNAPSHOT.jar
 start_service gateway 8080 jsnx-edsp-data-gateway jsnx-edsp-data-gateway-2.0.0-SNAPSHOT.jar
 

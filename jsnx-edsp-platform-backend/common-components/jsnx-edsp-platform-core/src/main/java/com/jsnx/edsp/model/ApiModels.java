@@ -143,7 +143,9 @@ public final class ApiModels {
             String servicePhone, String contractNo, LocalDate contractStartDate,
             LocalDate contractEndDate, String securityLevel, String settlementMode,
             String officeAddress, String description, LocalDate accessDate, String messageEncoding,
-            boolean chargeRequired, boolean encryptionRequired, boolean loginRequired, String status) {}
+            boolean chargeRequired, boolean encryptionRequired, boolean loginRequired, String status,
+            String accessMode, Map<String, Object> accessConfig,
+            String applicationName, String runtimeUrl, int serverPort, int configVersion) {}
 
     public record CreateProviderRequest(
             @NotBlank String providerCode, @NotBlank String providerName, String creditCode,
@@ -151,7 +153,12 @@ public final class ApiModels {
             String servicePhone, String contractNo, LocalDate contractStartDate,
             LocalDate contractEndDate, String securityLevel, String settlementMode,
             String officeAddress, String description, LocalDate accessDate, String messageEncoding,
-            boolean chargeRequired, boolean encryptionRequired, boolean loginRequired, String status) {}
+            boolean chargeRequired, boolean encryptionRequired, boolean loginRequired, String status,
+            String accessMode, Map<String, Object> accessConfig) {}
+
+    public record SaveProviderRuntimeRequest(
+            @NotBlank String applicationName, @NotBlank String runtimeUrl,
+            @NotNull @Min(1) @Max(65535) Integer serverPort) {}
 
     public record ProviderAccount(
             long id, long providerId, String providerName, String username,
@@ -168,13 +175,8 @@ public final class ApiModels {
             long providerId,
             @NotBlank @Pattern(regexp = "[A-Za-z0-9_-]+", message = "数据源编码不能包含空格或特殊字符") String sourceCode,
             @NotBlank String sourceName,
-            String applicationName, String runtimeUrl, @Min(1) @Max(65535) Integer serverPort,
             @NotBlank String protocolType, String endpoint, Integer defaultTimeoutMs,
             @NotBlank String environment, int instanceCount) {}
-
-    public record SaveDataSourceRuntimeRequest(
-            @NotBlank String applicationName, @NotBlank String runtimeUrl,
-            @NotNull @Min(1) @Max(65535) Integer serverPort) {}
 
     public record SaveDataSourceSettingsRequest(
             @NotNull Long providerId, @NotBlank String sourceName,

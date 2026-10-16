@@ -19,7 +19,9 @@ public final class PlanBootstrap {
                 (int) number(summary.getOrDefault("effectiveTimeoutMs", 3000)),
                 list(body.get("requestMappings"), mapper), list(body.get("responseMappings"), mapper),
                 list(body.get("responseCodes"), mapper), String.valueOf(body.getOrDefault("vendorCodePath", "result.code")),
-                map(body.get("securityPolicy"), mapper), Instant.now());
+                map(body.get("securityPolicy"), mapper), Instant.now(),
+                String.valueOf(body.getOrDefault("upstreamHttpMethod", "POST")),
+                map(body.get("providerConnection"), mapper));
     }
 
     private static long number(Object value) { return value instanceof Number n ? n.longValue() : Long.parseLong(String.valueOf(value)); }

@@ -11,7 +11,7 @@ class DataApplicationPropertiesTest {
         DataApplicationProperties properties =
                 new DataApplicationProperties("CREDIT_V2", "征信2.0");
 
-        assertThat(properties.dataSourceCode()).isEqualTo("CREDIT_V2");
+        assertThat(properties.providerCode()).isEqualTo("CREDIT_V2");
         assertThat(properties.displayName()).isEqualTo("征信2.0");
     }
 
@@ -19,6 +19,6 @@ class DataApplicationPropertiesTest {
     void rejectsMissingDataSourceCode() {
         assertThatThrownBy(() -> new DataApplicationProperties(" ", "征信2.0"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("data-source-code");
+                .hasMessageContaining("provider-code");
     }
 }
