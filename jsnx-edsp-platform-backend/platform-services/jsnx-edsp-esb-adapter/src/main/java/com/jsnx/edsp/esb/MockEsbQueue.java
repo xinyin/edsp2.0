@@ -25,6 +25,7 @@ public class MockEsbQueue {
     private final EsbMessageAdapter adapter;
     private final ArrayBlockingQueue<Message> requests;
     private final long timeoutMs;
+    private final boolean enabled;
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final AtomicLong accepted = new AtomicLong();
     private final AtomicLong completed = new AtomicLong();
@@ -34,14 +35,20 @@ public class MockEsbQueue {
 
     public MockEsbQueue(EsbMessageAdapter adapter,
                         @Value("${edsp.esb.mock-queue.capacity:1000}") int capacity,
-                        @Value("${edsp.esb.mock-queue.timeout-ms:10000}") long timeoutMs) {
+                        @Value("${edsp.esb.mock-queue.timeout-ms:10000}") long timeoutMs,
+                        @Value("${edsp.esb.mode:MOCK}") String mode) {
         this.adapter = adapter;
         this.requests = new ArrayBlockingQueue<>(Math.max(10, capacity));
         this.timeoutMs = Math.max(1000, timeoutMs);
+        if (!"MOCK".equals(mode) && !"IBM_MQ".equals(mode)) {
+            throw new IllegalArgumentException("edsp.esb.mode 只支持 MOCK 或 IBM_MQ");
+        }
+        this.enabled = "MOCK".equals(mode);
     }
 
     @PostConstruct
     void start() {
+        if (!enabled) return;
         worker = new Thread(() -> {
             while (running.get() || !requests.isEmpty()) {
                 try {
@@ -81,6 +88,7 @@ public class MockEsbQueue {
 
     public EsbForwardResult requestReply(String servicePath, String appId, String apiKey,
                                             String traceId, String xml, boolean diagnostic) {
+        if (!enabled) throw new IllegalStateException("真实 MQ 模式不提供模拟队列请求入口");
         String currentTrace = traceId == null || traceId.isBlank()
                 ? UUID.randomUUID().toString().replace("-", "") : traceId;
         Message message = new Message(servicePath, appId, apiKey, currentTrace, xml, diagnostic, System.nanoTime(), new CompletableFuture<>());
@@ -103,7 +111,7 @@ public class MockEsbQueue {
     }
 
     public Map<String, Object> status() {
-        return Map.of("mode", "IN_MEMORY_REQUEST_REPLY", "status", running.get() ? "UP" : "DOWN",
+        return Map.of("mode", enabled ? "IN_MEMORY_REQUEST_REPLY" : "DISABLED", "status", enabled && running.get() ? "UP" : "DOWN",
                 "queueDepth", requests.size(), "capacity", requests.size() + requests.remainingCapacity(),
                 "accepted", accepted.get(), "completed", completed.get(), "failed", failed.get(),
                 "timedOut", timedOut.get(),

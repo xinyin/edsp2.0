@@ -21,13 +21,19 @@ public class EsbAdapterController {
     private final ObjectMapper json;
     private final EsbXmlProtocol xmlProtocol;
     private final String internalTestKey;
+    private final boolean mockMode;
+    private final EsbMessageAdapter adapter;
 
     public EsbAdapterController(MockEsbQueue queue, ObjectMapper json, EsbXmlProtocol xmlProtocol,
-            @Value("${edsp.test-tool.internal-key:demo-internal-test-key}") String internalTestKey) {
+            EsbMessageAdapter adapter,
+            @Value("${edsp.test-tool.internal-key:demo-internal-test-key}") String internalTestKey,
+            @Value("${edsp.esb.mode:MOCK}") String mode) {
         this.queue = queue;
         this.json = json;
         this.xmlProtocol = xmlProtocol;
         this.internalTestKey = internalTestKey;
+        this.adapter = adapter;
+        this.mockMode = "MOCK".equals(mode);
     }
 
     @PostMapping(value = {"/queue/request", "/forward"},
@@ -45,8 +51,13 @@ public class EsbAdapterController {
                         suppliedTestKey.getBytes(StandardCharsets.UTF_8)))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "链路诊断仅允许管理端测试工具调用");
         }
+        if (!mockMode && !diagnostic) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "真实 MQ 模式只接收 IBM MQ 队列消息");
+        }
         try {
-            EsbForwardResult result = queue.requestReply(servicePath, appId, apiKey, traceId, xml, diagnostic);
+            EsbForwardResult result = mockMode
+                    ? queue.requestReply(servicePath, appId, apiKey, traceId, xml, diagnostic)
+                    : adapter.forward(servicePath, appId, apiKey, xml, traceId, true);
             if (diagnostic) return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(result.diagnosticResponse());
             return ResponseEntity.ok().contentType(MediaType.APPLICATION_XML).body(result.xmlResponse());
         } catch (RuntimeException error) {
@@ -61,7 +72,10 @@ public class EsbAdapterController {
     }
 
     @GetMapping("/queue/status")
-    public Map<String, Object> status() { return queue.status(); }
+    public Map<String, Object> status() {
+        return mockMode ? queue.status() : Map.of("mode", "IBM_MQ", "httpMockQueue", "DISABLED",
+                "note", "MQ 连通性以监听容器和队列管理器监控为准");
+    }
 
     @ExceptionHandler(EsbForwardException.class)
     public ResponseEntity<Map<String, Object>> handleForwardFailure(EsbForwardException error) {

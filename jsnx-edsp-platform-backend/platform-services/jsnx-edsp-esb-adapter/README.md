@@ -2,6 +2,21 @@
 
 ESB 报文适配服务，端口 `8084`。
 
+## 接入模式
+
+`edsp.esb.mode` 在 Nacos 的 `jsnx-edsp-esb-adapter.yaml` 中设置为 `MOCK`（本地模拟，默认）或 `IBM_MQ`（银行 IBM MQ）。仅在启动时选择模式，修改后重启 Adapter；模式值或 MQ 必填项错误会导致启动失败，不会自动回退到模拟模式。
+
+- `MOCK`：`POST /esb/queue/request` 把 XML 放入进程内队列，供本地演示与 Postman 联调。
+- `IBM_MQ`：监听固定请求队列，按现有 XML 协议调用 Gateway，把 XML 结果写入固定响应队列。普通 HTTP 模拟入口返回 404；受管理端密钥保护的 `diagnostic=true` 仍可用于诊断，但不经过 MQ。
+
+真实模式需配置 `edsp.esb.ibm-mq.host`、`port`、`queue-manager`、`channel`、`request-queue`、`response-queue`、`concurrency`。队列须位于同一队列管理器，使用同一个事务完成响应发送和请求确认；响应发送失败时事务回滚，由 MQ 重投。消费业务失败则写标准错误 XML，不无限重试已处理的业务错误。IBM MQ 连接异常由监听容器每 5 秒尝试恢复。请求消息必须为 XML `TextMessage`；响应持久化发送到配置的响应队列，`JMSCorrelationID` 沿用入站 correlation ID，缺失时使用请求 `JMSMessageID`。不接受入站 `JMSReplyTo` 指定任意响应目标。
+
+MQ 事务不覆盖 Gateway 或供应商的外部调用。响应入队失败后的重投可能再次调用供应商；上线前必须确认 `service_sn` 在业务链路的幂等策略，尤其是计费接口。共享请求队列中的 `requester_id` 来自 XML，不能单独作为调用方身份凭据；行内 ESB 应限制队列写入权限并提供可信调用方身份校验。未完成该安全约定及银行 MQ 联调前，不应切换生产流量。
+
+MQ 连接认证使用 `ESB_MQ_USERNAME` / `ESB_MQ_PASSWORD`。启用 TLS 时设置 `ESB_MQ_TLS_CIPHER_SUITE`，按银行证书要求通过 JVM `javax.net.ssl.trustStore` 等参数配置可信证书。调用方密钥不从 XML 读取：`Service_Header/requester_id` 映射到 `ESB_MQ_CALLER_KEYS_JSON` 中的 API Key，例如 `{"CALLER-1":"<secret>"}`。在部署系统的密钥管理中注入这些环境变量，不要把明文写入 Git 或 Nacos。`KAFKA_ENABLED` 在 IBM MQ 模式下保持 `false`，除非明确需要额外的 Kafka 测试通道。
+
+修改仓库配置模板后，按部署手册执行 `jsnx-edsp-deployment/bin/sync-config-to-nacos.sh` 同步到 Nacos，检查已存在的同名 Data ID 是否需要 `FORCE=1` 覆盖，然后重启 Adapter。投产前须使用银行测试队列验收通道/TLS、请求和响应队列权限、相关 ID、回滚重投、并发及下游超时；本仓库单元测试不能替代真实 MQ 联调。
+
 ## 职责
 
 - 接收 ESB 队列或 XML 报文。

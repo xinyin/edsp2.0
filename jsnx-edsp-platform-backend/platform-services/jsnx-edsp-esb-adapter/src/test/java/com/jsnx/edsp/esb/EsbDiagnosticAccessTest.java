@@ -12,7 +12,8 @@ class EsbDiagnosticAccessTest {
     void publicDiagnosticFlagCannotBypassAuthorization() throws Exception {
         var queue = mock(MockEsbQueue.class, withSettings().mockMaker("mock-maker-subclass"));
         var client = WebTestClient.bindToController(new EsbAdapterController(
-                queue, new ObjectMapper(), new EsbXmlProtocol("QMG4GW06", "150", "外部数据平台"), "internal-secret")).build();
+                queue, new ObjectMapper(), new EsbXmlProtocol("QMG4GW06", "150", "外部数据平台"),
+                mock(EsbMessageAdapter.class), "internal-secret", "MOCK")).build();
         for (String key : new String[]{"", "wrong-key"}) {
             client.post().uri("/esb/queue/request?diagnostic=true")
                             .header("X-Edsp-Internal-Test-Key", key)
