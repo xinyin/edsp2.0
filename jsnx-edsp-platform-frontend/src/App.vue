@@ -111,7 +111,7 @@ const upstreamSections = [
   { title: '接口报文' },
   { title: '接入测试' }
 ]
-watch(selectedInterfaceId, () => { upstreamSection.value = 0 })
+watch(selectedInterfaceId, () => { upstreamSection.value = 0; connectionDetailsExpanded.value = false })
 type ServiceDevelopmentStage = 'UPSTREAM' | 'ORCHESTRATION'
 const serviceDevelopmentStage = ref<ServiceDevelopmentStage>('UPSTREAM')
 // Start field standardization from the request flow, which is the first step
@@ -121,6 +121,7 @@ const sourceSearch = ref('')
 const providerExpansion = ref<Record<number, boolean>>({})
 const sourceExpansion = ref<Record<number, boolean>>({})
 const timeoutExpanded = ref(false)
+const connectionDetailsExpanded = ref(false)
 const guideBusy = ref(false)
 const guideError = ref('')
 const guideHelpExpanded = ref(false)
@@ -2508,7 +2509,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
         <template v-else-if="activeMenu === 'providers'">
           <section class="provider-management">
             <aside class="provider-list plain-panel"><div class="panel-heading"><strong>资源提供商</strong><el-button :icon="Plus" text aria-label="新增资源提供商" @click="openNewProvider" /></div><button v-for="provider in providers" :key="provider.id" class="provider-item" :class="{active: provider.id === selectedProviderId}" @click="selectedProviderId = provider.id; loadProviderAccounts()"><span class="provider-avatar">{{ provider.providerName.slice(0,1) }}</span><span><strong>{{ provider.providerName }}</strong><small>{{ provider.providerCode }}</small></span><el-tag size="small" type="success">{{ provider.status === 'ACTIVE' ? '启用' : '停用' }}</el-tag></button></aside>
-            <section v-if="selectedProvider" class="provider-detail plain-panel"><div class="panel-heading"><div><strong>{{ selectedProvider.providerName }}</strong><span>{{ selectedProvider.providerCode }} · 提供商信息</span></div><div><el-button @click="openSourceRuntimeEditor">配置应用路由</el-button><el-button type="primary" :icon="Setting" @click="openProviderEditor()">编辑资料</el-button></div></div><div class="provider-info-grid"><div><span>机构类别</span><strong>{{ providerCategoryLabel(selectedProvider.providerType) }}</strong></div><div><span>接入类型</span><strong>{{ providerAccessModeLabel(selectedProvider.accessMode) }}</strong></div><div><span>处理应用</span><strong>{{ selectedProvider.applicationName || '待配置' }}</strong></div><div><span>应用访问地址</span><strong>{{ selectedProvider.runtimeUrl || '待配置' }}</strong></div><div><span>经办人</span><strong>{{ selectedProvider.contactName || '-' }}</strong></div><div><span>接入时间</span><strong>{{ selectedProvider.accessDate || '-' }}</strong></div><div><span>通讯报文编码</span><strong>{{ selectedProvider.messageEncoding || '-' }}</strong></div><div><span>收费要求</span><strong>{{ selectedProvider.chargeRequired ? '是' : '否' }}</strong></div><div><span>加密要求</span><strong>{{ selectedProvider.encryptionRequired ? '是' : '否' }}</strong></div><div><span>登录要求</span><strong>{{ selectedProvider.loginRequired ? '是' : '否' }}</strong></div><div class="wide"><span>提供商描述</span><strong>{{ selectedProvider.description || '-' }}</strong></div></div><div class="section-toolbar"><div><strong>账号与权限</strong><HelpTip title="账号与权限" content="维护资源提供商侧账号及其可操作范围。此处账号不是行内 API 调用系统的访问凭证；调用系统在 API 访问授权中登记。"/></div><el-button type="primary" :icon="Plus" @click="openAccountDialog">新增账号</el-button></div><el-table :data="providerAccounts" border><el-table-column prop="username" label="账号" width="150"/><el-table-column prop="displayName" label="显示名称" width="130"/><el-table-column label="角色" width="160"><template #default="{row}">{{ providerRoleLabel(row.roleCode) }}</template></el-table-column><el-table-column label="权限" min-width="320"><template #default="{row}"><el-tag v-for="permission in row.permissions" :key="permission" size="small" effect="plain" class="permission-tag">{{ providerPermissionLabel(permission) }}</el-tag></template></el-table-column><el-table-column prop="lastLoginAt" label="最近登录" width="170"/><el-table-column label="状态" width="90"><template #default="{row}"><el-tag :type="row.status==='ACTIVE'?'success':'info'">{{ row.status==='ACTIVE'?'启用':'停用' }}</el-tag></template></el-table-column></el-table></section>
+            <section v-if="selectedProvider" class="provider-detail plain-panel"><div class="panel-heading"><div><strong>{{ selectedProvider.providerName }}</strong><span>{{ selectedProvider.providerCode }} · 提供商信息</span></div><div><el-button @click="openSourceRuntimeEditor">配置应用路由</el-button><el-button type="primary" :icon="Setting" @click="openProviderEditor()">编辑资料</el-button></div></div><div class="provider-info-grid"><div><span>机构类别</span><strong>{{ providerCategoryLabel(selectedProvider.providerType) }}</strong></div><div><span>接入类型</span><strong>{{ providerAccessModeLabel(selectedProvider.accessMode) }}</strong></div><div><span>处理应用</span><strong>{{ selectedProvider.applicationName || '待配置' }}</strong></div><div><span>应用路由</span><strong>{{ selectedProvider.runtimeUrl ? '已配置' : '待配置' }}</strong></div><div><span>经办人</span><strong>{{ selectedProvider.contactName || '-' }}</strong></div><div><span>接入时间</span><strong>{{ selectedProvider.accessDate || '-' }}</strong></div><div><span>通讯报文编码</span><strong>{{ selectedProvider.messageEncoding || '-' }}</strong></div><div><span>收费要求</span><strong>{{ selectedProvider.chargeRequired ? '是' : '否' }}</strong></div><div><span>加密要求</span><strong>{{ selectedProvider.encryptionRequired ? '是' : '否' }}</strong></div><div><span>登录要求</span><strong>{{ selectedProvider.loginRequired ? '是' : '否' }}</strong></div><div class="wide"><span>提供商描述</span><strong>{{ selectedProvider.description || '-' }}</strong></div></div><details v-if="selectedProvider.runtimeUrl" class="address-disclosure provider-address-disclosure"><summary>查看应用路由地址</summary><div class="address-disclosure-body"><span>平台访问处理应用</span><code>{{ selectedProvider.runtimeUrl }}</code><el-button text :icon="DocumentCopy" aria-label="复制应用路由地址" @click="copyApiValue(selectedProvider.runtimeUrl)">复制</el-button></div></details><div class="section-toolbar"><div><strong>账号与权限</strong><HelpTip title="账号与权限" content="维护资源提供商侧账号及其可操作范围。此处账号不是行内 API 调用系统的访问凭证；调用系统在 API 访问授权中登记。"/></div><el-button type="primary" :icon="Plus" @click="openAccountDialog">新增账号</el-button></div><el-table :data="providerAccounts" border><el-table-column prop="username" label="账号" width="150"/><el-table-column prop="displayName" label="显示名称" width="130"/><el-table-column label="角色" width="160"><template #default="{row}">{{ providerRoleLabel(row.roleCode) }}</template></el-table-column><el-table-column label="权限" min-width="320"><template #default="{row}"><el-tag v-for="permission in row.permissions" :key="permission" size="small" effect="plain" class="permission-tag">{{ providerPermissionLabel(permission) }}</el-tag></template></el-table-column><el-table-column prop="lastLoginAt" label="最近登录" width="170"/><el-table-column label="状态" width="90"><template #default="{row}"><el-tag :type="row.status==='ACTIVE'?'success':'info'">{{ row.status==='ACTIVE'?'启用':'停用' }}</el-tag></template></el-table-column></el-table></section>
           </section>
         </template>
         <template v-else-if="activeMenu === 'releases'">
@@ -2623,8 +2624,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
               <nav v-if="serviceDevelopmentStage==='ORCHESTRATION'" class="developer-tabs" aria-label="标准服务配置"><button v-for="step in orchestrationGuideSteps" :key="step.key" :class="{active:activeTab===step.key,changed:activeTab===step.key && hasUnsavedChanges}" :aria-current="activeTab===step.key ? 'page' : undefined" :disabled="guideBusy || testRunning || connectionSaving" @click="openGuideStep(step.key)">{{ step.title }}</button></nav>
               <div class="api-request-bar" :class="{standard:serviceDevelopmentStage==='ORCHESTRATION'}">
                 <span class="request-method">{{ serviceDevelopmentStage==='UPSTREAM' ? detail.summary.httpMethod : 'XML' }}</span>
-                <code>{{ serviceDevelopmentStage==='UPSTREAM' ? (previewUpstreamUrl || '尚未配置接口地址') : 'ESB 队列 · service_id：' + detail.summary.interfaceCode }}</code>
-                <span v-if="serviceDevelopmentStage==='UPSTREAM'" class="request-timeout">{{ previewTimeoutMs }} ms</span>
+                <code>{{ serviceDevelopmentStage==='UPSTREAM' ? (connectionForm.configScope==='INHERIT' ? connectionForm.upstreamPath || '待填写接口路径' : '使用独立地址') : 'ESB 队列 · service_id：' + detail.summary.interfaceCode }}</code>
                 <el-button v-if="serviceDevelopmentStage==='UPSTREAM'" :loading="testRunning" :disabled="connectionSaving || !previewUpstreamUrl" @click="validateUpstreamCapability">测试接口</el-button>
                 <el-button v-else :disabled="guideBusy || testRunning" @click="activeTab='test';testMode='PLATFORM'">打开联调</el-button>
               </div>
@@ -2634,13 +2634,18 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                   <div class="api-connection-workspace">
                     <div v-show="upstreamSection===0" class="api-config-columns">
                     <section class="api-config-card">
-                        <header><div><h3>连接设置</h3></div></header>
+                        <header><div><h3>接口连接</h3></div><el-tag :type="previewUpstreamUrl ? 'info' : 'warning'" effect="plain" size="small">{{ connectionForm.configScope==='INHERIT' ? '继承数据源' : '独立配置' }}</el-tag></header>
                         <div class="api-card-body">
-                          <span class="api-field-label">接口地址<HelpTip title="接口地址" content="默认由数据源基础地址与接口相对路径组合。仅当前接口地址不同时，选择独立地址，不影响其他接口。"/></span>
-                          <div class="api-mode-options" role="group" aria-label="地址配置方式"><button type="button" :class="{selected:connectionForm.configScope==='INHERIT'}" :aria-pressed="connectionForm.configScope==='INHERIT'" @click="connectionForm.configScope='INHERIT'">继承数据源</button><button type="button" :class="{selected:connectionForm.configScope==='OVERRIDE'}" :aria-pressed="connectionForm.configScope==='OVERRIDE'" @click="connectionForm.configScope='OVERRIDE'">独立地址</button></div>
-
-                          <div v-if="connectionForm.configScope==='INHERIT'" class="api-inherited-value"><span>数据源基础地址</span><code>{{ selectedSource.endpointUrl || '尚未配置，请使用单接口覆盖' }}</code><el-button text @click="openSourceSettingsEditor">修改</el-button></div>
-                          <el-form label-position="top"><el-form-item :label="connectionForm.configScope==='INHERIT' ? '接口相对路径' : '接口完整地址'"><el-input v-if="connectionForm.configScope==='INHERIT'" v-model="connectionForm.upstreamPath" placeholder="/vendor/api/enterprise-basic"/><el-input v-else v-model="connectionForm.upstreamUrl" placeholder="https://provider.example.com/api/query"/></el-form-item></el-form>
+                          <el-form v-if="connectionForm.configScope==='INHERIT'" label-position="top"><el-form-item label="接口路径"><el-input v-model="connectionForm.upstreamPath" placeholder="/vendor/api/enterprise-basic"/></el-form-item></el-form>
+                          <div class="connection-summary"><span>上游连接</span><strong>{{ connectionForm.configScope==='INHERIT' ? (selectedSource.endpointUrl ? `继承「${selectedSource.sourceName}」` : '数据源地址待配置') : '当前接口独立配置' }}</strong><button type="button" :aria-expanded="connectionDetailsExpanded" aria-controls="resource-connection-details" @click="connectionDetailsExpanded=!connectionDetailsExpanded">{{ connectionDetailsExpanded ? '收起详情' : '查看详情' }}<ArrowRight :class="{expanded:connectionDetailsExpanded}"/></button></div>
+                          <div v-if="connectionDetailsExpanded || !previewUpstreamUrl" id="resource-connection-details" class="connection-details">
+                            <span class="api-field-label">地址配置方式<HelpTip title="地址配置" content="默认继承数据源的供应商基础地址。只有当前接口使用不同地址时，才选择独立配置。"/></span>
+                            <div class="api-mode-options" role="group" aria-label="地址配置方式"><button type="button" :class="{selected:connectionForm.configScope==='INHERIT'}" :aria-pressed="connectionForm.configScope==='INHERIT'" @click="connectionForm.configScope='INHERIT'">继承数据源</button><button type="button" :class="{selected:connectionForm.configScope==='OVERRIDE'}" :aria-pressed="connectionForm.configScope==='OVERRIDE'" @click="connectionForm.configScope='OVERRIDE'">独立地址</button></div>
+                            <div v-if="connectionForm.configScope==='INHERIT'" class="address-detail-row"><span>供应商基础地址</span><code>{{ selectedSource.endpointUrl || '尚未配置' }}</code><el-button text @click="openSourceSettingsEditor">修改</el-button></div>
+                            <el-form v-else label-position="top"><el-form-item label="当前接口的供应商地址"><el-input v-model="connectionForm.upstreamUrl" placeholder="https://provider.example.com/api/query"/></el-form-item></el-form>
+                            <div v-if="previewUpstreamUrl" class="address-detail-row"><span>最终请求地址</span><code>{{ previewUpstreamUrl }}</code><el-button text :icon="DocumentCopy" aria-label="复制供应商请求地址" @click="copyApiValue(previewUpstreamUrl)">复制</el-button></div>
+                            <div class="address-detail-row"><span>处理应用路由</span><code>{{ selectedSource.runtimeUrl || '尚未配置' }}</code><el-button text @click="goToProviderManagement()">{{ selectedSource.runtimeUrl ? '查看' : '配置' }}</el-button></div>
+                          </div>
                         </div>
                       </section>
                     </div>
@@ -2654,11 +2659,6 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                           <p class="api-field-help">数据源默认 {{ selectedSource.defaultTimeoutMs ?? 3000 }} ms，可为当前接口单独调整。</p>
                           <el-form label-position="top"><el-form-item label="超时时间"><div class="api-timeout-input"><el-input-number :model-value="previewTimeoutMs" @update:model-value="(value: number | undefined) => { if (value != null) connectionForm.timeoutMs = value }" :disabled="connectionForm.timeoutMode==='INHERIT'" :min="100" :max="120000" :step="500" controls-position="right"/><span>毫秒（ms）</span></div></el-form-item></el-form>
                         </div>
-                    </section>
-                    <section v-show="upstreamSection===0" class="api-preview-panel">
-                      <header><div><h3>生效配置</h3></div><el-tag :type="hasUnsavedChanges ? 'warning' : detail.summary.upstreamStatus==='READY' ? 'success' : 'info'" effect="plain">{{ hasUnsavedChanges ? '待保存' : detail.summary.upstreamStatus==='READY' ? '已保存' : '草稿' }}</el-tag></header>
-                      <div class="resource-route-summary"><span>提供商处理应用<HelpTip title="应用路由" content="测试请求先发送到资源提供商的独立应用，再由该应用访问供应商接口。此地址在资源方管理的“配置应用路由”中维护，同一提供商的数据源共用。"/></span><code>{{ selectedSource.runtimeUrl || '尚未配置' }}</code><el-button text type="primary" @click="goToProviderManagement()">配置应用路由</el-button></div>
-                      <dl><div><dt>供应商接口地址</dt><dd><code>{{ previewUpstreamUrl || '请填写上游地址' }}</code><el-button v-if="previewUpstreamUrl" text :icon="DocumentCopy" aria-label="复制上游地址" @click="copyApiValue(previewUpstreamUrl)">复制</el-button></dd></div><div><dt>请求超时</dt><dd><strong>{{ previewTimeoutMs }} ms</strong><span>{{ connectionForm.timeoutMode==='INHERIT' ? '继承数据源' : '单接口覆盖' }}</span></dd></div></dl>
                     </section>
                     <section v-show="upstreamSection===1" class="upstream-contract-panel">
                       <header><div><div><h3>供应商原始报文</h3></div></div><el-tag size="small" type="info">JSON</el-tag></header>
@@ -2674,7 +2674,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                       <div class="upstream-validation-result error" v-else-if="testError" role="alert"><span class="status-dot offline"></span><div><strong>验证失败</strong><small>{{ testError }}</small></div></div>
                     </section>
                     <section v-if="upstreamSection===2" class="resource-test-detail">
-                      <div class="resource-route-summary"><span>测试路由</span><code>平台 → {{ selectedSource.applicationName || '未配置应用' }} → {{ previewUpstreamUrl }}</code></div>
+                      <details class="address-disclosure test-route-disclosure"><summary>查看调用路径</summary><div class="address-disclosure-body"><span>处理应用</span><code>{{ selectedSource.applicationName || '未配置应用' }} · {{ selectedSource.runtimeUrl || '尚未配置地址' }}</code></div><div class="address-disclosure-body"><span>供应商接口</span><code>{{ previewUpstreamUrl || '尚未配置地址' }}</code></div></details>
                       <div class="test-grid">
                         <div class="code-pane readonly"><div class="code-title"><span>{{ testResult ? '本次原始请求' : '原始请求样例' }}</span></div><pre>{{ testResult ? formatJson(testResult.upstreamRequest) : upstreamRequestText }}</pre></div>
                         <div class="code-pane readonly"><div class="code-title"><span>供应商原始响应</span></div><pre>{{ testResult ? formatJson(testResult.upstreamResponse) : testError || '等待执行测试' }}</pre></div>
@@ -2682,7 +2682,6 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                     </section>
                     <div v-if="upstreamSection===2" class="upstream-handoff">
                       <h3>标准服务</h3>
-                      <div><span>上游接口</span><code>{{ previewUpstreamUrl }}</code></div>
                       <div><span>接入状态</span><strong>{{ upstreamSaveRequired ? '有待保存的配置' : '已保存，可创建标准服务' }}</strong></div>
                       <p v-if="!selectedSource.runtimeUrl" class="route-notice">资源提供商尚未配置处理应用。<el-button text type="primary" @click="goToProviderManagement()">前往资源方管理</el-button></p>
                     </div>

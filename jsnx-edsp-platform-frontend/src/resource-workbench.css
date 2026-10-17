@@ -5,6 +5,27 @@
   box-shadow: 0 4px 20px rgba(24, 45, 72, .04);
   --el-color-primary: #1677e8;
 }
+.connection-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin-top: 2px; padding: 11px 0 0; border-top: 1px solid #e6ebf0; color: #5b6d7d; font-size: 12px; }
+.connection-summary strong { color: #334b61; font-size: 12px; font-weight: 500; }
+.connection-summary button { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; padding: 3px 0; border: 0; background: transparent; color: #38638a; font: inherit; cursor: pointer; }
+.connection-summary button svg { width: 13px; height: 13px; transition: transform .16s ease; }
+.connection-summary button svg.expanded { transform: rotate(90deg); }
+.connection-details { display: grid; gap: 12px; margin-top: 12px; padding: 14px; border: 1px solid #e1e7ed; background: #f8fafc; }
+.connection-details .el-form-item { margin-bottom: 0; }
+.address-detail-row, .address-disclosure-body { display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; align-items: center; gap: 8px 12px; min-width: 0; font-size: 12px; }
+.address-detail-row > span, .address-disclosure-body > span { color: #687989; }
+.address-detail-row code, .address-disclosure-body code { min-width: 0; overflow-wrap: anywhere; color: #334b61; font-size: 12px; }
+.address-disclosure { border-top: 1px solid #e6ebf0; color: #3d607e; font-size: 12px; }
+.address-disclosure summary { padding: 12px 14px; cursor: pointer; font-weight: 500; }
+.address-disclosure summary:hover { background: #f5f8fb; }
+.address-disclosure[open] summary { border-bottom: 1px solid #e6ebf0; }
+.address-disclosure-body { padding: 10px 14px; }
+.provider-address-disclosure { margin: 0 16px 12px; border: 1px solid #e6ebf0; }
+.test-route-disclosure { border-top: 0; border-bottom: 1px solid #e6ebf0; }
+@media (max-width: 640px) {
+  .address-detail-row, .address-disclosure-body { grid-template-columns: minmax(0, 1fr) auto; }
+  .address-detail-row > span, .address-disclosure-body > span { grid-column: 1 / -1; }
+}
 .resource-workbench.catalog-collapsed { grid-template-columns: 52px minmax(0, 1fr); }
 .resource-workbench .resource-tree-panel { border-radius: 12px 0 0 12px; padding: 18px 12px; background: #f8fafc; }
 .resource-workbench .resource-tree-panel.collapsed { min-height: 640px; display: flex; justify-content: center; padding: 8px 5px; }
