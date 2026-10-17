@@ -34,6 +34,9 @@ class DataApplicationScaffoldGeneratorTest {
         assertThat(Files.readString(project.resolve("config/nacos/jsnx-edsp-data-credit-v2.yaml")))
                 .contains("provider-code: \"CREDIT_V2\"", "\\n资源方", "${SERVER_PORT:8198}")
                 .doesNotContain("${SERVER_PORT:8199}");
+        assertThat(Files.readString(project.resolve("README.md")))
+                .contains("./bin/start-data-application.sh jsnx-edsp-data-credit-v2 8198")
+                .contains("不要从部署工程目录直接运行 JAR");
         // Compile generated sources, not just substring assertions.
         Path classes = Files.createDirectories(root.resolve("compiled"));
         java.util.List<String> args = new java.util.ArrayList<>(java.util.List.of("--release", "17", "-classpath",

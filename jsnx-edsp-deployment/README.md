@@ -106,6 +106,14 @@ START_CAPABILITY_SERVICE=1 ./bin/start-demo.sh
 
 日志保存在 `var/logs/`，PID 保存在 `var/run/`。
 
+新增的独立数据应用在构建并配置 Nacos 后，从部署工程启动，例如：
+
+```bash
+./bin/start-data-application.sh jsnx-edsp-data-source-raex 18880
+```
+
+脚本会进入应用模块目录启动 JAR，并检查 `/internal/adapter/info` 是否返回对应应用，而非仅判断端口是否监听。不要在本部署目录直接运行数据应用 JAR：这里的 `config/nacos/application.properties` 属于 Nacos 服务端，Spring Boot 从当前目录自动加载时会把数据应用的上下文路径误设为 `/nacos`，导致接入测试返回 404。
+
 演示样例报文保存在 `fixtures/`：
 
 ESB 样例统一采用 `Service / Service_Header / Service_Body` 生产 XML 契约；平台内部处理和 Kafka 事件保持结构化 JSON，最终响应由 Adapter 封装为 XML 写回 ESB。

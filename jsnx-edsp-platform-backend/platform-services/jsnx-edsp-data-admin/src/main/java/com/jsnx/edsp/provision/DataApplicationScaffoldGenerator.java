@@ -178,6 +178,8 @@ public class DataApplicationScaffoldGenerator {
                 6. 将代码提交 Git，按行内流程打包、部署，检查 `/actuator/health` 和 `/internal/adapter/info`。
                 7. 页面登记的运行地址是 %s；部署必须与此地址或 VIP 后端一致。
 
+                本地启动时请从本模块目录运行 JAR，并检查 `/internal/adapter/info` 返回当前应用标识。不要从部署工程目录直接运行 JAR；Spring Boot 会加载该目录下 Nacos 服务端的 `config/nacos/application.properties`，使数据应用继承 `/nacos` 上下文路径。也可在部署工程运行 `./bin/start-data-application.sh %s %d`。
+
                 ## 开发与配置
 
                 普通接口通过平台配置、保存和发布执行计划，配置更新无需重启数据应用。
@@ -186,6 +188,7 @@ public class DataApplicationScaffoldGenerator {
                 平台重复保存仅复用本生成目录，不覆盖开发人员修改过的文件；Nacos 仅同步平台管理的监听端口。
                 生成工程不代表已部署，必须完成开发、测试、打包和上线流程。
                 """.formatted(provider.applicationName(), provider.providerCode(), packageName, provider.applicationName(),
-                provider.applicationName(), provider.applicationName(), serverPort, provider.applicationName(), provider.runtimeUrl());
+                provider.applicationName(), provider.applicationName(), serverPort, provider.applicationName(), provider.runtimeUrl(),
+                provider.applicationName(), serverPort);
     }
 }
