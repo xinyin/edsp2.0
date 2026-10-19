@@ -6,6 +6,28 @@ ESB 报文适配服务，端口 `8084`。
 
 `edsp.esb.mode` 在 Nacos 的 `jsnx-edsp-esb-adapter.yaml` 中设置为 `MOCK`（本地模拟，默认）或 `IBM_MQ`（银行 IBM MQ）。仅在启动时选择模式，修改后重启 Adapter；模式值或 MQ 必填项错误会导致启动失败，不会自动回退到模拟模式。
 
+### 生产工程依赖对照
+
+旧工程截图中的 `com.ibm.mq:mq`、`common-services`、`headers` 是 `com.ibm.mq` 坐标下的旧工程依赖，`${ibm-mq.version}=1.0` 是该工程定义的 Maven 属性，不能据此推断 IBM MQ 官方客户端版本。当前平台基于 Spring Boot 3 / JDK 17 的 `jakarta.jms`，使用 `com.ibm.mq:com.ibm.mq.jakarta.client:9.4.0.0` 和 Spring JMS。不要直接把旧版 `javax.jms` 依赖与当前客户端混装。若行内仓库只提供内部封装包，应先核对它的实际 POM、`jakarta.jms` 兼容性和银行认证版本，再调整依赖；队列名和连接参数不能从这三张截图中确定。
+
+### Nacos 配置
+
+Data ID 为 `jsnx-edsp-esb-adapter.yaml`，Group、Namespace 分别由部署时的 `NACOS_GROUP`、`NACOS_NAMESPACE` 确定。仓库模板位于 `jsnx-edsp-deployment/config/nacos/data/jsnx-edsp-esb-adapter.yaml`。真实接入至少需要在对应环境的 Nacos 中确认以下配置；以下是字段名，不是生产连接值：
+
+| 配置项 | 含义 |
+| --- | --- |
+| `edsp.esb.mode` | `MOCK` 或 `IBM_MQ`，切换后重启 Adapter |
+| `edsp.esb.ibm-mq.host`、`port` | MQ 服务端地址和监听端口 |
+| `edsp.esb.ibm-mq.queue-manager`、`channel` | 队列管理器和客户端通道 |
+| `edsp.esb.ibm-mq.request-queue`、`response-queue` | 平台消费的请求队列、发送结果的响应队列 |
+| `edsp.esb.ibm-mq.concurrency` | 消费线程数范围，例如 `1-4` |
+| `edsp.esb.ibm-mq.username`、`password` | MQ 连接身份；通过部署环境变量/密钥管理注入，不提交明文 |
+| `edsp.esb.ibm-mq.tls-cipher-suite`、`tls-peer-name` | TLS 套件及服务端证书主体约束（启用 TLS 时） |
+| `edsp.esb.ibm-mq.caller-keys-json` | `requester_id` 到平台调用方 API Key 的映射；密钥值从安全配置注入 |
+| `edsp.esb.environment` | Gateway 授权环境，投产时明确设为 `PROD` |
+
+变更已有 Nacos Data ID 前先比对线上内容；同步脚本默认不会覆盖已存在的配置。正式切换前需由 ESB 团队提供请求/响应队列、队列管理器、通道、连接身份、TLS 证书及报文样例，并在测试环境完成往返和重投验收。缺少这些值时保持 `MOCK`，不能把占位值当作生产配置发布。
+
 - `MOCK`：`POST /esb/queue/request` 把 XML 放入进程内队列，供本地演示与 Postman 联调。
 - `IBM_MQ`：监听固定请求队列，按现有 XML 协议调用 Gateway，把 XML 结果写入固定响应队列。普通 HTTP 模拟入口返回 404；受管理端密钥保护的 `diagnostic=true` 仍可用于诊断，但不经过 MQ。
 
