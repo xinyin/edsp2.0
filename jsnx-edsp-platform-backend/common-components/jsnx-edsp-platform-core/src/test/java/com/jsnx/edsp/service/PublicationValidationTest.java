@@ -247,6 +247,7 @@ class PublicationValidationTest {
         verify(jdbc).update(contains("upstream_status='READY',current_version=COALESCE(published_version,0)+1"),
                 eq("OVERRIDE"), eq("/company"), eq(URL + "/v2"), isNull(),
                 eq(new JsonSupport(mapper).write(updatedRequest)), eq(new JsonSupport(mapper).write(RESPONSE)),
+                eq("{}"),
                 eq(new JsonSupport(mapper).write(updatedRequest)), eq(new JsonSupport(mapper).write(RESPONSE)), eq(SERVICE_ID));
         assertThat(plans.size()).isZero();
         assertThat(service.validationStatus(SERVICE_ID).get("resourceContractChanged")).isTrue();
@@ -275,6 +276,6 @@ class PublicationValidationTest {
         LocalDateTime verified = LocalDateTime.of(2026, 10, 8, 9, 0);
         return new ResourceApiDetail(new ResourceApiSummary(RESOURCE_ID, 1L, "COMPANY_RESOURCE", "企业资源接口",
                 method, url, "/company", "OVERRIDE", timeout, status, 2, verified, verified, 1),
-                request, response, null, "DATA_SOURCE");
+                request, response, Map.of(), null, "DATA_SOURCE");
     }
 }

@@ -226,7 +226,7 @@ const serviceResourceOptions = computed(() => allResourceApis.value
     return { ...resource, lineage: `${provider?.providerName ?? source?.providerName ?? '未知提供商'} / ${source?.sourceName ?? '未知数据源'}` }
   }))
 const serviceCreationResource = computed(() => serviceResourceOptions.value.find(item => item.id === platformServiceForm.value.resourceApiId))
-const connectionForm = ref({ configScope: 'INHERIT' as 'INHERIT'|'OVERRIDE', upstreamPath: '', upstreamUrl: '', timeoutMode: 'INHERIT' as 'INHERIT'|'OVERRIDE', timeoutMs: 3000 })
+const connectionForm = ref({ configScope: 'INHERIT' as 'INHERIT'|'OVERRIDE', upstreamPath: '', upstreamUrl: '', timeoutMode: 'INHERIT' as 'INHERIT'|'OVERRIDE', timeoutMs: 3000, requestHeaders: [] as { name: string; value: string }[] })
 const vendorRequestExample = ref<Record<string, unknown> | null>(null)
 const vendorResponseExample = ref<Record<string, unknown> | null>(null)
 const clientDialog = ref(false)
@@ -444,6 +444,7 @@ function resourceApiProjection(item: ResourceApiSummary): InterfaceSummary {
 function adaptResourceDetail(item: ResourceApiDetail): InterfaceDetail {
   return {
     summary: resourceApiProjection(item.summary), requestSchema: {}, responseSchema: {},
+    requestHeaders: item.requestHeaders ?? {},
     requestExample: structuredClone(item.requestExample), upstreamRequestExample: structuredClone(item.requestExample),
     upstreamResponseExample: structuredClone(item.responseExample), standardResponseExample: structuredClone(item.responseExample),
     timeoutMs: item.summary.effectiveTimeoutMs, configuredTimeoutMs: item.configuredTimeoutMs,
@@ -840,7 +841,10 @@ async function loadDetail() {
       upstreamPath: loadedDetail.summary.upstreamPath ?? '',
       upstreamUrl: loadedDetail.summary.upstreamUrl,
       timeoutMode: loadedDetail.configuredTimeoutMs == null ? 'INHERIT' : 'OVERRIDE',
-      timeoutMs: loadedDetail.configuredTimeoutMs ?? loadedDetail.timeoutMs
+      timeoutMs: loadedDetail.configuredTimeoutMs ?? loadedDetail.timeoutMs,
+      requestHeaders: resourceWorkspace
+        ? Object.entries(loadedDetail.requestHeaders ?? {}).map(([name, value]) => ({ name, value }))
+        : []
     }
     securityPolicy.value = loadedDetail.securityPolicy ?? { interfaceId: loadedDetail.summary.id, enabled: false, encryptMode: 'NONE', signatureMode: 'NONE', requestFields: '', encryptionKeyReference: '', signingKeyReference: '', signatureField: 'signature', description: '' }
     savedMappingsBaseline.value = structuredClone(loadedDetail.mappings)
@@ -1685,6 +1689,18 @@ async function saveConnectionConfig() {
     ElMessage.warning(guideError.value)
     return false
   }
+  const requestHeaders: Record<string, string> = {}
+  if (activeMenu.value === 'resource') {
+    for (const row of connectionForm.value.requestHeaders) {
+      const name = row.name.trim()
+      if (!name && !row.value) continue
+      if (!name || !row.value || Object.keys(requestHeaders).some(existing => existing.toLowerCase() === name.toLowerCase())) {
+        ElMessage.warning('请填写完整且不重复的请求头名称和值')
+        return false
+      }
+      requestHeaders[name] = row.value
+    }
+  }
   connectionSaving.value = true
   try {
     let upstreamRequestExample: Record<string, unknown>
@@ -1703,6 +1719,7 @@ async function saveConnectionConfig() {
         upstreamPath: connectionForm.value.upstreamPath,
         upstreamUrl: connectionForm.value.upstreamUrl,
         timeoutMs: connectionForm.value.timeoutMode === 'OVERRIDE' ? connectionForm.value.timeoutMs : null,
+        requestHeaders,
         requestExample: upstreamRequestExample,
         responseExample: upstreamResponseExample
       })
@@ -2646,6 +2663,15 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                             <div v-if="previewUpstreamUrl" class="address-detail-row"><span>最终请求地址</span><code>{{ previewUpstreamUrl }}</code><el-button text :icon="DocumentCopy" aria-label="复制供应商请求地址" @click="copyApiValue(previewUpstreamUrl)">复制</el-button></div>
                             <div class="address-detail-row"><span>处理应用路由</span><code>{{ selectedSource.runtimeUrl || '尚未配置' }}</code><el-button text @click="goToProviderManagement()">{{ selectedSource.runtimeUrl ? '查看' : '配置' }}</el-button></div>
                           </div>
+                          <details class="upstream-headers-panel">
+                            <summary>自定义请求头 <span>{{ connectionForm.requestHeaders.length ? `${connectionForm.requestHeaders.length} 项` : '未配置' }}</span></summary>
+                            <div class="upstream-header-rows" v-for="(header, index) in connectionForm.requestHeaders" :key="index">
+                              <el-input v-model="header.name" placeholder="Header 名称" aria-label="Header 名称"/>
+                              <el-input v-model="header.value" placeholder="值或 ${env:变量名}" aria-label="Header 值"/>
+                              <el-button :icon="Delete" text aria-label="删除请求头" @click="connectionForm.requestHeaders.splice(index, 1)"/>
+                            </div>
+                            <el-button :icon="Plus" text @click="connectionForm.requestHeaders.push({ name: '', value: '' })">添加请求头</el-button>
+                          </details>
                         </div>
                       </section>
                     </div>

@@ -37,7 +37,7 @@ public final class ApiModels {
 
     public record ResourceApiDetail(
             ResourceApiSummary summary, Map<String, Object> requestExample,
-            Map<String, Object> responseExample, Integer configuredTimeoutMs,
+            Map<String, Object> responseExample, Map<String, String> requestHeaders, Integer configuredTimeoutMs,
             String timeoutSource) {}
 
     public record FieldMapping(
@@ -186,12 +186,13 @@ public final class ApiModels {
             long dataSourceId, @NotBlank String resourceApiCode, @NotBlank String resourceApiName,
             @NotBlank String httpMethod, String upstreamUrl, String upstreamPath,
             String configScope, Integer timeoutMs, boolean generateMock,
-            Map<String, Object> requestExample, Map<String, Object> responseExample) {}
+            Map<String, Object> requestExample, Map<String, Object> responseExample,
+            Map<String, String> requestHeaders) {}
 
     public record SaveResourceApiRequest(
             @NotBlank String configScope, String upstreamPath, String upstreamUrl,
             Integer timeoutMs, @NotNull Map<String, Object> requestExample,
-            @NotNull Map<String, Object> responseExample) {}
+            @NotNull Map<String, Object> responseExample, Map<String, String> requestHeaders) {}
 
     public record UpdateResourceApiMetadataRequest(
             @NotBlank @Pattern(regexp = "[A-Za-z0-9_-]+", message = "资源 API 编码不能包含空格或特殊字符") String resourceApiCode,

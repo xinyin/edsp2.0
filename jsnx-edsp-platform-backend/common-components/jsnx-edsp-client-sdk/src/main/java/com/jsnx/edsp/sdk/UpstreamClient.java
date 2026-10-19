@@ -45,15 +45,17 @@ public class UpstreamClient {
             throw new IllegalStateException("当前资源提供商应用未安装 " + mode + " 连接器；禁止回退为 HTTP 调用");
         }
         String normalized = method == null ? "POST" : method.trim().toUpperCase(Locale.ROOT);
-        return "POST".equals(normalized) ? post(url, body, traceId, timeoutMs)
-                : exchange(normalized, url, body, traceId, timeoutMs);
+        Map<String, String> headers = requestHeaders(config.get("requestHeaders"));
+        if ("POST".equals(normalized) && headers.isEmpty()) return post(url, body, traceId, timeoutMs);
+        return exchange(normalized, url, body, traceId, timeoutMs, headers);
     }
 
     public Map<String, Object> post(String url, Map<String, Object> body, String traceId, int timeoutMs) {
-        return exchange("POST", url, body, traceId, timeoutMs);
+        return exchange("POST", url, body, traceId, timeoutMs, Map.of());
     }
 
-    private Map<String, Object> exchange(String method, String url, Map<String, Object> body, String traceId, int timeoutMs) {
+    private Map<String, Object> exchange(String method, String url, Map<String, Object> body, String traceId,
+                                         int timeoutMs, Map<String, String> headers) {
         if (url == null || !(url.startsWith("http://") || url.startsWith("https://"))) {
             throw new IllegalArgumentException("缺少有效的上游 HTTP 地址");
         }
@@ -80,6 +82,7 @@ public class UpstreamClient {
             var request = RestClient.builder().requestFactory(factory(timeoutMs)).build()
                     .method(HttpMethod.valueOf(method)).uri(target)
                     .header("X-Trace-Id", traceId == null ? "" : traceId);
+            headers.forEach(request::header);
             if (!"GET".equals(method)) request.contentType(MediaType.APPLICATION_JSON).body(values);
             Map<String, Object> response = request.retrieve().body(Map.class);
             if (response == null) throw new IllegalStateException("上游返回空响应");
@@ -92,6 +95,30 @@ public class UpstreamClient {
         } catch (Exception e) {
             throw new IllegalStateException("数据源应用调用上游失败：" + e.getMessage(), e);
         }
+    }
+
+    private Map<String, String> requestHeaders(Object configured) {
+        if (!(configured instanceof Map<?, ?> values)) return Map.of();
+        Map<String, String> resolved = new LinkedHashMap<>();
+        values.forEach((key, raw) -> {
+            String name = String.valueOf(key);
+            String value = String.valueOf(raw);
+            if (!name.matches("[A-Za-z0-9!#$%&'*+.^_`|~-]{1,128}") || value.indexOf('\r') >= 0
+                    || value.indexOf('\n') >= 0 || List.of("host", "content-length", "content-type",
+                    "transfer-encoding", "connection", "x-trace-id").contains(name.toLowerCase(Locale.ROOT))) {
+                throw new IllegalArgumentException("上游请求头配置不合法：" + name);
+            }
+            if (value.startsWith("${env:") && value.endsWith("}")) {
+                String variable = value.substring(6, value.length() - 1);
+                if (!variable.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+                    throw new IllegalArgumentException("请求头环境变量引用格式不合法：" + name);
+                }
+                value = System.getenv(variable);
+                if (value == null || value.isBlank()) throw new IllegalStateException("上游请求头缺少环境变量：" + variable);
+            }
+            resolved.put(name, value);
+        });
+        return resolved;
     }
 
     public static final class UpstreamCallException extends RuntimeException {

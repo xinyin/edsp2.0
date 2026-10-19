@@ -96,6 +96,7 @@ export interface ResourceApiDetail {
   summary: ResourceApiSummary
   requestExample: Record<string, unknown>
   responseExample: Record<string, unknown>
+  requestHeaders: Record<string, string>
   configuredTimeoutMs?: number | null
   timeoutSource: 'DATA_SOURCE' | 'RESOURCE_API'
 }
@@ -155,6 +156,7 @@ export interface ResponseCodeMapping {
 
 export interface InterfaceDetail {
   summary: InterfaceSummary
+  requestHeaders?: Record<string, string>
   requestSchema: Record<string, unknown>
   responseSchema: Record<string, unknown>
   requestExample: Record<string, unknown>

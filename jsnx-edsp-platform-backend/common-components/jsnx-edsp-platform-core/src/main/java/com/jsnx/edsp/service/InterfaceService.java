@@ -192,6 +192,7 @@ public class InterfaceService {
                     config_scope VARCHAR(16) NOT NULL DEFAULT 'OVERRIDE',
                     request_example JSON NOT NULL,
                     response_example JSON NOT NULL,
+                    request_headers JSON NOT NULL DEFAULT ('{}'),
                     timeout_ms INT,
                     status VARCHAR(16) NOT NULL DEFAULT 'DRAFT',
                     current_version INT NOT NULL DEFAULT 1,
@@ -208,6 +209,16 @@ public class InterfaceService {
                 """, Integer.class);
         if (verifiedChecksumColumns == null || verifiedChecksumColumns == 0) {
             jdbc.execute("ALTER TABLE resource_api ADD COLUMN verified_checksum VARCHAR(64) NULL AFTER verified_at");
+        }
+        if (columnMissing("resource_api", "request_headers")) {
+            jdbc.execute("ALTER TABLE resource_api ADD COLUMN request_headers JSON NULL AFTER response_example");
+            jdbc.update("UPDATE resource_api SET request_headers='{}' WHERE request_headers IS NULL");
+            jdbc.execute("ALTER TABLE resource_api MODIFY COLUMN request_headers JSON NOT NULL DEFAULT ('{}')");
+        }
+        if (columnMissing("api_interface", "upstream_request_headers")) {
+            jdbc.execute("ALTER TABLE api_interface ADD COLUMN upstream_request_headers JSON NULL AFTER standard_response_example");
+            jdbc.update("UPDATE api_interface SET upstream_request_headers='{}' WHERE upstream_request_headers IS NULL");
+            jdbc.execute("ALTER TABLE api_interface MODIFY COLUMN upstream_request_headers JSON NOT NULL DEFAULT ('{}')");
         }
         // Before verified_checksum existed, saveResourceApi already cleared verified_at on every
         // contract change. Therefore a remaining verified_at safely identifies a previously
@@ -522,10 +533,11 @@ public class InterfaceService {
         Integer timeout = request.timeoutMs() == null ? null : validTimeout(request.timeoutMs(), 3000);
         jdbc.update("""
                 INSERT INTO resource_api(data_source_id,resource_api_code,resource_api_name,http_method,
-                    upstream_url,upstream_path,config_scope,request_example,response_example,timeout_ms,status,current_version)
-                VALUES(?,?,?,?,?,?,?,?,?,?,'DRAFT',1)
+                    upstream_url,upstream_path,config_scope,request_example,response_example,request_headers,timeout_ms,status,current_version)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,'DRAFT',1)
                 """, request.dataSourceId(), code, request.resourceApiName().trim(), request.httpMethod(),
-                url, path, scope, json.write(requestExample), json.write(responseExample), timeout);
+                url, path, scope, json.write(requestExample), json.write(responseExample),
+                json.write(validRequestHeaders(request.requestHeaders())), timeout);
         long id = Objects.requireNonNull(jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class));
         return resourceApiSummary(id);
     }
@@ -535,7 +547,8 @@ public class InterfaceService {
         Integer configured = row.get("timeout_ms") == null ? null : ((Number) row.get("timeout_ms")).intValue();
         return new ResourceApiDetail(resourceApiSummary(id),
                 json.readMap(String.valueOf(row.get("request_example"))),
-                json.readMap(String.valueOf(row.get("response_example"))), configured,
+                json.readMap(String.valueOf(row.get("response_example"))),
+                readRequestHeaders(row.get("request_headers")), configured,
                 configured == null ? "DATA_SOURCE" : "RESOURCE_API");
     }
 
@@ -560,10 +573,10 @@ public class InterfaceService {
         Integer timeout = request.timeoutMs() == null ? null : validTimeout(request.timeoutMs(), 3000);
         jdbc.update("""
                 UPDATE resource_api SET config_scope=?,upstream_path=?,upstream_url=?,timeout_ms=?,
-                    request_example=?,response_example=?,status='READY',verified_at=NULL,verified_checksum=NULL,current_version=current_version+1
+                    request_example=?,response_example=?,request_headers=?,status='READY',verified_at=NULL,verified_checksum=NULL,current_version=current_version+1
                 WHERE id=?
                 """, scope, path, url, timeout, json.write(request.requestExample()),
-                json.write(request.responseExample()), id);
+                json.write(request.responseExample()), json.write(validRequestHeaders(request.requestHeaders())), id);
         return resourceApi(id);
     }
 
@@ -594,7 +607,7 @@ public class InterfaceService {
                 summary.effectiveTimeoutMs(), "READY", "DRAFT", summary.currentVersion(), null,
                 summary.updatedAt(), summary.id(), summary.resourceApiCode(), summary.resourceApiName());
         Map<String, Object> response = invokeThroughDataApplication(executionResource, resource.requestExample(),
-                UUID.randomUUID().toString().replace("-", ""));
+                UUID.randomUUID().toString().replace("-", ""), resource.requestHeaders());
         long duration = elapsedMs(started);
         Map<String, Object> safeResponse = response == null ? Map.of() : response;
         jdbc.update("UPDATE resource_api SET status='READY',verified_at=CURRENT_TIMESTAMP,verified_checksum=? WHERE id=?",
@@ -627,15 +640,15 @@ public class InterfaceService {
         jdbc.update("""
                 INSERT INTO api_interface(resource_api_id,data_source_id,interface_code,interface_name,service_path,http_method,
                     upstream_url,upstream_path,config_scope,dispatch_mode,request_schema,response_schema,request_example,
-                    upstream_request_example,upstream_response_example,standard_response_example,timeout_ms,retry_count,
+                    upstream_request_example,upstream_response_example,standard_response_example,upstream_request_headers,timeout_ms,retry_count,
                     upstream_status,status,current_version)
-                VALUES(?,?,?,?,?, ?,?,?,?,'DIRECT',?,?,?,?,?,?,?,0,'READY','DRAFT',1)
+                VALUES(?,?,?,?,?, ?,?,?,?,'DIRECT',?,?,?,?,?,?,?,?,0,'READY','DRAFT',1)
                 """, resource.summary().id(), resource.summary().dataSourceId(), request.serviceCode().trim().toUpperCase(Locale.ROOT),
                 request.serviceName().trim(), servicePath, request.httpMethod().toUpperCase(Locale.ROOT), resource.summary().upstreamUrl(),
                 resource.summary().upstreamPath(), resource.summary().configScope(),
                 json.write(Map.of("type", "object")), json.write(Map.of("type", "object")),
                 json.write(resource.requestExample()), json.write(resource.requestExample()), json.write(resource.responseExample()),
-                json.write(resource.responseExample()), resource.configuredTimeoutMs());
+                json.write(resource.responseExample()), json.write(resource.requestHeaders()), resource.configuredTimeoutMs());
         long id = Objects.requireNonNull(jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class));
         jdbc.update("""
                 INSERT INTO response_code_mapping(interface_id,vendor_code,standard_code,result_status,retryable,billable)
@@ -836,11 +849,12 @@ public class InterfaceService {
                 && Objects.equals(draft.standardResponseExample(), draft.upstreamResponseExample());
         jdbc.update("""
                 UPDATE api_interface SET config_scope=?,upstream_path=?,upstream_url=?,timeout_ms=?,
-                upstream_request_example=?,upstream_response_example=?,request_example=?,standard_response_example=?,
+                upstream_request_example=?,upstream_response_example=?,upstream_request_headers=?,request_example=?,standard_response_example=?,
                 upstream_status='READY',current_version=COALESCE(published_version,0)+1,
                 status=CASE WHEN status='OFFLINE' THEN 'OFFLINE' ELSE 'DRAFT' END WHERE id=?
                 """, resource.summary().configScope(), resource.summary().upstreamPath(), resource.summary().upstreamUrl(),
                 resource.configuredTimeoutMs(), json.write(resource.requestExample()), json.write(resource.responseExample()),
+                json.write(resource.requestHeaders()),
                 json.write(inheritRequest ? resource.requestExample() : draft.requestExample()),
                 json.write(inheritResponse ? resource.responseExample() : draft.standardResponseExample()), interfaceId);
         invalidateDraftValidation(interfaceId);
@@ -1619,6 +1633,12 @@ public class InterfaceService {
     Map<String, Object> invokeThroughDataApplication(InterfaceSummary summary,
                                                               Map<String, Object> request,
                                                               String traceId) {
+        return invokeThroughDataApplication(summary, request, traceId, upstreamRequestHeaders(summary));
+    }
+
+    Map<String, Object> invokeThroughDataApplication(InterfaceSummary summary,
+                                                              Map<String, Object> request, String traceId,
+                                                              Map<String, String> requestHeaders) {
         String applicationEndpoint = dataApplicationEndpoint(summary);
         if (applicationEndpoint == null) {
             throw new IllegalStateException("资源提供商尚未配置处理应用访问地址，不允许绕过应用直连外围系统");
@@ -1630,7 +1650,9 @@ public class InterfaceService {
         payload.put("interfaceCode", summary.interfaceCode());
         payload.put("upstreamUrl", summary.upstreamUrl());
         payload.put("upstreamHttpMethod", upstreamHttpMethod(summary));
-        payload.put("providerConnection", providerConnection(summary));
+        Map<String, Object> connection = new LinkedHashMap<>(providerConnection(summary));
+        connection.put("requestHeaders", requestHeaders);
+        payload.put("providerConnection", connection);
         payload.put("timeoutMs", summary.effectiveTimeoutMs());
         payload.put("requestBody", request);
         try {
@@ -2372,7 +2394,15 @@ public class InterfaceService {
         var plan = plans.get(interfaceId);
         if (plan == null) return Map.of("active", false);
         Map<String, Object> result = mapper.convertValue(plan, new TypeReference<>() {});
-        result.put("providerConnection", providerConnection(plan.summary()));
+        Map<String, Object> connection = new LinkedHashMap<>(providerConnection(plan.summary()));
+        List<Map<String, Object>> snapshots = jdbc.queryForList("""
+                SELECT JSON_EXTRACT(plan_json,'$.upstreamRequestHeaders') request_headers
+                FROM release_plan_snapshot WHERE interface_id=? AND release_version=?
+                """, interfaceId, plan.version());
+        if (!snapshots.isEmpty() && snapshots.get(0).get("request_headers") != null) {
+            connection.put("requestHeaders", readRequestHeaders(snapshots.get(0).get("request_headers")));
+        }
+        result.put("providerConnection", connection);
         result.put("upstreamHttpMethod", publishedUpstreamMethod(plan.summary(), plan.version()));
         return result;
     }
@@ -2401,6 +2431,57 @@ public class InterfaceService {
         result.put("accessConfig", row.get("access_config") == null ? Map.of()
                 : json.readMap(String.valueOf(row.get("access_config"))));
         return result;
+    }
+
+    private Map<String, String> upstreamRequestHeaders(InterfaceSummary summary) {
+        Object raw = jdbc.queryForObject("SELECT upstream_request_headers FROM api_interface WHERE id=?",
+                Object.class, summary.id());
+        return readRequestHeaders(raw);
+    }
+
+    private Map<String, String> readRequestHeaders(Object raw) {
+        if (raw == null) return Map.of();
+        Map<String, Object> decoded = json.readMap(String.valueOf(raw));
+        Map<String, String> headers = new LinkedHashMap<>();
+        decoded.forEach((name, value) -> headers.put(name, String.valueOf(value)));
+        return headers;
+    }
+
+    private Map<String, String> validRequestHeaders(Map<String, String> input) {
+        if (input == null || input.isEmpty()) return Map.of();
+        if (input.size() > 32) throw new IllegalArgumentException("自定义请求头最多 32 项");
+        Map<String, String> result = new LinkedHashMap<>();
+        for (var entry : input.entrySet()) {
+            String name = entry.getKey() == null ? "" : entry.getKey().trim();
+            String value = entry.getValue() == null ? "" : entry.getValue();
+            if (!name.matches("[A-Za-z0-9!#$%&'*+.^_`|~-]{1,128}") || value.length() > 2048
+                    || value.indexOf('\r') >= 0 || value.indexOf('\n') >= 0) {
+                throw new IllegalArgumentException("请求头名称或内容不合法：" + name);
+            }
+            if (Set.of("host", "content-length", "content-type", "transfer-encoding", "connection",
+                    "x-trace-id").contains(name.toLowerCase(Locale.ROOT))) {
+                throw new IllegalArgumentException("不允许自定义受控请求头：" + name);
+            }
+            String lower = name.toLowerCase(Locale.ROOT);
+            if ((lower.contains("key") || lower.contains("token") || lower.contains("secret")
+                    || lower.equals("authorization") || lower.equals("cookie"))
+                    && !value.matches("\\$\\{env:[A-Za-z_][A-Za-z0-9_]*}")) {
+                throw new IllegalArgumentException("敏感请求头请使用 ${env:变量名} 引用：" + name);
+            }
+            if (result.keySet().stream().anyMatch(existing -> existing.equalsIgnoreCase(name))) {
+                throw new IllegalArgumentException("请求头名称重复：" + name);
+            }
+            result.put(name, value);
+        }
+        return result;
+    }
+
+    private boolean columnMissing(String table, String column) {
+        Integer count = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_schema=DATABASE() AND table_name=? AND column_name=?
+                """, Integer.class, table, column);
+        return count == null || count == 0;
     }
 
     private String upstreamHttpMethod(InterfaceSummary summary) {
@@ -2481,6 +2562,7 @@ public class InterfaceService {
         snapshot.put("responseMappings", detail.mappings().stream().filter(m -> "RESPONSE".equals(m.direction())).toList());
         snapshot.put("summary", detail.summary());
         snapshot.put("upstreamHttpMethod", upstreamHttpMethod(detail.summary()));
+        snapshot.put("upstreamRequestHeaders", upstreamRequestHeaders(detail.summary()));
         snapshot.put("vendorCodePath", detail.vendorCodePath());
         snapshot.put("responseCodes", detail.responseCodes());
         snapshot.put("securityPolicy", detail.securityPolicy());
@@ -2500,6 +2582,7 @@ public class InterfaceService {
             summary.remove("status");
             summary.remove("updatedAt");
             summary.remove("publishedVersion");
+            config.put("upstreamRequestHeaders", upstreamRequestHeaders(detail.summary()));
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(mapper.writer()
                     .with(com.fasterxml.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).writeValueAsBytes(config));
             return HexFormat.of().formatHex(digest);
@@ -2510,22 +2593,31 @@ public class InterfaceService {
 
     private String upstreamChecksum(InterfaceDetail detail) {
         return upstreamChecksum(detail.summary().httpMethod(), detail.summary().upstreamUrl(), detail.timeoutMs(),
-                detail.upstreamRequestExample(), detail.upstreamResponseExample());
+                detail.upstreamRequestExample(), detail.upstreamResponseExample(),
+                upstreamRequestHeaders(detail.summary()));
     }
 
     private String upstreamChecksum(ResourceApiDetail resource) {
         return upstreamChecksum(resource.summary().httpMethod(), resource.summary().upstreamUrl(),
-                resource.summary().effectiveTimeoutMs(), resource.requestExample(), resource.responseExample());
+                resource.summary().effectiveTimeoutMs(), resource.requestExample(), resource.responseExample(),
+                resource.requestHeaders());
     }
 
     private String upstreamChecksum(String method, String url, int timeoutMs,
                                     Map<String, Object> request, Map<String, Object> response) {
+        return upstreamChecksum(method, url, timeoutMs, request, response, Map.of());
+    }
+
+    private String upstreamChecksum(String method, String url, int timeoutMs,
+                                    Map<String, Object> request, Map<String, Object> response,
+                                    Map<String, String> headers) {
         Map<String, Object> sourceContract = new LinkedHashMap<>();
         sourceContract.put("httpMethod", method);
         sourceContract.put("upstreamUrl", url);
         sourceContract.put("timeoutMs", timeoutMs);
         sourceContract.put("request", request);
         sourceContract.put("response", response);
+        if (!headers.isEmpty()) sourceContract.put("requestHeaders", headers);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(mapper.writer().with(com.fasterxml.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)

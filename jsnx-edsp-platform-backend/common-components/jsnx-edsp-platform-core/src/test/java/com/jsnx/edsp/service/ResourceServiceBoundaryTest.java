@@ -31,7 +31,8 @@ class ResourceServiceBoundaryTest {
         service = new InterfaceService(jdbc, new JsonSupport(mapper), mapper, new PublishedPlanRegistry(), new MockEnvironment());
         when(jdbc.queryForMap(anyString(), eq(7L))).thenReturn(Map.of(
                 "request_example", mapper.writeValueAsString(request),
-                "response_example", mapper.writeValueAsString(response)));
+                "response_example", mapper.writeValueAsString(response),
+                "request_headers", "{\"X-Provider-Channel\":\"EDSP\"}"));
         when(jdbc.queryForObject(anyString(), eq(Long.class))).thenReturn(101L);
         resourceStatus("READY");
     }
@@ -58,6 +59,8 @@ class ResourceServiceBoundaryTest {
         assertThat(values[12]).isEqualTo(values[11]);
         assertThat(mapper.readValue((String) values[13], Map.class)).isEqualTo(response);
         assertThat(values[14]).isEqualTo(values[13]);
+        assertThat(mapper.readValue((String) values[15], Map.class))
+                .isEqualTo(Map.of("X-Provider-Channel", "EDSP"));
         verify(jdbc, never()).update(contains("INSERT INTO field_mapping"), any(Object[].class));
     }
 
@@ -75,9 +78,11 @@ class ResourceServiceBoundaryTest {
         InterfaceService rawService = new InterfaceService(jdbc, new JsonSupport(mapper), mapper,
                 new PublishedPlanRegistry(), new MockEnvironment()) {
             @Override
-            Map<String, Object> invokeThroughDataApplication(InterfaceSummary summary, Map<String, Object> body, String traceId) {
+            Map<String, Object> invokeThroughDataApplication(InterfaceSummary summary, Map<String, Object> body,
+                                                               String traceId, Map<String, String> headers) {
                 assertThat(summary.dataSourceId()).isEqualTo(3);
                 assertThat(body).isEqualTo(request);
+                assertThat(headers).containsEntry("X-Provider-Channel", "EDSP");
                 return response;
             }
         };
