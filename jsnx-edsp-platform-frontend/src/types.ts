@@ -6,6 +6,8 @@ export interface DashboardSummary {
   draftCount: number
   activePublishedPlans: number
 }
+export interface ResourceDocument { id: number; providerId: number; providerName: string; dataSourceId?: number; dataSourceName?: string; resourceApiId?: number; resourceApiName?: string; documentName: string; contentType: string; fileSize: number; description?: string; uploadedAt: string }
+export interface UsageReportRow { dimensionValue: string; callCount: number; successCount: number; failureCount: number; billableCount: number; amount: number; averageDurationMs: number }
 
 export interface LoginResult { token: string; displayName: string; role: string; institution: string }
 export type ProviderAccessMode = 'HTTP' | 'DATABASE' | 'PLATFORM_SERVICE' | 'KAFKA'

@@ -330,6 +330,23 @@ CREATE TABLE IF NOT EXISTS usage_record (
     CONSTRAINT fk_usage_interface FOREIGN KEY (interface_id) REFERENCES api_interface(id)
 );
 
+CREATE TABLE IF NOT EXISTS resource_document (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    provider_id BIGINT NOT NULL,
+    data_source_id BIGINT NULL,
+    resource_api_id BIGINT NULL,
+    document_name VARCHAR(255) NOT NULL,
+    storage_name VARCHAR(64) NOT NULL UNIQUE,
+    content_type VARCHAR(128) NOT NULL,
+    file_size BIGINT NOT NULL,
+    description VARCHAR(500),
+    uploaded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_document_provider (provider_id, uploaded_at),
+    CONSTRAINT fk_document_provider FOREIGN KEY (provider_id) REFERENCES data_provider(id),
+    CONSTRAINT fk_document_source FOREIGN KEY (data_source_id) REFERENCES data_source(id),
+    CONSTRAINT fk_document_api FOREIGN KEY (resource_api_id) REFERENCES resource_api(id)
+);
+
 CREATE TABLE IF NOT EXISTS api_call_node_log (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     trace_id VARCHAR(64) NOT NULL,

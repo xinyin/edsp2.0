@@ -41,7 +41,7 @@ function harness(overrides = {}, confirm = async () => true) {
       resourceValidationStatus: async () => ({ upstreamVerified: false }), ...overrides },
       { get: (target, name) => target[name] ?? (() => { throw new Error('Unexpected API call: ' + String(name)) }) })
   })
-  const state = vm.runInNewContext('(() => { ' + appJS + ' return { platformServiceDialog, platformServiceForm, serviceResourceOptions, serviceCreationResource, selectServiceResource, openPlatformServiceDialog, createPlatformService, validateUpstreamCapability, testResult, testError, testSucceeded, navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, activeMenu, activeTab, detail, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, allResourceApis, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, providerExpansion, sourceExpansion, isProviderExpanded, isSourceExpanded, sourceInterfaces, filteredProviderGroups, filteredSources, setAllSourcesExpanded, locateSelectedApi, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, bringVendorApiToPlatform, vendorImportingKey, apiForm, apiDialog, apiMetadataDialog, apiMetadataSaving, apiMetadataForm, openResourceApiMetadataEditor, saveResourceApiMetadata, mappingDirection, mappingIsPassThrough, mappingModeLabel, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
+  const state = vm.runInNewContext('(() => { ' + appJS + ' return { platformServiceDialog, platformServiceForm, serviceResourceOptions, serviceCreationResource, selectServiceResource, openPlatformServiceDialog, createPlatformService, validateUpstreamCapability, testResult, testError, testSucceeded, navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, activeMenu, activeTab, detail, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, allResourceApis, catalogProviders, filteredCatalogProviders, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, providerExpansion, sourceExpansion, isProviderExpanded, isSourceExpanded, sourceInterfaces, filteredProviderGroups, filteredSources, setAllSourcesExpanded, locateSelectedApi, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, apiForm, apiDialog, apiMetadataDialog, apiMetadataSaving, apiMetadataForm, openResourceApiMetadataEditor, saveResourceApiMetadata, mappingDirection, mappingIsPassThrough, mappingModeLabel, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
   state.selectedSourceId.value = 1
   state.activeMenu.value = 'resource'
   state.selectedInterfaceId.value = 11
@@ -628,7 +628,7 @@ test('已下线接口仍可编辑保存，并可选择上线新草稿或恢复�
 test('标准服务只展示上游已保存接口，菜单支持横向和分组折叠，审批不占主菜单', () => {
   assert.match(appText, /item\.upstreamStatus === 'READY'/)
   assert.match(appText, /sidebarCollapsed/)
-  assert.match(appText, /menuGroups\.service/)
+  assert.match(appText, /menuGroups\.services/)
   assert.doesNotMatch(appText, /<el-menu-item index="approvals"/)
 })
 test('没有接口级超时的草稿继续继承数据源默认配置', async () => {
@@ -648,32 +648,11 @@ test('忙碌状态禁止重复保存和跳步', async () => {
   assert.equal(await s.runCurrentPrimaryAction(), false)
 })
 
-test('供应商目录接入不依赖固定主键，空库时先创建提供商再创建数据源', async () => {
-  const calls = []
-  const provider = { id: 37, providerCode: 'VENDOR_DEMO', providerName: '上游演示资源提供商', status: 'ACTIVE' }
-  const source = { id: 52, providerId: 37, sourceCode: 'ENTERPRISE', sourceName: '企业数据源', endpointUrl: 'http://127.0.0.1:8090/enterprise', defaultTimeoutMs: 3000, interfaceCount: 0 }
-  const s = harness({
-    createProvider: async body => { calls.push(['provider', body]); return provider },
-    createDataSource: async body => { calls.push(['source', body]); return source },
-    dashboard: async () => ({ providerCount: 1, dataSourceCount: 1, interfaceCount: 0, publishedCount: 0, draftCount: 0, activePublishedPlans: 0 }),
-    providers: async () => [provider], providerAccounts: async () => [], dataSources: async () => [source], resourceApis: async () => [], interfaces: async () => [],
-    clients: async () => [], authorizations: async () => [], billingRules: async () => [],
-    billingSummary: async () => ({ totalCalls: 0, billableCalls: 0, totalAmount: 0, hitCalls: 0, missCalls: 0, errorCalls: 0 }),
-    usageRecords: async () => [], monitorSummary: async () => ({ totalCalls: 0, successCalls: 0, errorCalls: 0, successRate: 100, avgDurationMs: 0, p95DurationMs: 0, avgUpstreamDurationMs: 0, activeAlerts: 0 }),
-    monitorPoints: async () => [], monitorAlerts: async () => [], approvals: async () => []
-  })
-  s.providers.value = []
-  s.sources.value = []
-  await s.bringVendorApiToPlatform(
-    { apiCode: 'COMPANY_QUERY', apiName: '企业查询', httpMethod: 'POST', servicePath: '/enterprise/query', requestExample: { name: '测试企业' }, responseBody: { code: '0000' } },
-    { sourceCode: 'ENTERPRISE', sourceName: '企业数据源', basePath: '/enterprise' }
-  )
-  assert.equal(calls[0][0], 'provider')
-  assert.equal(calls[1][0], 'source')
-  assert.equal(calls[1][1].providerId, 37)
-  assert.equal(s.apiForm.value.dataSourceId, 52)
-  assert.equal(s.apiDialog.value, true)
-  assert.equal(s.vendorImportingKey.value, '')
+test('资源目录只展示平台已登记的资源，不依赖供应商演示目录', () => {
+  const s = harness()
+  s.allResourceApis.value = [{ id: 21, dataSourceId: 1, resourceApiCode: 'RISK', resourceApiName: '风险查询' }]
+  assert.equal(s.catalogProviders.value[0].sources[0].apis[0].resourceApiCode, 'RISK')
+  assert.doesNotMatch(appText, /bringVendorApiToPlatform|vendorCatalog|vendorOnline/)
 })
 
 test('数据应用部署配置明确区分 Gateway 访问地址与 Java 监听端口', () => {

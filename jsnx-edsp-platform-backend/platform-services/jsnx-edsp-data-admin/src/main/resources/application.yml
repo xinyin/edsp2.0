@@ -8,6 +8,10 @@ edsp:
 spring:
   application:
     name: jsnx-edsp-data-admin
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 21MB
   config:
     import: ${SPRING_CONFIG_IMPORT:nacos:jsnx-edsp-data-admin.yaml?group=${NACOS_GROUP:DEFAULT_GROUP}&refreshEnabled=true}
   cloud:

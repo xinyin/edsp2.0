@@ -11,13 +11,13 @@ import {
   Guide, ArrowRight
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { api, ApiRequestError, isDemoMode, vendorApi } from './api'
+import { api, ApiRequestError, isDemoMode } from './api'
 import { buildResourceGuide, guideAdvice, isHttpEndpoint, isSuccessfulE2E, requestDeadlineMs } from './resource-guide'
 import type {
   AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary,
   DataSourceSummary, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult,
   MonitorAlert, MonitorPoint, MonitorSummary, ProviderAccount, ProviderSummary, ReleaseApproval, TestResult,
-  ResourceApiDetail, ResourceApiSummary, UsageRecord, ValidationResult, VendorApiDefinition, VendorDataSourceDefinition,
+  ResourceApiDetail, ResourceApiSummary, ResourceDocument, UsageRecord, UsageReportRow, ValidationResult,
   DataApplicationProvisionResult, DataApplicationProvisionSettings, SecurityAlgorithmDescriptor, SecurityPolicy
 } from './types'
 
@@ -29,7 +29,7 @@ const activeMenu = ref('overview')
 const sidebarCollapsed = useDisplayPreference('sidebar-collapsed')
 const resourceCatalogCollapsed = useDisplayPreference('resource-catalog-collapsed')
 const releaseCatalogCollapsed = useDisplayPreference('release-catalog-collapsed')
-const menuGroups = ref({ global: true, service: true, operations: true })
+const menuGroups = ref({ resources: true, services: true, operations: true })
 const loading = ref(false)
 const demo = ref(false)
 const dashboard = ref<DashboardSummary>({ providerCount: 0, dataSourceCount: 0, interfaceCount: 0, publishedCount: 0, draftCount: 0, activePublishedPlans: 0 })
@@ -75,9 +75,20 @@ const callTraceLoading = ref(false)
 const callTraceError = ref('')
 const activeCallTraceRecord = ref<UsageRecord | null>(null)
 const selectedLogNodeKey = ref('')
-const vendorCatalog = ref<VendorDataSourceDefinition[]>([])
-const vendorOnline = ref(false)
-const vendorImportingKey = ref('')
+const resourceDocuments = ref<ResourceDocument[]>([])
+const documentDialog = ref(false)
+const catalogSearch = ref('')
+const documentUploading = ref(false)
+const documentForm = ref({ providerId: 0, dataSourceId: 0, resourceApiId: 0, description: '', file: null as File | null })
+const reportDimension = ref('DAY')
+function localDate(offsetDays = 0) {
+  const date = new Date()
+  date.setDate(date.getDate() + offsetDays)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+const reportRange = ref<[string, string]>([localDate(-30), localDate()])
+const reportRows = ref<UsageReportRow[]>([])
+const reportLoading = ref(false)
 const securityAlgorithms = ref<SecurityAlgorithmDescriptor[]>([])
 const securityAlgorithmLoadError = ref('')
 const algorithmDrawer = ref(false)
@@ -414,8 +425,10 @@ const standardRequestPreview = computed(() => {
 })
 
 const pageMeta = computed(() => ({
-  overview: ['运营总览', '统一掌握服务运行、调用质量、资源健康与经营计量'],
-  discovery: ['资源目录', '发现资源方开放能力并创建接入草稿'],
+  overview: ['全局概览', '统一掌握服务运行、调用质量、资源健康与经营计量'],
+  discovery: ['资源目录', '查看平台已接入的数据资源'],
+  documents: ['文档管理', '管理资源提供商接口文档'],
+  reports: ['报表中心', '查看与下载调用统计报表'],
   resource: ['数据资源接入', '配置上游请求、响应和连接验证'],
   'service-development': ['标准服务开发', '定义平台标准请求、响应与安全编排'],
   authorization: ['API 访问授权', '按机构和调用系统授予平台 API 访问权限'],
@@ -1035,7 +1048,8 @@ async function navigate(menu: string) {
     if (ready) { selectedSourceId.value = ready.dataSourceId; selectedInterfaceId.value = ready.id; void loadInterfaces(false) }
     else { selectedInterfaceId.value = 0; detail.value = null }
   }
-  if (menu === 'discovery') void loadVendorCatalog()
+  if (menu === 'documents') void loadResourceDocuments()
+  if (menu === 'reports') void loadUsageReport()
   if (menu === 'monitor') void refreshMonitor()
   if (menu === 'logs') void searchCallLogs()
   if (menu === 'providers' && selectedProviderId.value) await loadProviderAccounts()
@@ -1048,7 +1062,8 @@ async function refreshCurrentWorkspace() {
   if (guideBusy.value || testRunning.value || connectionSaving.value) return
   if (['resource', 'service-development'].includes(activeMenu.value) && !await confirmDiscardUnsaved()) return
   try {
-    if (activeMenu.value === 'discovery') await loadVendorCatalog()
+    if (activeMenu.value === 'documents') await loadResourceDocuments()
+    else if (activeMenu.value === 'reports') await loadUsageReport()
     else if (activeMenu.value === 'monitor') await refreshMonitor()
     else if (activeMenu.value === 'logs') await searchCallLogs()
     else if (activeMenu.value === 'releases') await loadReleaseManagement()
@@ -2335,75 +2350,82 @@ async function openCallTrace(row: UsageRecord) {
   }
 }
 
-async function loadVendorCatalog() {
-  try { vendorCatalog.value = await vendorApi.catalog(); vendorOnline.value = true }
-  catch { vendorOnline.value = false; vendorCatalog.value = [] }
+const catalogProviders = computed(() => providers.value.map(provider => ({
+  ...provider,
+  sources: sources.value.filter(source => source.providerId === provider.id).map(source => ({
+    ...source, apis: allResourceApis.value.filter(item => item.dataSourceId === source.id)
+  }))
+})).filter(provider => provider.sources.length > 0))
+const filteredCatalogProviders = computed(() => {
+  const keyword = catalogSearch.value.trim().toLowerCase()
+  if (!keyword) return catalogProviders.value
+  return catalogProviders.value.map(provider => ({
+    ...provider,
+    sources: `${provider.providerName} ${provider.providerCode}`.toLowerCase().includes(keyword) ? provider.sources : provider.sources.filter(source => `${source.sourceName} ${source.sourceCode}`.toLowerCase().includes(keyword)
+      || source.apis.some(item => `${item.resourceApiName} ${item.resourceApiCode}`.toLowerCase().includes(keyword)))
+  })).filter(provider => `${provider.providerName} ${provider.providerCode}`.toLowerCase().includes(keyword) || provider.sources.length > 0)
+})
+const documentSources = computed(() => sources.value.filter(source => source.providerId === documentForm.value.providerId))
+const documentApis = computed(() => allResourceApis.value.filter(item => item.dataSourceId === documentForm.value.dataSourceId))
+
+async function loadResourceDocuments() {
+  try { resourceDocuments.value = await api.resourceDocuments() }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : '文档列表加载失败') }
 }
-
-async function bringVendorApiToPlatform(item: VendorApiDefinition, vendorSource: VendorDataSourceDefinition) {
-  const importingKey = `${vendorSource.sourceCode}:${item.apiCode}`
-  if (vendorImportingKey.value) return
-  vendorImportingKey.value = importingKey
-
-  try {
-    // 跨系统只使用稳定的业务编码匹配，禁止假设数据库主键固定为 1。
-    let provider = providers.value.find(candidate => candidate.providerCode === 'VENDOR_DEMO')
-    if (!provider) {
-      provider = await api.createProvider({
-        providerCode: 'VENDOR_DEMO',
-        providerName: '上游演示资源提供商',
-        providerType: 'DATA_VENDOR',
-        description: '由资源提供商开放目录自动接入',
-        messageEncoding: 'UTF-8',
-        chargeRequired: false,
-        encryptionRequired: false,
-        loginRequired: false,
-        status: 'ACTIVE'
-      })
-      providers.value = [...providers.value, provider]
-    }
-
-    let source = sources.value.find(candidate => candidate.sourceCode === vendorSource.sourceCode)
-    if (!source) {
-      source = await api.createDataSource({
-        providerId: provider.id,
-        sourceCode: vendorSource.sourceCode,
-        sourceName: vendorSource.sourceName,
-        protocolType: 'HTTP_JSON',
-        environment: 'TEST',
-        instanceCount: 2,
-        endpoint: `http://127.0.0.1:8090${vendorSource.basePath}`,
-        defaultTimeoutMs: 3000
-      })
-      selectedSourceId.value = source.id
-      await loadAll()
-      source = sources.value.find(candidate => candidate.id === source?.id) ?? source
-    }
-
-    selectedSourceId.value = source.id
-    apiForm.value = {
-      dataSourceId: source.id,
-      interfaceCode: item.apiCode,
-      interfaceName: item.apiName,
-      servicePath: `/api/v1/vendor/${item.apiCode.toLowerCase().replace(/_/g, '-')}`,
-      httpMethod: item.httpMethod,
-      configScope: 'OVERRIDE',
-      upstreamPath: item.servicePath,
-      upstreamUrl: `http://127.0.0.1:8090${item.servicePath}`,
-      timeoutMode: 'INHERIT',
-      timeoutMs: source.defaultTimeoutMs ?? 3000,
-      generateMock: false,
-      upstreamRequestExample: item.requestExample
-    }
-    vendorRequestExample.value = item.requestExample
-    vendorResponseExample.value = item.responseBody
-    apiDialog.value = true
-    ElMessage.success('资源提供商和 API 配置已带入，请继续创建草稿')
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '接入平台失败，请检查管理服务日志')
-  } finally {
-    vendorImportingKey.value = ''
+async function uploadResourceDocument() {
+  if (!documentForm.value.providerId || !documentForm.value.file) {
+    ElMessage.warning('请选择资源提供商和接口文档')
+    return
   }
+  documentUploading.value = true
+  try {
+    const form = new FormData()
+    form.append('providerId', String(documentForm.value.providerId))
+    if (documentForm.value.dataSourceId) form.append('dataSourceId', String(documentForm.value.dataSourceId))
+    if (documentForm.value.resourceApiId) form.append('resourceApiId', String(documentForm.value.resourceApiId))
+    form.append('description', documentForm.value.description)
+    form.append('file', documentForm.value.file)
+    await api.uploadResourceDocument(form)
+    documentDialog.value = false
+    documentForm.value.file = null
+    documentForm.value.description = ''
+    await loadResourceDocuments()
+    ElMessage.success('文档已上传')
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '上传失败') }
+  finally { documentUploading.value = false }
+}
+function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
+async function downloadResourceDocument(item: ResourceDocument) {
+  try { saveBlob(await api.downloadResourceDocument(item.id), item.documentName) }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : '下载失败') }
+}
+async function deleteResourceDocument(item: ResourceDocument) {
+  try {
+    await ElMessageBox.confirm(`删除“${item.documentName}”？`, '删除文档', { type: 'warning' })
+    await api.deleteResourceDocument(item.id)
+    await loadResourceDocuments()
+    ElMessage.success('文档已删除')
+  } catch (error) { if (error !== 'cancel') ElMessage.error(error instanceof Error ? error.message : '删除失败') }
+}
+async function loadUsageReport() {
+  if (!reportRange.value?.length) return
+  reportLoading.value = true
+  try { reportRows.value = await api.usageReport(reportDimension.value, reportRange.value[0], reportRange.value[1]) }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : '报表加载失败') }
+  finally { reportLoading.value = false }
+}
+async function downloadUsageReport() {
+  try {
+    const [from, to] = reportRange.value
+    saveBlob(await api.exportUsageReport(reportDimension.value, from, to), `外部数据平台-${reportDimension.value}-${from}-${to}.csv`)
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '报表下载失败') }
 }
 
 const monitorMaxDuration = computed(() => Math.max(1, ...monitorPoints.value.map(item => item.avgDurationMs)))
@@ -2438,13 +2460,15 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
     <el-aside :width="sidebarCollapsed ? '68px' : '224px'" class="sidebar" :class="{collapsed:sidebarCollapsed}">
       <div class="brand"><div class="brand-mark">ED</div><div class="brand-copy"><div class="brand-name">外部数据平台</div><div class="brand-sub">External Data Service</div></div><button class="sidebar-collapse-button" type="button" :title="sidebarCollapsed?'展开菜单':'收起菜单'" :aria-label="sidebarCollapsed?'展开菜单':'收起菜单'" :aria-expanded="!sidebarCollapsed" @click.stop="sidebarCollapsed=!sidebarCollapsed"><component :is="sidebarCollapsed?Expand:Fold"/></button></div>
       <el-menu :default-active="activeMenu" :collapse="sidebarCollapsed" :collapse-transition="false" class="side-menu">
-        <button v-if="!sidebarCollapsed" class="menu-section-label" type="button" @click="menuGroups.global=!menuGroups.global"><span>全局视图</span><ArrowRight :class="{expanded:menuGroups.global}"/></button>
-        <el-menu-item aria-label="运营总览" v-show="menuGroups.global||sidebarCollapsed" index="overview" @click="navigate('overview')"><el-icon><DataBoard /></el-icon><template #title>运营总览</template></el-menu-item>
-        <button v-if="!sidebarCollapsed" class="menu-section-label" type="button" @click="menuGroups.service=!menuGroups.service"><span>数据服务</span><ArrowRight :class="{expanded:menuGroups.service}"/></button>
-        <template v-if="menuGroups.service||sidebarCollapsed">
-          <el-menu-item aria-label="资源目录" index="discovery" @click="navigate('discovery')"><el-icon><OfficeBuilding /></el-icon><template #title>资源目录</template></el-menu-item>
-          <el-menu-item aria-label="资源方管理" index="providers" @click="navigate('providers')"><el-icon><UserIcon /></el-icon><template #title>资源方管理</template></el-menu-item>
+        <el-menu-item aria-label="全局概览" index="overview" @click="navigate('overview')"><el-icon><DataBoard /></el-icon><template #title>全局概览</template></el-menu-item>
+        <button v-if="!sidebarCollapsed" class="menu-section-label" type="button" @click="menuGroups.resources=!menuGroups.resources"><span>资源管理</span><ArrowRight :class="{expanded:menuGroups.resources}"/></button>
+        <template v-if="menuGroups.resources||sidebarCollapsed">
           <el-menu-item aria-label="数据资源接入" index="resource" @click="navigate('resource')"><el-icon><Connection /></el-icon><template #title>数据资源接入</template></el-menu-item>
+          <el-menu-item aria-label="资源目录" index="discovery" @click="navigate('discovery')"><el-icon><OfficeBuilding /></el-icon><template #title>资源目录</template></el-menu-item>
+          <el-menu-item aria-label="文档管理" index="documents" @click="navigate('documents')"><el-icon><DocumentCopy /></el-icon><template #title>文档管理</template></el-menu-item>
+        </template>
+        <button v-if="!sidebarCollapsed" class="menu-section-label" type="button" @click="menuGroups.services=!menuGroups.services"><span>服务管理</span><ArrowRight :class="{expanded:menuGroups.services}"/></button>
+        <template v-if="menuGroups.services||sidebarCollapsed">
           <el-menu-item aria-label="标准服务开发" index="service-development" @click="navigate('service-development')"><el-icon><Setting /></el-icon><template #title>标准服务开发</template></el-menu-item>
           <el-menu-item aria-label="服务发布" index="releases" @click="navigate('releases')"><el-icon><Promotion /></el-icon><template #title>服务发布</template></el-menu-item>
           <el-menu-item aria-label="API 访问授权" index="authorization" @click="navigate('authorization')"><el-icon><Key /></el-icon><template #title>API 访问授权</template></el-menu-item>
@@ -2455,6 +2479,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
           <el-menu-item aria-label="链路追踪" index="logs" @click="navigate('logs')"><el-icon><DataAnalysis /></el-icon><template #title>链路追踪</template></el-menu-item>
           <el-menu-item aria-label="运行监控" index="monitor" @click="navigate('monitor')"><el-icon><Monitor /></el-icon><template #title>运行监控</template></el-menu-item>
         </template>
+        <el-menu-item aria-label="报表中心" index="reports" @click="navigate('reports')"><el-icon><DataAnalysis /></el-icon><template #title>报表中心</template></el-menu-item>
       </el-menu>
       <div class="sidebar-footer"><div><strong>外部数据服务管理</strong><span>资源接入 · 开发 · 运营</span></div></div>
     </el-aside>
@@ -2466,7 +2491,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
       </el-header>
 
       <el-main class="main-content">
-        <section class="page-heading" :class="{'compact-page-heading': activeMenu === 'releases' || activeMenu === 'authorization'}"><div><h1>{{ pageMeta[0] }}<HelpTip :title="pageMeta[0]" :content="pageMeta[1]"/></h1></div><div class="heading-actions"><el-button :icon="Refresh" @click="refreshCurrentWorkspace">刷新</el-button><el-button v-if="activeMenu === 'resource'" type="primary" :icon="Plus" @click="openSourceWizard">接入数据源</el-button><el-button v-if="activeMenu === 'service-development'" type="primary" :icon="Plus" @click="navigate('resource')">选择资源接口</el-button><el-button v-if="activeMenu === 'authorization'" :icon="Files" @click="openBatchAuthorization">批量授权</el-button><el-button v-if="activeMenu === 'authorization'" type="primary" :icon="Plus" @click="openAuthDialog">新增授权</el-button><el-button v-if="activeMenu === 'billing'" type="primary" :icon="Plus" @click="openBillingDialog()">配置计费</el-button></div></section>
+        <section class="page-heading" :class="{'compact-page-heading': activeMenu === 'releases' || activeMenu === 'authorization'}"><div><h1>{{ pageMeta[0] }}<HelpTip :title="pageMeta[0]" :content="pageMeta[1]"/></h1></div><div class="heading-actions"><el-button :icon="Refresh" @click="refreshCurrentWorkspace">刷新</el-button><el-button v-if="activeMenu === 'resource'" @click="navigate('providers')">资源方管理</el-button><el-button v-if="activeMenu === 'resource'" type="primary" :icon="Plus" @click="openSourceWizard">接入数据源</el-button><el-button v-if="activeMenu === 'service-development'" type="primary" :icon="Plus" @click="navigate('resource')">选择资源接口</el-button><el-button v-if="activeMenu === 'authorization'" :icon="Files" @click="openBatchAuthorization">批量授权</el-button><el-button v-if="activeMenu === 'authorization'" type="primary" :icon="Plus" @click="openAuthDialog">新增授权</el-button><el-button v-if="activeMenu === 'billing'" type="primary" :icon="Plus" @click="openBillingDialog()">配置计费</el-button></div></section>
 
         <template v-if="activeMenu === 'overview'">
           <section class="cockpit-command">
@@ -2517,10 +2542,31 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
         </template>
 
         <template v-else-if="activeMenu === 'discovery'">
-          <section class="vendor-app-banner"><div class="vendor-brand-icon"><OfficeBuilding /></div><div><span>外部开放目录</span><h2>资源接口目录</h2><p>GET http://127.0.0.1:8090/open/catalog</p></div><div class="vendor-runtime" :class="{offline:!vendorOnline}"><i></i><strong>{{ vendorOnline ? '目录连接正常' : '资源提供商不可用' }}</strong><span>{{ vendorOnline ? `${vendorCatalog.length} 个数据源可接入` : '请检查目录服务连接' }}</span></div></section>
-          <div class="catalog-guidance"><strong>可接入资源</strong><HelpTip title="资源目录" content="目录由资源提供商独立维护。接入后先保存资源接口，再创建标准服务进行封装、发布和授权。"/></div>
-          <section v-if="vendorOnline" class="catalog-list"><div v-for="source in vendorCatalog" :key="source.id" class="plain-panel catalog-source"><div class="panel-heading"><div><strong>{{ source.sourceName }}</strong><span>{{ source.sourceCode }} · {{ source.description }}</span></div><el-tag type="success">{{ source.apis.length }} 个在线 API</el-tag></div><el-table :data="source.apis"><el-table-column label="供应商 API" min-width="220"><template #default="{ row }"><div class="api-name-cell"><span>{{ row.httpMethod }}</span><div><strong>{{ row.apiName }}</strong><small>{{ row.apiCode }}</small></div></div></template></el-table-column><el-table-column label="实时地址" min-width="280"><template #default="{ row }"><code>http://127.0.0.1:8090{{ row.servicePath }}</code></template></el-table-column><el-table-column label="版本" width="85"><template #default="{ row }">V{{ row.version }}</template></el-table-column><el-table-column label="更新时间" width="150"><template #default="{ row }">{{ formatDateTime(row.updatedAt) }}</template></el-table-column><el-table-column label="操作" width="140" fixed="right"><template #default="{ row }"><el-button text type="primary" :loading="vendorImportingKey === `${source.sourceCode}:${row.apiCode}`" :disabled="Boolean(vendorImportingKey)" @click="bringVendorApiToPlatform(row, source)">接入并创建草稿</el-button></template></el-table-column></el-table></div></section>
-          <section v-else class="vendor-offline"><Warning/><strong>未连接到独立资源方应用</strong><span>请检查资源提供商目录服务是否可访问，再刷新重试。</span></section>
+          <section class="resource-directory">
+            <div class="directory-toolbar"><el-input v-model="catalogSearch" :prefix-icon="Search" clearable placeholder="搜索资源方、数据源或 API"/><span>{{ catalogProviders.length }} 个资源方 · {{ sources.length }} 个数据源 · {{ allResourceApis.length }} 个资源 API</span></div>
+            <el-empty v-if="!filteredCatalogProviders.length" description="暂无已接入资源"/>
+            <div v-for="provider in filteredCatalogProviders" :key="provider.id" class="directory-provider">
+              <header><OfficeBuilding/><strong>{{ provider.providerName }}</strong><code>{{ provider.providerCode }}</code><span>{{ provider.sources.length }} 个数据源</span></header>
+              <div v-for="source in provider.sources" :key="source.id" class="directory-source">
+                <div class="directory-source-title"><strong>{{ source.sourceName }}</strong><code>{{ source.sourceCode }}</code><span>{{ source.apis.length }} 个 API</span></div>
+                <el-table :data="source.apis" size="small" empty-text="该数据源尚未登记资源 API"><el-table-column prop="resourceApiName" label="资源 API" min-width="180"/><el-table-column prop="resourceApiCode" label="编码" min-width="150"/><el-table-column prop="httpMethod" label="方法" width="90"/><el-table-column label="状态" width="100"><template #default="{ row }">{{ row.status === 'DRAFT' ? '草稿' : row.status }}</template></el-table-column></el-table>
+              </div>
+            </div>
+          </section>
+        </template>
+
+        <template v-else-if="activeMenu === 'documents'">
+          <section class="document-workspace">
+            <div class="document-toolbar"><strong>第三方接口文档</strong><el-button type="primary" :icon="Plus" @click="documentDialog=true">上传文档</el-button></div>
+            <el-table :data="resourceDocuments" empty-text="暂无接口文档"><el-table-column prop="documentName" label="文档名称" min-width="230"/><el-table-column prop="providerName" label="资源提供商" min-width="150"/><el-table-column prop="dataSourceName" label="数据源" min-width="130"><template #default="{row}">{{ row.dataSourceName || '-' }}</template></el-table-column><el-table-column prop="resourceApiName" label="资源 API" min-width="150"><template #default="{row}">{{ row.resourceApiName || '-' }}</template></el-table-column><el-table-column label="大小" width="110"><template #default="{row}">{{ (row.fileSize / 1024).toFixed(1) }} KB</template></el-table-column><el-table-column label="上传时间" width="170"><template #default="{row}">{{ formatDateTime(row.uploadedAt) }}</template></el-table-column><el-table-column label="操作" width="150" fixed="right"><template #default="{row}"><el-button link type="primary" @click="downloadResourceDocument(row)">下载</el-button><el-button link type="danger" @click="deleteResourceDocument(row)">删除</el-button></template></el-table-column></el-table>
+          </section>
+        </template>
+
+        <template v-else-if="activeMenu === 'reports'">
+          <section class="report-workspace">
+            <div class="report-toolbar"><el-select v-model="reportDimension" aria-label="统计维度"><el-option label="按日期" value="DAY"/><el-option label="按资源提供商" value="PROVIDER"/><el-option label="按数据源" value="DATA_SOURCE"/><el-option label="按服务 API" value="API"/><el-option label="按调用系统" value="CLIENT"/><el-option label="按结果状态" value="RESULT"/></el-select><el-date-picker v-model="reportRange" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期"/><el-button type="primary" :loading="reportLoading" @click="loadUsageReport">查询</el-button><el-button :disabled="!reportRows.length" @click="downloadUsageReport">下载 CSV</el-button></div>
+            <el-table :data="reportRows" v-loading="reportLoading" empty-text="当前条件下暂无调用记录"><el-table-column prop="dimensionValue" :label="reportDimension === 'DAY' ? '日期' : '统计维度'" min-width="200"/><el-table-column prop="callCount" label="调用量" min-width="100"/><el-table-column prop="successCount" label="成功量" min-width="100"/><el-table-column prop="failureCount" label="失败量" min-width="100"/><el-table-column prop="billableCount" label="计费量" min-width="100"/><el-table-column prop="amount" label="金额" min-width="100"/><el-table-column prop="averageDurationMs" label="平均耗时 (ms)" min-width="130"/></el-table>
+          </section>
         </template>
 
         <template v-else-if="activeMenu === 'providers'">
@@ -2870,6 +2916,10 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
     </el-container>
   </el-container>
 
+  <el-dialog v-model="documentDialog" title="上传第三方接口文档" width="min(560px, 94vw)" destroy-on-close>
+    <el-form label-position="top"><el-form-item label="资源提供商" required><el-select v-model="documentForm.providerId" filterable placeholder="选择资源提供商" style="width:100%" @change="documentForm.dataSourceId=0;documentForm.resourceApiId=0"><el-option v-for="item in providers" :key="item.id" :label="item.providerName" :value="item.id"/></el-select></el-form-item><el-form-item label="数据源"><el-select v-model="documentForm.dataSourceId" clearable placeholder="可选" style="width:100%" @change="documentForm.resourceApiId=0"><el-option v-for="item in documentSources" :key="item.id" :label="item.sourceName" :value="item.id"/></el-select></el-form-item><el-form-item label="资源 API"><el-select v-model="documentForm.resourceApiId" clearable :disabled="!documentForm.dataSourceId" placeholder="可选" style="width:100%"><el-option v-for="item in documentApis" :key="item.id" :label="item.resourceApiName" :value="item.id"/></el-select></el-form-item><el-form-item label="接口文档" required><input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" @change="documentForm.file=($event.target as HTMLInputElement).files?.[0] || null"/></el-form-item><el-form-item label="备注"><el-input v-model="documentForm.description" maxlength="500" show-word-limit/></el-form-item></el-form>
+    <template #footer><el-button @click="documentDialog=false">取消</el-button><el-button type="primary" :loading="documentUploading" :disabled="!documentForm.providerId || !documentForm.file" @click="uploadResourceDocument">上传</el-button></template>
+  </el-dialog>
   <el-drawer v-model="enumDrawer" size="600px" class="enum-config-drawer" destroy-on-close>
     <template #header><div class="enum-drawer-title"><span>ENUM TRANSFORM</span><strong>配置枚举转换</strong><small>{{ editingEnumMapping?.sourcePath || '来源字段' }} → {{ editingEnumMapping?.targetPath || '目标字段' }}</small><b :class="editingEnumMapping?.direction==='RESPONSE'?'response':'request'">{{ editingEnumMapping?.direction==='RESPONSE' ? '供应商返回 → 行内标准' : '行内请求 → 供应商请求' }}</b></div></template>
     <div v-if="editingEnumMapping" class="enum-drawer-body">

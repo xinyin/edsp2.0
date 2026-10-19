@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: jsnx-edsp-data-admin
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 21MB
   cloud:
     sentinel:
       enabled: "${SENTINEL_ENABLED:false}"
@@ -39,6 +43,7 @@ logging:
   level:
     com.jsnx.edsp: INFO
 edsp:
+  documents.storage-root: "${EDSP_DOCUMENT_ROOT:./var/documents}"
   esb-adapter-url: "${ESB_ADAPTER_URL:http://127.0.0.1:8084}"
   test-tool:
     internal-key: "${EDSP_INTERNAL_TEST_KEY:demo-internal-test-key}"

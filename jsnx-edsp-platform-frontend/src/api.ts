@@ -1,5 +1,5 @@
 import * as mock from './mock'
-import type { AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary, DataApplicationProvisionResult, DataApplicationProvisionSettings, DataSourceSummary, EsbDiagnosticResult, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult, MonitorAlert, MonitorPoint, MonitorSummary, ProviderAccount, ProviderSummary, ReleaseApproval, ResourceApiDetail, ResourceApiSummary, SecurityAlgorithmDescriptor, SecurityPolicy, TestResult, UsageRecord, ValidationResult, VendorDataSourceDefinition } from './types'
+import type { AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary, DataApplicationProvisionResult, DataApplicationProvisionSettings, DataSourceSummary, EsbDiagnosticResult, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult, MonitorAlert, MonitorPoint, MonitorSummary, ProviderAccount, ProviderSummary, ReleaseApproval, ResourceApiDetail, ResourceApiSummary, ResourceDocument, SecurityAlgorithmDescriptor, SecurityPolicy, TestResult, UsageRecord, UsageReportRow, ValidationResult, VendorDataSourceDefinition } from './types'
 
 const demoMode = import.meta.env.VITE_DEMO_MODE === 'mock'
 export const isDemoMode = () => demoMode
@@ -52,6 +52,24 @@ async function request<T>(path: string, init?: RequestInit, fallback?: () => T |
 }
 
 export const api = {
+  resourceDocuments: (providerId?: number) => request<ResourceDocument[]>(`/api/resource-documents${providerId ? `?providerId=${providerId}` : ''}`),
+  uploadResourceDocument: async (form: FormData) => {
+    const response = await fetch('/api/resource-documents', { method: 'POST', headers: { 'X-Edsp-Operator-Token': operatorToken }, body: form })
+    if (!response.ok) throw new Error(await response.text() || '文档上传失败')
+    return response.json() as Promise<{ status: string; documentName: string }>
+  },
+  deleteResourceDocument: (id: number) => request<void>(`/api/resource-documents/${id}`, { method: 'DELETE', headers: { 'X-Edsp-Operator-Token': operatorToken } }),
+  downloadResourceDocument: async (id: number) => {
+    const response = await fetch(`/api/resource-documents/${id}/download`)
+    if (!response.ok) throw new Error(await response.text() || '文档下载失败')
+    return response.blob()
+  },
+  usageReport: (dimension: string, from: string, to: string) => request<UsageReportRow[]>(`/api/reports?${new URLSearchParams({ dimension, from, to })}`),
+  exportUsageReport: async (dimension: string, from: string, to: string) => {
+    const response = await fetch(`/api/reports/export?${new URLSearchParams({ dimension, from, to })}`)
+    if (!response.ok) throw new Error(await response.text() || '报表下载失败')
+    return response.blob()
+  },
   login: async (username: string, password: string) => {
     const user = await request<LoginResult>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) })
     operatorToken = user.token
