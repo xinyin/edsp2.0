@@ -612,7 +612,12 @@ body { background: var(--canvas); }
 .el-form-item .el-select { width: 100%; }
 .el-table, .release-console .version-history-panel .el-table,
 .release-console .version-history-panel .el-table td .cell,
-.release-console .version-history-panel .el-table th .cell { font-size: 13px; }
+.release-console .version-history-panel .el-table th .cell { font-size: 12px; }
+.el-table .cell { font-size: 12px; line-height: 1.45; }
+.el-table th.el-table__cell { height: 36px; }
+.el-table td.el-table__cell { padding: 7px 0; }
+.el-table .el-button { font-size: 12px; }
+.el-pagination { --el-pagination-font-size: 12px; font-size: 12px; }
 .resource-workbench .resource-provider-head strong { font-size: 13px; }
 .resource-workbench .resource-provider-head small, .resource-workbench .resource-provider-head em { font-size: 12px; color: var(--muted); }
 .resource-workbench .resource-api-item { grid-template-columns: 38px minmax(0,1fr); }
