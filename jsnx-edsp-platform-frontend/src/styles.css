@@ -664,7 +664,7 @@ button, input, textarea { font-family: inherit; }
 .directory-toolbar, .document-toolbar, .report-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
 .directory-toolbar .el-input { width: min(340px, 100%); }
 .directory-toolbar > span { color: #64748b; font-size: 12px; }
-.document-toolbar { justify-content: space-between; }
+.document-toolbar { justify-content: flex-end; margin-bottom: 10px; }
 .document-toolbar strong { font-size: 15px; }
 .report-toolbar .el-select { width: 180px; }
 .directory-provider { border-top: 1px solid var(--border); padding: 15px 0 4px; }

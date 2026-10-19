@@ -41,7 +41,7 @@ function harness(overrides = {}, confirm = async () => true) {
       resourceValidationStatus: async () => ({ upstreamVerified: false }), ...overrides },
       { get: (target, name) => target[name] ?? (() => { throw new Error('Unexpected API call: ' + String(name)) }) })
   })
-  const state = vm.runInNewContext('(() => { ' + appJS + ' return { platformServiceDialog, platformServiceForm, serviceResourceOptions, serviceCreationResource, selectServiceResource, openPlatformServiceDialog, createPlatformService, validateUpstreamCapability, testResult, testError, testSucceeded, navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, activeMenu, activeTab, detail, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, allResourceApis, catalogProviders, filteredCatalogProviders, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, providerExpansion, sourceExpansion, isProviderExpanded, isSourceExpanded, sourceInterfaces, filteredProviderGroups, filteredSources, setAllSourcesExpanded, locateSelectedApi, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, apiForm, apiDialog, apiMetadataDialog, apiMetadataSaving, apiMetadataForm, openResourceApiMetadataEditor, saveResourceApiMetadata, mappingDirection, mappingIsPassThrough, mappingModeLabel, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
+  const state = vm.runInNewContext('(() => { ' + appJS + ' return { platformServiceDialog, platformServiceForm, serviceResourceOptions, serviceCreationResource, selectServiceResource, openPlatformServiceDialog, createPlatformService, validateUpstreamCapability, testResult, testError, testSucceeded, navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, activeMenu, activeTab, detail, canDeleteApi, deleteApiRestriction, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, allResourceApis, catalogProviders, filteredCatalogProviders, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, providerExpansion, sourceExpansion, isProviderExpanded, isSourceExpanded, sourceInterfaces, filteredProviderGroups, filteredSources, setAllSourcesExpanded, locateSelectedApi, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, apiForm, apiDialog, apiMetadataDialog, apiMetadataSaving, apiMetadataForm, openResourceApiMetadataEditor, saveResourceApiMetadata, mappingDirection, mappingIsPassThrough, mappingModeLabel, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
   state.selectedSourceId.value = 1
   state.activeMenu.value = 'resource'
   state.selectedInterfaceId.value = 11
@@ -557,9 +557,17 @@ test('ESB 联调使用生产 Service XML 且最终响应仍为 XML', () => {
   assert.match(appText, /<requester_id>/)
   assert.match(appText, /<Service_Body>/)
   assert.match(appText, /ESB XML 响应/)
-  assert.match(appText, /响应由 Adapter 封装为 XML 并写回响应队列/)
+  assert.match(appText, /写回 ESB 的 XML 响应/)
+  assert.doesNotMatch(appText, /行内服务契约<HelpTip/)
   assert.doesNotMatch(appText, /<edspRequest>/)
   assert.doesNotMatch(appText, /不将 XML 返回给行内系统/)
+})
+test('页面首屏不重复展示契约、发布流程和主操作', () => {
+  assert.doesNotMatch(appText, /行内服务契约<HelpTip/)
+  assert.doesNotMatch(appText, /class="release-lifecycle plain-panel"/)
+  assert.doesNotMatch(appText, /class="cockpit-shortcuts"/)
+  assert.equal((appText.match(/@click="openBatchAuthorization"/g) ?? []).length, 1)
+  assert.equal((appText.match(/@click="openBillingDialog\(\)"/g) ?? []).length, 1)
 })
 test('生效配置和日志检索在窄工作区使用自适应布局', () => {
   assert.match(consoleThemeText, /\.api-preview-panel dl \{[^}]*minmax\(280px,\.38fr\)/)
@@ -624,6 +632,20 @@ test('已下线接口仍可编辑保存，并可选择上线新草稿或恢复�
   assert.equal(s.resourceEditorState.value.label, '线上已下线')
   assert.match(appText, /上线草稿 V\$\{releaseDetail\.summary\.currentVersion\}/)
   assert.match(appText, /恢复线上 V\{\{ releaseDetail\.summary\.publishedVersion \}\}/)
+})
+test('服务归档规则与后端一致：未发布草稿和已下线版本可归档', () => {
+  const s = harness()
+  s.detail.value.summary.status = 'DRAFT'
+  s.detail.value.summary.publishedVersion = null
+  assert.equal(s.canDeleteApi.value, true)
+  s.detail.value.summary.status = 'PUBLISHED'
+  s.detail.value.summary.publishedVersion = 2
+  assert.equal(s.canDeleteApi.value, false)
+  assert.match(s.deleteApiRestriction.value, /先在服务发布中下线/)
+  s.detail.value.summary.status = 'OFFLINE'
+  assert.equal(s.canDeleteApi.value, true)
+  s.detail.value.summary.status = 'PENDING_APPROVAL'
+  assert.equal(s.canDeleteApi.value, false)
 })
 test('标准服务只展示上游已保存接口，菜单支持横向和分组折叠，审批不占主菜单', () => {
   assert.match(appText, /item\.upstreamStatus === 'READY'/)
