@@ -17,25 +17,28 @@ Data ID 为 `jsnx-edsp-esb-adapter.yaml`，Group、Namespace 分别由部署时�
 | 配置项 | 含义 |
 | --- | --- |
 | `edsp.esb.mode` | `MOCK` 或 `IBM_MQ`，切换后重启 Adapter |
-| `edsp.esb.ibm-mq.host`、`port` | MQ 服务端地址和监听端口 |
-| `edsp.esb.ibm-mq.queue-manager`、`channel` | 队列管理器和客户端通道 |
-| `edsp.esb.ibm-mq.request-queue`、`response-queue` | 平台消费的请求队列、发送结果的响应队列 |
-| `edsp.esb.ibm-mq.concurrency` | 消费线程数范围，例如 `1-4` |
-| `edsp.esb.ibm-mq.username`、`password` | MQ 连接身份；通过部署环境变量/密钥管理注入，不提交明文 |
-| `edsp.esb.ibm-mq.tls-cipher-suite`、`tls-peer-name` | TLS 套件及服务端证书主体约束（启用 TLS 时） |
+| `edsp.esb.ibm-mq.g1.*`、`g2.*` | 两套同时消费的独立 MQ 连接，以下字段两边都必填 |
+| `host`、`port` | MQ 服务端地址和监听端口 |
+| `queue-manager`、`channel` | 队列管理器和客户端通道；g1/g2 的队列管理器必须不同 |
+| `request-queue`、`response-queue` | 平台消费的请求队列、发送结果的响应队列 |
+| `concurrency` | 每套连接的消费线程数范围，例如 `1-4` |
+| `username`、`password` | MQ 连接身份；通过部署环境变量/密钥管理注入，不提交明文 |
+| `tls-cipher-suite`、`tls-peer-name` | TLS 套件及服务端证书主体约束（启用 TLS 时） |
 | `edsp.esb.ibm-mq.caller-keys-json` | `requester_id` 到平台调用方 API Key 的映射；密钥值从安全配置注入 |
 | `edsp.esb.environment` | Gateway 授权环境，投产时明确设为 `PROD` |
 
-变更已有 Nacos Data ID 前先比对线上内容；同步脚本默认不会覆盖已存在的配置。正式切换前需由 ESB 团队提供请求/响应队列、队列管理器、通道、连接身份、TLS 证书及报文样例，并在测试环境完成往返和重投验收。缺少这些值时保持 `MOCK`，不能把占位值当作生产配置发布。
+旧系统配置已经确认是双活，且从旧系统 `sq` 消费、向 `rq` 回写。因此两套 `request-queue` 均对应旧系统的 `sq`，两套 `response-queue` 均对应 `rq`；相同队列名位于不同队列管理器，互不共用连接。每个监听容器用自己的 MQ 连接和事务会话完成消费与响应发送。单边 MQ 故障时另一边可继续处理本侧流量，但不能自动接管故障侧队列积压；ESB 上游应负责入口分流或故障切换。
+
+变更已有 Nacos Data ID 前先比对线上内容；同步脚本默认不会覆盖已存在的配置。正式切换前需由 ESB 团队确认两侧连接身份、TLS 证书、队列权限及报文样例，并在测试环境完成往返、单边故障和重投验收。缺少这些值时保持 `MOCK`，不能把占位值当作生产配置发布。截图中还有数据库及 Redis 凭据，均不属于本 Adapter 配置，不能复制进 Nacos 的 MQ Data ID。
 
 - `MOCK`：`POST /esb/queue/request` 把 XML 放入进程内队列，供本地演示与 Postman 联调。
 - `IBM_MQ`：监听固定请求队列，按现有 XML 协议调用 Gateway，把 XML 结果写入固定响应队列。普通 HTTP 模拟入口返回 404；受管理端密钥保护的 `diagnostic=true` 仍可用于诊断，但不经过 MQ。
 
-真实模式需配置 `edsp.esb.ibm-mq.host`、`port`、`queue-manager`、`channel`、`request-queue`、`response-queue`、`concurrency`。队列须位于同一队列管理器，使用同一个事务完成响应发送和请求确认；响应发送失败时事务回滚，由 MQ 重投。消费业务失败则写标准错误 XML，不无限重试已处理的业务错误。IBM MQ 连接异常由监听容器每 5 秒尝试恢复。请求消息必须为 XML `TextMessage`；响应持久化发送到配置的响应队列，`JMSCorrelationID` 沿用入站 correlation ID，缺失时使用请求 `JMSMessageID`。不接受入站 `JMSReplyTo` 指定任意响应目标。
+真实模式需完整配置 `edsp.esb.ibm-mq.g1` 和 `g2`；缺少任一侧或两侧队列管理器相同则启动失败。每侧的请求和响应队列须位于该侧的同一队列管理器，使用同一个事务完成响应发送和请求确认；响应发送失败时事务回滚，由 MQ 重投。消费业务失败则写标准错误 XML，不无限重试已处理的业务错误。IBM MQ 连接异常由监听容器每 5 秒尝试恢复。请求消息必须为 XML `TextMessage`；响应持久化发送到对应侧的响应队列，`JMSCorrelationID` 沿用入站 correlation ID，缺失时使用请求 `JMSMessageID`。不接受入站 `JMSReplyTo` 指定任意响应目标。
 
 MQ 事务不覆盖 Gateway 或供应商的外部调用。响应入队失败后的重投可能再次调用供应商；上线前必须确认 `service_sn` 在业务链路的幂等策略，尤其是计费接口。共享请求队列中的 `requester_id` 来自 XML，不能单独作为调用方身份凭据；行内 ESB 应限制队列写入权限并提供可信调用方身份校验。未完成该安全约定及银行 MQ 联调前，不应切换生产流量。
 
-MQ 连接认证使用 `ESB_MQ_USERNAME` / `ESB_MQ_PASSWORD`。启用 TLS 时设置 `ESB_MQ_TLS_CIPHER_SUITE`，按银行证书要求通过 JVM `javax.net.ssl.trustStore` 等参数配置可信证书。调用方密钥不从 XML 读取：`Service_Header/requester_id` 映射到 `ESB_MQ_CALLER_KEYS_JSON` 中的 API Key，例如 `{"CALLER-1":"<secret>"}`。在部署系统的密钥管理中注入这些环境变量，不要把明文写入 Git 或 Nacos。`KAFKA_ENABLED` 在 IBM MQ 模式下保持 `false`，除非明确需要额外的 Kafka 测试通道。
+MQ 连接认证分别使用 `ESB_MQ_G1_USERNAME` / `ESB_MQ_G1_PASSWORD` 和 `ESB_MQ_G2_USERNAME` / `ESB_MQ_G2_PASSWORD`。启用 TLS 时分别设置 `ESB_MQ_G1_TLS_CIPHER_SUITE`、`ESB_MQ_G2_TLS_CIPHER_SUITE`，按银行证书要求通过 JVM `javax.net.ssl.trustStore` 等参数配置可信证书。调用方密钥不从 XML 读取：`Service_Header/requester_id` 映射到 `ESB_MQ_CALLER_KEYS_JSON` 中的 API Key，例如 `{"CALLER-1":"<secret>"}`。在部署系统的密钥管理中注入这些环境变量，不要把明文写入 Git 或 Nacos。`KAFKA_ENABLED` 在 IBM MQ 模式下保持 `false`，除非明确需要额外的 Kafka 测试通道。
 
 修改仓库配置模板后，按部署手册执行 `jsnx-edsp-deployment/bin/sync-config-to-nacos.sh` 同步到 Nacos，检查已存在的同名 Data ID 是否需要 `FORCE=1` 覆盖，然后重启 Adapter。投产前须使用银行测试队列验收通道/TLS、请求和响应队列权限、相关 ID、回滚重投、并发及下游超时；本仓库单元测试不能替代真实 MQ 联调。
 

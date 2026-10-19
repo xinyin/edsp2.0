@@ -12,14 +12,10 @@ import jakarta.jms.TextMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jms.listener.SessionAwareMessageListener;
-import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
-@Component
-@ConditionalOnProperty(name = "edsp.esb.mode", havingValue = "IBM_MQ")
 class IbmMqEsbListener implements SessionAwareMessageListener<Message> {
     private static final Logger log = LoggerFactory.getLogger(IbmMqEsbListener.class);
     private static final TypeReference<Map<String, String>> CALLER_KEYS = new TypeReference<>() {};
