@@ -1,5 +1,5 @@
 import * as mock from './mock'
-import type { AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary, DataApplicationProvisionResult, DataApplicationProvisionSettings, DataSourceSummary, EsbDiagnosticResult, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult, MonitorAlert, MonitorPoint, MonitorSummary, ProviderAccount, ProviderSummary, ReleaseApproval, ResourceApiDetail, ResourceApiSummary, ResourceDocument, SecurityAlgorithmDescriptor, SecurityPolicy, TestResult, UsageRecord, UsageReportRow, ValidationResult, VendorDataSourceDefinition } from './types'
+import type { AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary, DataApplicationProvisionResult, DataApplicationProvisionSettings, DataSourceSummary, EsbDiagnosticResult, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult, MonitorAlert, MonitorPoint, MonitorSummary, ProviderAccount, ProviderSummary, ReleaseApproval, ResourceApiDetail, ResourceApiSummary, ResourceDirectoryPage, ResourceDocument, SecurityAlgorithmDescriptor, SecurityPolicy, TestResult, UsageRecord, UsageReportRow, ValidationResult, VendorDataSourceDefinition } from './types'
 
 const demoMode = import.meta.env.VITE_DEMO_MODE === 'mock'
 export const isDemoMode = () => demoMode
@@ -52,6 +52,8 @@ async function request<T>(path: string, init?: RequestInit, fallback?: () => T |
 }
 
 export const api = {
+  resourceDirectory: (filters: { keyword: string; providerId: number; dataSourceId: number; status: string; protocolType: string; page: number; size: number }) =>
+    request<ResourceDirectoryPage>(`/api/resource-directory?${new URLSearchParams(Object.entries(filters).map(([key, value]) => [key, String(value)]))}`),
   resourceDocuments: (providerId?: number) => request<ResourceDocument[]>(`/api/resource-documents${providerId ? `?providerId=${providerId}` : ''}`),
   uploadResourceDocument: async (form: FormData) => {
     const response = await fetch('/api/resource-documents', { method: 'POST', headers: { 'X-Edsp-Operator-Token': operatorToken }, body: form })

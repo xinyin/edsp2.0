@@ -17,7 +17,7 @@ import type {
   AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary,
   DataSourceSummary, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult,
   MonitorAlert, MonitorPoint, MonitorSummary, ProviderAccount, ProviderSummary, ReleaseApproval, TestResult,
-  ResourceApiDetail, ResourceApiSummary, ResourceDocument, UsageRecord, UsageReportRow, ValidationResult,
+  ResourceApiDetail, ResourceApiSummary, ResourceDirectoryRow, ResourceDocument, UsageRecord, UsageReportRow, ValidationResult,
   DataApplicationProvisionResult, DataApplicationProvisionSettings, SecurityAlgorithmDescriptor, SecurityPolicy
 } from './types'
 
@@ -78,6 +78,12 @@ const selectedLogNodeKey = ref('')
 const resourceDocuments = ref<ResourceDocument[]>([])
 const documentDialog = ref(false)
 const catalogSearch = ref('')
+const directoryFilters = ref({ keyword: '', providerId: 0, dataSourceId: 0, status: '', protocolType: '' })
+const directoryRows = ref<ResourceDirectoryRow[]>([])
+const directoryTotal = ref(0)
+const directoryPage = ref(1)
+const directorySize = ref(20)
+const directoryLoading = ref(false)
 const documentUploading = ref(false)
 const documentForm = ref({ providerId: 0, dataSourceId: 0, resourceApiId: 0, description: '', file: null as File | null })
 const reportDimension = ref('DAY')
@@ -1048,6 +1054,7 @@ async function navigate(menu: string) {
     if (ready) { selectedSourceId.value = ready.dataSourceId; selectedInterfaceId.value = ready.id; void loadInterfaces(false) }
     else { selectedInterfaceId.value = 0; detail.value = null }
   }
+  if (menu === 'discovery') void loadResourceDirectory()
   if (menu === 'documents') void loadResourceDocuments()
   if (menu === 'reports') void loadUsageReport()
   if (menu === 'monitor') void refreshMonitor()
@@ -1062,7 +1069,8 @@ async function refreshCurrentWorkspace() {
   if (guideBusy.value || testRunning.value || connectionSaving.value) return
   if (['resource', 'service-development'].includes(activeMenu.value) && !await confirmDiscardUnsaved()) return
   try {
-    if (activeMenu.value === 'documents') await loadResourceDocuments()
+    if (activeMenu.value === 'discovery') await loadResourceDirectory()
+    else if (activeMenu.value === 'documents') await loadResourceDocuments()
     else if (activeMenu.value === 'reports') await loadUsageReport()
     else if (activeMenu.value === 'monitor') await refreshMonitor()
     else if (activeMenu.value === 'logs') await searchCallLogs()
@@ -2368,6 +2376,21 @@ const filteredCatalogProviders = computed(() => {
 const documentSources = computed(() => sources.value.filter(source => source.providerId === documentForm.value.providerId))
 const documentApis = computed(() => allResourceApis.value.filter(item => item.dataSourceId === documentForm.value.dataSourceId))
 
+async function loadResourceDirectory() {
+  directoryLoading.value = true
+  try {
+    const result = await api.resourceDirectory({ ...directoryFilters.value, page: directoryPage.value, size: directorySize.value })
+    directoryRows.value = result.rows
+    directoryTotal.value = result.total
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '资源目录加载失败') }
+  finally { directoryLoading.value = false }
+}
+function searchResourceDirectory() { directoryPage.value = 1; void loadResourceDirectory() }
+function resetResourceDirectory() {
+  directoryFilters.value = { keyword: '', providerId: 0, dataSourceId: 0, status: '', protocolType: '' }
+  searchResourceDirectory()
+}
+
 async function loadResourceDocuments() {
   try { resourceDocuments.value = await api.resourceDocuments() }
   catch (error) { ElMessage.error(error instanceof Error ? error.message : '文档列表加载失败') }
@@ -2543,15 +2566,25 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
 
         <template v-else-if="activeMenu === 'discovery'">
           <section class="resource-directory">
-            <div class="directory-toolbar"><el-input v-model="catalogSearch" :prefix-icon="Search" clearable placeholder="搜索资源方、数据源或 API"/><span>{{ catalogProviders.length }} 个资源方 · {{ sources.length }} 个数据源 · {{ allResourceApis.length }} 个资源 API</span></div>
-            <el-empty v-if="!filteredCatalogProviders.length" description="暂无已接入资源"/>
-            <div v-for="provider in filteredCatalogProviders" :key="provider.id" class="directory-provider">
-              <header><OfficeBuilding/><strong>{{ provider.providerName }}</strong><code>{{ provider.providerCode }}</code><span>{{ provider.sources.length }} 个数据源</span></header>
-              <div v-for="source in provider.sources" :key="source.id" class="directory-source">
-                <div class="directory-source-title"><strong>{{ source.sourceName }}</strong><code>{{ source.sourceCode }}</code><span>{{ source.apis.length }} 个 API</span></div>
-                <el-table :data="source.apis" size="small" empty-text="该数据源尚未登记资源 API"><el-table-column prop="resourceApiName" label="资源 API" min-width="180"/><el-table-column prop="resourceApiCode" label="编码" min-width="150"/><el-table-column prop="httpMethod" label="方法" width="90"/><el-table-column label="状态" width="100"><template #default="{ row }">{{ row.status === 'DRAFT' ? '草稿' : row.status }}</template></el-table-column></el-table>
-              </div>
+            <div class="directory-filters">
+              <el-input v-model="directoryFilters.keyword" :prefix-icon="Search" clearable placeholder="资源名称或编码" @keyup.enter="searchResourceDirectory"/>
+              <el-select v-model="directoryFilters.providerId" filterable placeholder="资源提供商" @change="directoryFilters.dataSourceId=0"><el-option label="全部资源提供商" :value="0"/><el-option v-for="item in providers" :key="item.id" :label="item.providerName" :value="item.id"/></el-select>
+              <el-select v-model="directoryFilters.dataSourceId" filterable placeholder="数据源"><el-option label="全部数据源" :value="0"/><el-option v-for="item in sources.filter(source=>!directoryFilters.providerId || source.providerId===directoryFilters.providerId)" :key="item.id" :label="item.sourceName" :value="item.id"/></el-select>
+              <el-select v-model="directoryFilters.status" placeholder="资源状态"><el-option label="全部状态" value=""/><el-option label="已保存" value="READY"/><el-option label="草稿" value="DRAFT"/></el-select>
+              <el-select v-model="directoryFilters.protocolType" placeholder="资源类型"><el-option label="全部类型" value=""/><el-option v-for="item in [...new Set(sources.map(source=>source.protocolType))]" :key="item" :label="item" :value="item"/></el-select>
+              <div class="directory-filter-actions"><el-button type="primary" @click="searchResourceDirectory">查询</el-button><el-button @click="resetResourceDirectory">重置</el-button></div>
             </div>
+            <div class="directory-results-count">共 {{ directoryTotal }} 个资源 API</div>
+            <el-table :data="directoryRows" v-loading="directoryLoading" size="small" empty-text="暂无符合条件的资源 API" table-layout="fixed">
+              <el-table-column prop="resourceApiCode" label="资源编码" min-width="180" show-overflow-tooltip/>
+              <el-table-column prop="resourceApiName" label="资源名称" min-width="180" show-overflow-tooltip/>
+              <el-table-column prop="providerName" label="资源提供商" min-width="150" show-overflow-tooltip/>
+              <el-table-column prop="dataSourceName" label="数据源" min-width="150" show-overflow-tooltip/>
+              <el-table-column prop="protocolType" label="资源类型" min-width="130"/>
+              <el-table-column label="状态" width="90"><template #default="{row}">{{ row.status==='READY' ? '已保存' : '草稿' }}</template></el-table-column>
+              <el-table-column label="更新时间" width="165"><template #default="{row}">{{ formatDateTime(row.updatedAt) }}</template></el-table-column>
+            </el-table>
+            <div class="directory-pagination"><el-pagination v-model:current-page="directoryPage" v-model:page-size="directorySize" :page-sizes="[20,50,100]" :total="directoryTotal" layout="total, sizes, prev, pager, next" @change="loadResourceDirectory"/></div>
           </section>
         </template>
 
