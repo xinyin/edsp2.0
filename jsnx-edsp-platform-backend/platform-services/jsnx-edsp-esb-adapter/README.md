@@ -27,7 +27,7 @@ Data ID 为 `jsnx-edsp-esb-adapter.yaml`，Group、Namespace 分别由部署时�
 | `edsp.esb.ibm-mq.caller-keys-json` | `requester_id` 到平台调用方 API Key 的映射；密钥值从安全配置注入 |
 | `edsp.esb.environment` | Gateway 授权环境，投产时明确设为 `PROD` |
 
-旧系统配置已经确认是双活，且从旧系统 `sq` 消费、向 `rq` 回写。因此两套 `request-queue` 均对应旧系统的 `sq`，两套 `response-queue` 均对应 `rq`；相同队列名位于不同队列管理器，互不共用连接。每个监听容器用自己的 MQ 连接和事务会话完成消费与响应发送。单边 MQ 故障时另一边可继续处理本侧流量，但不能自动接管故障侧队列积压；ESB 上游应负责入口分流或故障切换。
+旧系统配置已确认是双活：`rq` 为平台获取请求消息的队列，`sq` 为平台发送响应消息的队列。因此两套 `request-queue` 均对应旧系统的 `rq`（截图中为 `IBM.SERVICE.REQUEST.OUT.MSDSP`），两套 `response-queue` 均对应 `sq`（截图中为 `IBM.SERVICE.RESPONSE.IN`）。相同队列名位于不同队列管理器，互不共用连接。每个监听容器用自己的 MQ 连接和事务会话完成消费与响应发送。单边 MQ 故障时另一边可继续处理本侧流量，但不能自动接管故障侧队列积压；ESB 上游应负责入口分流或故障切换。
 
 变更已有 Nacos Data ID 前先比对线上内容；同步脚本默认不会覆盖已存在的配置。正式切换前需由 ESB 团队确认两侧连接身份、TLS 证书、队列权限及报文样例，并在测试环境完成往返、单边故障和重投验收。缺少这些值时保持 `MOCK`，不能把占位值当作生产配置发布。截图中还有数据库及 Redis 凭据，均不属于本 Adapter 配置，不能复制进 Nacos 的 MQ Data ID。
 

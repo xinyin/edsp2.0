@@ -18,14 +18,14 @@ class IbmMqEsbConfigurationTest {
         var g1 = configuration.esbMqG1Listener(topology, adapter, protocol, json, "{\"CALLER\":\"secret\"}");
         var g2 = configuration.esbMqG2Listener(topology, adapter, protocol, json, "{\"CALLER\":\"secret\"}");
 
-        assertEquals("RESPONSE.IN", g1.getDestinationName());
-        assertEquals("RESPONSE.IN", g2.getDestinationName());
+        assertEquals("REQUEST.OUT", g1.getDestinationName());
+        assertEquals("REQUEST.OUT", g2.getDestinationName());
         assertNotSame(g1.getConnectionFactory(), g2.getConnectionFactory());
         assertNotSame(g1.getMessageListener(), g2.getMessageListener());
         assertTrue(g1.isSessionTransacted());
         assertTrue(g2.isSessionTransacted());
-        assertEquals("REQUEST.OUT", topology.g1().responseQueue());
-        assertEquals("REQUEST.OUT", topology.g2().responseQueue());
+        assertEquals("RESPONSE.IN", topology.g1().responseQueue());
+        assertEquals("RESPONSE.IN", topology.g2().responseQueue());
     }
 
     @Test
@@ -47,8 +47,8 @@ class IbmMqEsbConfigurationTest {
             env.setProperty(prefix + "port", "1414");
             env.setProperty(prefix + "queue-manager", "QM-" + name.toUpperCase());
             env.setProperty(prefix + "channel", "APP.CHANNEL");
-            env.setProperty(prefix + "request-queue", "RESPONSE.IN");
-            env.setProperty(prefix + "response-queue", "REQUEST.OUT");
+            env.setProperty(prefix + "request-queue", "REQUEST.OUT");
+            env.setProperty(prefix + "response-queue", "RESPONSE.IN");
         }
         return env;
     }

@@ -18,7 +18,9 @@ edsp:
       port: "${ESB_MQ_G1_PORT:0}"
       queue-manager: "${ESB_MQ_G1_QUEUE_MANAGER:}"
       channel: "${ESB_MQ_G1_CHANNEL:}"
+      # 旧 ESB 的 rq：平台从此队列获取请求。
       request-queue: "${ESB_MQ_G1_REQUEST_QUEUE:}"
+      # 旧 ESB 的 sq：平台向此队列发送响应。
       response-queue: "${ESB_MQ_G1_RESPONSE_QUEUE:}"
       username: "${ESB_MQ_G1_USERNAME:}"
       password: "${ESB_MQ_G1_PASSWORD:}"
@@ -30,7 +32,9 @@ edsp:
       port: "${ESB_MQ_G2_PORT:0}"
       queue-manager: "${ESB_MQ_G2_QUEUE_MANAGER:}"
       channel: "${ESB_MQ_G2_CHANNEL:}"
+      # 旧 ESB 的 rq：平台从此队列获取请求。
       request-queue: "${ESB_MQ_G2_REQUEST_QUEUE:}"
+      # 旧 ESB 的 sq：平台向此队列发送响应。
       response-queue: "${ESB_MQ_G2_RESPONSE_QUEUE:}"
       username: "${ESB_MQ_G2_USERNAME:}"
       password: "${ESB_MQ_G2_PASSWORD:}"
