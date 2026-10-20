@@ -103,6 +103,18 @@ class EsbXmlProtocolTest {
     }
 
     @Test
+    void serializesConfiguredRootResponseNodeBesideData() throws Exception {
+        String response = protocol.success(protocol.parse(REQUEST), Map.of(
+                "code", "0000", "message", "查询成功", "resultStatus", "HIT",
+                "data", Map.of(), "payload", Map.of("supplierResult", Map.of("items", List.of(
+                        Map.of("id", 1), Map.of("id", 2))))));
+        Document document = parseXml(response);
+        Element payload = (Element) document.getElementsByTagName("payload").item(0);
+        assertEquals(2, payload.getElementsByTagName("id").getLength());
+        assertEquals("0000", text(document, "resp_code"));
+    }
+
+    @Test
     void serializesFailureInTheSameProductionEnvelope() throws Exception {
         String response = protocol.failure(protocol.parse(REQUEST), "ESB_FORWARD_503", "数据源不可用");
         Document document = parseXml(response);

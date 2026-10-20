@@ -16,7 +16,13 @@ public final class CapabilityContracts {
                                   int timeoutMs, Map<String, Object> upstreamRequest) {}
     public record CompleteRequest(String interfaceCode, Map<String, Object> upstreamResponse) {}
     public record CompleteResponse(String interfaceCode, int planVersion, String standardCode,
-                                   String resultStatus, boolean billable, Map<String, Object> data) {}
+                                   String resultStatus, boolean billable, Map<String, Object> data,
+                                   Map<String, Object> responseFields) {
+        public CompleteResponse(String interfaceCode, int planVersion, String standardCode,
+                                String resultStatus, boolean billable, Map<String, Object> data) {
+            this(interfaceCode, planVersion, standardCode, resultStatus, billable, data, Map.of("data", data));
+        }
+    }
     public record StandardResponse<T>(String code, String message, String resultStatus, String traceId, T data) {
         public static <T> StandardResponse<T> success(String traceId, T data) {
             return new StandardResponse<>("EXT-SUCCESS", "查询成功", "HIT", traceId, data);

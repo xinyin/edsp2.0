@@ -204,6 +204,15 @@ CREATE TABLE IF NOT EXISTS response_code_mapping (
     CONSTRAINT fk_code_interface FOREIGN KEY (interface_id) REFERENCES api_interface(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS platform_response_code (
+    code VARCHAR(64) PRIMARY KEY,
+    name VARCHAR(128) NOT NULL,
+    result_status VARCHAR(16) NOT NULL,
+    description VARCHAR(500) NOT NULL DEFAULT '',
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS vendor_mock_config (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     interface_id BIGINT NOT NULL UNIQUE,

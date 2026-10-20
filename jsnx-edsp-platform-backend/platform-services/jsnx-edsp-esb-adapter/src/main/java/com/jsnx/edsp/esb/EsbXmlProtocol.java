@@ -160,6 +160,11 @@ public class EsbXmlProtocol {
             writer.writeStartElement("data");
             writeValue(writer, "item", response.get("data"), false);
             writer.writeEndElement();
+            for (Map.Entry<String, Object> entry : response.entrySet()) {
+                if (!java.util.Set.of("code", "message", "resultStatus", "traceId", "data").contains(entry.getKey())) {
+                    writeValue(writer, safeElementName(entry.getKey()), entry.getValue(), true);
+                }
+            }
             element(writer, "resp_code", standardCode);
             element(writer, "status", statusCode);
             writer.writeEndElement();

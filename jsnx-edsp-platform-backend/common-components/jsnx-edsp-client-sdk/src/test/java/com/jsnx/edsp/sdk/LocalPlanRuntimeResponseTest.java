@@ -28,4 +28,17 @@ class LocalPlanRuntimeResponseTest {
         assertEquals("HIT", result.resultStatus());
         assertEquals(upstream, result.data());
     }
+
+    @Test
+    void publishedPlanPlacesWholeBodyAtConfiguredRootPath() {
+        Map<String, Object> upstream = Map.of("data", List.of(Map.of("id", 1)), "page", 1);
+        PlanSnapshot plan = new PlanSnapshot(1, "QUERY", 2, "checksum", "https://supplier/query", 3000,
+                List.of(), List.of(Map.of("sourcePath", "$", "targetPath", "$.payload.supplierResult",
+                        "transformType", "WHOLE_BODY")), List.of(), "result.code", Map.of(), Instant.now(),
+                "GET", Map.of(), Map.of("dataMode", "FIELD_MAPPING", "codeMode", "HTTP_SUCCESS", "successCode", "0000"));
+        CompleteResponse result = new LocalPlanRuntime(new ObjectMapper(), "http://127.0.0.1:8081", "data-test")
+                .complete(plan, upstream);
+        assertEquals(Map.of("payload", Map.of("supplierResult", upstream)), result.responseFields());
+        assertEquals(Map.of(), result.data());
+    }
 }

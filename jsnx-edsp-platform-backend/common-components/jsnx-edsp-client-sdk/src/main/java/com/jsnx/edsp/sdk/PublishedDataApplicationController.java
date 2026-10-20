@@ -20,7 +20,7 @@ public class PublishedDataApplicationController {
     }
 
     @PostMapping("/internal/adapter/published")
-    public StandardResponse<Map<String, Object>> execute(
+    public Map<String, Object> execute(
             @RequestBody Map<String, Object> request,
             @RequestHeader("X-Api-Code") String apiCode,
             @RequestHeader(value = "X-Trace-Id", required = false) String traceId,
@@ -30,8 +30,9 @@ public class PublishedDataApplicationController {
             @RequestHeader(value = "X-Data-Application", required = false) String routedApplication) {
         if (routedApplication != null && !routedApplication.isBlank()
                 && !applicationName.equals(routedApplication)) {
-            return StandardResponse.failure(CapabilityContracts.ensureTraceId(traceId), "EDSP-ROUTE-MISMATCH",
-                    "Gateway 路由目标与当前数据应用不一致");
+            String id = CapabilityContracts.ensureTraceId(traceId);
+            return Map.of("code", "EDSP-ROUTE-MISMATCH", "message", "Gateway 路由目标与当前数据应用不一致",
+                    "resultStatus", "ERROR", "traceId", id, "data", Map.of());
         }
         return executor.execute(apiCode.trim(), applicationName, request,
                 CapabilityContracts.ensureTraceId(traceId), clientCode, entryChannel, routeVersion);

@@ -78,6 +78,19 @@ class PlanCoreTest {
     }
 
     @Test
+    void wholeBodyCanBePlacedOutsideDataAndOverlappingTargetsAreRejected() {
+        Map<String, Object> upstream = Map.of("data", List.of(Map.of("id", 1)), "page", 1);
+        List<Map<String, Object>> rules = List.of(Map.of("sourcePath", "$", "targetPath", "$.payload.supplierResult",
+                "transformType", "WHOLE_BODY"));
+        Map<String, Object> result = ResponsePolicySupport.fields(upstream, rules,
+                Map.of("dataMode", "FIELD_MAPPING"), null);
+        assertEquals(Map.of("payload", Map.of("supplierResult", upstream)), result);
+        assertThrows(IllegalArgumentException.class, () -> ResponsePolicySupport.targetPath("$.code"));
+        assertThrows(IllegalArgumentException.class, () -> ResponsePolicySupport.validateTargets(List.of(
+                rules.get(0), Map.of("sourcePath", "page", "targetPath", "$.payload.supplierResult.page"))));
+    }
+
+    @Test
     void fieldMappingResponseExtractsConfiguredFieldsOnly() {
         Map<String, Object> upstream = Map.of("data", Map.of("company", "Acme", "unused", "hidden"));
         Map<String, Object> data = ResponsePolicySupport.data(upstream,

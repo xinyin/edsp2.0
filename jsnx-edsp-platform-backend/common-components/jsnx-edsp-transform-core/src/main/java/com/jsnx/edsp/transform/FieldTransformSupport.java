@@ -8,6 +8,8 @@ public final class FieldTransformSupport {
 
     @SuppressWarnings("unchecked")
     public static Object readPath(Map<String, Object> source, String path) {
+        if ("$".equals(path)) return source;
+        if (path.startsWith("$.")) path = path.substring(2);
         Object current = source;
         for (String part : path.split("\\.")) {
             if (!(current instanceof Map<?, ?> map)) return null;
@@ -18,6 +20,7 @@ public final class FieldTransformSupport {
 
     @SuppressWarnings("unchecked")
     public static void writePath(Map<String, Object> target, String path, Object value) {
+        if (path.startsWith("$.")) path = path.substring(2);
         String[] parts = path.split("\\.");
         Map<String, Object> current = target;
         for (int i = 0; i < parts.length - 1; i++) {

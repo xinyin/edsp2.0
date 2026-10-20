@@ -17,7 +17,7 @@ import { buildResourceGuide, guideAdvice, isHttpEndpoint, isSuccessfulE2E, reque
 import type {
   AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary,
   DataSourceSummary, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult,
-  MonitorAlert, MonitorPoint, MonitorSummary, ProviderAccount, ProviderSummary, ReleaseApproval, TestResult,
+  MonitorAlert, MonitorPoint, MonitorSummary, PlatformResponseCode, ProviderAccount, ProviderSummary, ReleaseApproval, TestResult,
   ResourceApiDetail, ResourceApiSummary, ResourceDirectoryRow, ResourceDocument, UsageRecord, UsageReportRow, ValidationResult,
   DataApplicationProvisionResult, DataApplicationProvisionSettings, SecurityAlgorithmDescriptor, SecurityPolicy
 } from './types'
@@ -184,6 +184,12 @@ const savedConnectionBaseline = ref('')
 const savedUpstreamRequestBaseline = ref('{}')
 const savedUpstreamResponseBaseline = ref('{}')
 const savedResponseCodesBaseline = ref('')
+const platformResponseCodes = ref<PlatformResponseCode[]>([])
+const codeDictionaryDialog = ref(false)
+const codeEditorDialog = ref(false)
+const codeEditorOriginal = ref('')
+const codeEditorSaving = ref(false)
+const codeEditorForm = ref<PlatformResponseCode>({ code: '', name: '', resultStatus: 'HIT', description: '', enabled: true })
 const savedVendorCodePathBaseline = ref('result.code')
 const savedSecurityBaseline = ref('')
 const standardServiceForm = ref({ servicePath: '', httpMethod: 'POST' })
@@ -542,8 +548,42 @@ const filteredMappings = computed(() => detail.value?.mappings.filter(item => it
 const mappingIsPassThrough = computed(() => filteredMappings.value.length === 0)
 const mappingModeLabel = computed(() => mappingDirection.value === 'REQUEST'
   ? (mappingIsPassThrough.value ? '自动透传' : '字段转换')
-  : detail.value?.responsePolicy?.dataMode === 'WHOLE_BODY' ? '整报文封装'
-  : '字段映射')
+  : mappingIsPassThrough.value ? '默认封装到 data' : '响应映射')
+const responseStructurePreview = computed(() => {
+  if (!detail.value) return '{}'
+  try {
+    const supplier = JSON.parse(responseText.value) as Record<string, unknown>
+    if (!supplier || typeof supplier !== 'object' || Array.isArray(supplier)) return '请填写 JSON 对象样例'
+    const result: Record<string, unknown> = { code: detail.value.responsePolicy.successCode || '0000',
+      message: '查询成功', resultStatus: 'HIT', traceId: 'PREVIEW' }
+    const rows = detail.value.mappings.filter(item => item.direction === 'RESPONSE')
+    if (!rows.length) result.data = supplier
+    for (const row of rows) {
+      const source = row.transformType === 'WHOLE_BODY' ? supplier : readPreviewPath(supplier, row.sourcePath)
+      if (source === undefined || !row.targetPath.trim()) continue
+      const path = row.targetPath.startsWith('$.') ? row.targetPath.slice(2)
+        : row.targetPath === 'data' || row.targetPath.startsWith('data.') ? row.targetPath : `data.${row.targetPath}`
+      if (!/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/.test(path)) continue
+      writePreviewPath(result, path, source)
+    }
+    if (!('data' in result)) result.data = {}
+    return JSON.stringify(result, null, 2)
+  } catch { return '上游响应样例不是有效的 JSON' }
+})
+function readPreviewPath(source: Record<string, unknown>, path: string): unknown {
+  if (path === '$') return source
+  return path.replace(/^\$\./, '').split('.').reduce<unknown>((value, key) =>
+    value && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined, source)
+}
+function writePreviewPath(target: Record<string, unknown>, path: string, value: unknown) {
+  const parts = path.split('.')
+  let current = target
+  for (const part of parts.slice(0, -1)) {
+    if (!current[part] || typeof current[part] !== 'object' || Array.isArray(current[part])) current[part] = {}
+    current = current[part] as Record<string, unknown>
+  }
+  current[parts[parts.length - 1]] = value
+}
 const hasUnpublishedChanges = computed(() => !!detail.value && detail.value.summary.publishedVersion !== detail.value.summary.currentVersion)
 const authorizableInterfaces = computed(() => allInterfaces.value.filter(item =>
   item.publishedVersion != null && !['OFFLINE', 'DELETED'].includes(item.status)))
@@ -718,10 +758,10 @@ const hasUnsavedChanges = computed(() => {
     || JSON.stringify(detail.value.responsePolicy) !== savedResponsePolicyBaseline.value
     || requestText.value !== savedRequestBaseline.value || responseText.value !== savedResponseBaseline.value
     || JSON.stringify(standardServiceForm.value) !== savedStandardServiceBaseline.value
-  if (activeTab.value === 'codes') return detail.value.responsePolicy.codeMode !== 'HTTP_SUCCESS'
-    && (JSON.stringify(detail.value.responseCodes) !== savedResponseCodesBaseline.value
-    || detail.value.vendorCodePath !== savedVendorCodePathBaseline.value
-    )
+  if (activeTab.value === 'codes') return JSON.stringify(detail.value.responsePolicy) !== savedResponsePolicyBaseline.value
+    || (detail.value.responsePolicy.codeMode !== 'HTTP_SUCCESS'
+      && (JSON.stringify(detail.value.responseCodes) !== savedResponseCodesBaseline.value
+        || detail.value.vendorCodePath !== savedVendorCodePathBaseline.value))
   if (activeTab.value === 'security') return JSON.stringify(securityPolicy.value) !== savedSecurityBaseline.value
   return false
 })
@@ -783,6 +823,8 @@ async function loadAll() {
     monitorAlerts.value = alerts
     approvals.value = approvalData
     securityAlgorithms.value = algorithmData
+    try { platformResponseCodes.value = await api.platformResponseCodes() }
+    catch { platformResponseCodes.value = [] }
     demo.value = isDemoMode()
     if (!selectedSourceId.value && sourceData.length) selectedSourceId.value = sourceData[0].id
     if (!selectedProviderId.value && providerData.length) { selectedProviderId.value = providerData[0].id; await loadProviderAccounts() }
@@ -866,6 +908,12 @@ async function loadDetail() {
     loadedDetail.responsePolicy = loadedDetail.responsePolicy ?? {
       dataMode: loadedDetail.mappings.some(item => item.direction === 'RESPONSE') ? 'FIELD_MAPPING' : 'WHOLE_BODY',
       codeMode: 'VENDOR_CODE', successCode: '0000'
+    }
+    if (!resourceWorkspace && loadedDetail.responsePolicy.dataMode === 'WHOLE_BODY') {
+      loadedDetail.mappings = loadedDetail.mappings.filter(item => item.direction !== 'RESPONSE')
+      loadedDetail.mappings.push({ direction: 'RESPONSE', sourcePath: '$', targetPath: '$.data',
+        transformType: 'WHOLE_BODY', transformConfig: {}, defaultValue: '', required: false, sortOrder: 10 })
+      loadedDetail.responsePolicy.dataMode = 'FIELD_MAPPING'
     }
     if (!resourceWorkspace) detailCache.set(requestedInterfaceId, structuredClone(loadedDetail))
     detail.value = loadedDetail
@@ -1929,9 +1977,17 @@ function startMappingConfiguration() {
   }
   addMapping()
 }
-function onResponseDataModeChange(value: string | number | boolean) {
-  if (value === 'FIELD_MAPPING' && !detail.value?.mappings.some(item => item.direction === 'RESPONSE')) {
-    addMapping('RESPONSE')
+function onResponseSourceChange(row: FieldMapping, value: string) {
+  if (value === 'WHOLE_BODY') {
+    row.transformType = 'WHOLE_BODY'
+    row.sourcePath = '$'
+    row.targetPath = row.targetPath?.trim() || '$.data'
+    row.transformConfig = {}
+    row.required = false
+  } else if (row.transformType === 'WHOLE_BODY') {
+    row.transformType = 'DIRECT'
+    row.sourcePath = ''
+    row.targetPath = ''
   }
 }
 function deleteMapping(row: FieldMapping) {
@@ -1965,7 +2021,7 @@ function generateMappingsFromSample() {
     const additions = paths.filter(path => !existing.has(path)).map((path, index) => ({
       direction: mappingDirection.value,
       sourcePath: path,
-      targetPath: path,
+      targetPath: mappingDirection.value === 'RESPONSE' ? `$.data.${path}` : path,
       transformType: 'DIRECT' as const,
       transformConfig: {},
       defaultValue: '',
@@ -1981,6 +2037,9 @@ function generateMappingsFromSample() {
 
 async function saveResponseCodes() {
   if (!detail.value) return false
+  if (JSON.stringify(detail.value.responsePolicy) !== savedResponsePolicyBaseline.value) {
+    if (!await saveMappings()) return false
+  }
   if (detail.value.responsePolicy.codeMode === 'HTTP_SUCCESS') return true
   detail.value.vendorCodePath = detail.value.vendorCodePath?.trim() || 'result.code'
   detail.value.responseCodes = await api.saveResponseCodes(selectedInterfaceId.value, detail.value.vendorCodePath, detail.value.responseCodes)
@@ -1993,7 +2052,46 @@ async function saveResponseCodes() {
   return true
 }
 function addResponseCode() {
-  detail.value?.responseCodes.push({ vendorCode: '', standardCode: 'EXT-SUCCESS', resultStatus: 'HIT', retryable: false, billable: true })
+  const selected = platformResponseCodes.value.find(item => item.enabled && item.resultStatus === 'HIT')
+  detail.value?.responseCodes.push({ vendorCode: '', standardCode: selected?.code ?? '', resultStatus: selected?.resultStatus ?? 'HIT', retryable: false, billable: true })
+}
+function selectPlatformCode(row: InterfaceDetail['responseCodes'][number], code: string) {
+  const selected = platformResponseCodes.value.find(item => item.code === code)
+  if (selected) row.resultStatus = selected.resultStatus
+}
+async function refreshPlatformCodes() {
+  platformResponseCodes.value = await api.platformResponseCodes()
+}
+function editPlatformCode(item?: PlatformResponseCode) {
+  codeEditorOriginal.value = item?.code ?? ''
+  codeEditorForm.value = item ? { ...item } : { code: '', name: '', resultStatus: 'HIT', description: '', enabled: true }
+  codeEditorDialog.value = true
+}
+async function savePlatformCode() {
+  const form = { ...codeEditorForm.value, code: codeEditorForm.value.code.trim(), name: codeEditorForm.value.name.trim() }
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(form.code) || !form.name) {
+    ElMessage.warning('请填写合法的返回码和名称')
+    return
+  }
+  codeEditorSaving.value = true
+  try {
+    if (codeEditorOriginal.value) await api.updatePlatformResponseCode(codeEditorOriginal.value, form)
+    else await api.createPlatformResponseCode(form)
+    await refreshPlatformCodes()
+    codeEditorDialog.value = false
+    ElMessage.success('平台返回码已保存')
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '保存失败') }
+  finally { codeEditorSaving.value = false }
+}
+async function deletePlatformCode(item: PlatformResponseCode) {
+  try {
+    await ElMessageBox.confirm(`确定删除平台返回码 ${item.code}？已被接口引用的返回码不能删除。`, '删除返回码', { type: 'warning' })
+    await api.deletePlatformResponseCode(item.code)
+    await refreshPlatformCodes()
+    ElMessage.success('已删除')
+  } catch (error) {
+    if (error instanceof Error && error.message !== 'cancel') ElMessage.error(error.message)
+  }
 }
 
 async function validateConfig() {
@@ -2856,34 +2954,32 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                   <details class="advanced-settings internal-service-route"><summary>内部转发配置<HelpTip title="内部转发配置" content="ESB Adapter 根据服务编码查询此路径，将解析后的请求经 Gateway 转发至提供商应用。行内调用系统使用 ESB 队列，无需填写此 HTTP 路径。"/></summary><div class="form-grid"><el-form-item label="内部 HTTP 方法"><el-select v-model="standardServiceForm.httpMethod" aria-label="内部 HTTP 方法"><el-option v-for="method in ['POST','GET','PUT','PATCH']" :key="method" :label="method" :value="method"/></el-select></el-form-item><el-form-item label="内部服务路径"><el-input v-model="standardServiceForm.servicePath" aria-label="内部服务路径"/></el-form-item></div></details>
                   <div class="mapping-toolbar refined">
                     <div class="mapping-mode"><el-segmented v-model="mappingDirection" :options="[{ label: '请求转换', value: 'REQUEST' }, { label: '响应标准化', value: 'RESPONSE' }]" /><el-tag :type="mappingIsPassThrough ? 'success' : 'warning'" effect="plain">{{ mappingModeLabel }}</el-tag><span>{{ mappingDirection === 'REQUEST' ? '行内标准请求 → 上游原始请求' : '上游原始响应 → 行内标准响应' }}</span></div>
-                    <div><el-button :icon="DocumentChecked" @click="validateConfig">校验配置</el-button><el-button v-if="mappingDirection==='REQUEST' || detail.responsePolicy.dataMode==='FIELD_MAPPING'" :icon="Plus" @click="startMappingConfiguration">{{ mappingIsPassThrough ? '配置字段转换' : '新增一行' }}</el-button></div>
-                  </div>
-                  <div v-if="mappingDirection==='RESPONSE'" class="response-policy-panel">
-                    <div><span>响应封装</span><el-segmented v-model="detail.responsePolicy.dataMode" :options="[{label:'字段映射',value:'FIELD_MAPPING'},{label:'整报文放入 data',value:'WHOLE_BODY'}]" aria-label="响应封装方式" @change="onResponseDataModeChange"/></div>
-                    <div><span>成功判定</span><el-select v-model="detail.responsePolicy.codeMode" aria-label="成功判定方式"><el-option label="按供应商业务码" value="VENDOR_CODE"/><el-option label="HTTP 成功即成功" value="HTTP_SUCCESS"/></el-select><el-input v-if="detail.responsePolicy.codeMode==='HTTP_SUCCESS'" v-model="detail.responsePolicy.successCode" aria-label="平台成功码" placeholder="平台成功码，如 0000"/></div>
+                    <div><el-button :icon="DocumentChecked" @click="validateConfig">校验配置</el-button><el-button :icon="Plus" @click="startMappingConfiguration">{{ mappingIsPassThrough ? '新增映射' : '新增规则' }}</el-button></div>
                   </div>
                   <div class="mapping-sample-panel"><div class="mapping-sample-head"><div><DocumentCopy/><span><strong>{{ mappingDirection === 'REQUEST' ? '行内标准请求样例' : '上游原始响应样例' }}</strong><HelpTip title="报文与映射" :content="mappingDirection==='REQUEST' ? '填写行内标准请求 JSON，可从样例批量生成字段映射。嵌套对象和数组请按实际路径配置。' : '可编辑或导入上游响应 JSON 样例，再生成映射规则。修改仅保存到当前标准服务草稿。'"/></span></div><div><input v-if="mappingDirection === 'RESPONSE'" ref="responseFileInput" type="file" accept=".json,application/json" class="visually-hidden" aria-label="选择响应 JSON 文件" @change="importUpstreamResponse"/><el-button v-if="mappingDirection === 'RESPONSE'" :icon="Upload" @click="responseFileInput?.click()">导入 JSON</el-button><el-button type="primary" plain :icon="DocumentCopy" @click="generateMappingsFromSample">从样例生成映射</el-button></div></div><CopyableBlock :value="mappingDirection === 'REQUEST' ? requestText : responseText"><el-input v-if="mappingDirection === 'REQUEST'" v-model="requestText" type="textarea" :autosize="{minRows:5,maxRows:10}"/><el-input v-else v-model="responseText" type="textarea" :autosize="{minRows:5,maxRows:10}" aria-label="上游原始响应样例"/></CopyableBlock></div>
-                  <div v-if="mappingDirection==='REQUEST' || detail.responsePolicy.dataMode==='FIELD_MAPPING'" class="mapping-summary"><div><strong>{{ mappingIsPassThrough ? '自动透传' : filteredMappings.length }}</strong><span>{{ mappingIsPassThrough ? '当前处理模式' : '映射规则' }}</span></div><div><strong>{{ filteredMappings.filter(item => item.required).length }}</strong><span>必填字段</span></div><HelpTip title="字段处理模式" content="不配置映射时，报文按原字段名和路径透传。配置后按映射规则执行字段提取、转换及目标字段写入。来源路径和目标路径支持嵌套 JSON 路径。"/></div>
-                  <div v-if="mappingDirection==='RESPONSE' && detail.responsePolicy.dataMode==='WHOLE_BODY'" class="response-policy-state">供应商响应的完整 JSON 将放入平台标准响应的 data 节点。</div>
-                  <div v-if="mappingDirection==='REQUEST' || detail.responsePolicy.dataMode==='FIELD_MAPPING'" class="mapping-board">
-                    <div class="mapping-board-head"><span>#</span><span>{{ mappingDirection === 'REQUEST' ? '行内标准字段' : '上游原始字段' }}</span><span>转换规则</span><span>{{ mappingDirection === 'REQUEST' ? '上游请求字段' : '平台标准字段' }}</span><span>属性</span></div>
-                    <div v-if="mappingIsPassThrough" class="mapping-empty"><Connection/><strong>当前采用自动透传</strong><el-button type="primary" :icon="Plus" @click="startMappingConfiguration">配置字段转换</el-button></div>
+                  <div class="mapping-summary"><div><strong>{{ mappingIsPassThrough ? '默认处理' : filteredMappings.length }}</strong><span>{{ mappingIsPassThrough ? '当前处理模式' : '映射规则' }}</span></div><div><strong>{{ filteredMappings.filter(item => item.required).length }}</strong><span>必填字段</span></div><HelpTip title="映射规则" content="请求无映射时按原字段透传；响应无映射时将完整供应商报文放入 data。响应目标路径以 $ 表示平台返回根节点，例如 $.payload.raw。"/></div>
+                  <div class="mapping-board">
+                    <div class="mapping-board-head"><span>#</span><span>{{ mappingDirection === 'REQUEST' ? '行内标准字段' : '供应商响应来源' }}</span><span>处理方式</span><span>{{ mappingDirection === 'REQUEST' ? '上游请求字段' : '写入平台响应' }}</span><span>属性</span></div>
+                    <div v-if="mappingIsPassThrough" class="mapping-empty"><Connection/><strong>{{ mappingDirection === 'REQUEST' ? '请求按原字段透传' : '完整响应默认写入 data' }}</strong><el-button type="primary" :icon="Plus" @click="startMappingConfiguration">新增映射</el-button></div>
                     <div v-for="(row,index) in filteredMappings" :key="mappingRowKey(row)" class="mapping-row" :class="{'is-rule-open':activeMappingRuleRow===row}">
                       <span class="mapping-index">{{ String(index + 1).padStart(2, '0') }}</span>
-                      <div class="field-cell"><label>{{ mappingDirection === 'REQUEST' ? '行内标准字段' : '上游原始字段' }}</label><el-input v-model="row.sourcePath" placeholder="来源字段路径" aria-label="来源字段路径" /></div>
-                      <div class="transform-cell"><label class="mapping-rule-label">转换规则</label><span class="connector-line"></span><el-select v-model="row.transformType" aria-label="转换规则" :teleported="false" :persistent="true" placement="bottom-start" popper-class="mapping-rule-dropdown" @visible-change="onMappingRuleVisibleChange(row, $event)" @change="onTransformTypeChange(row)"><el-option-group label="基础转换"><el-option label="直接映射" value="DIRECT"/><el-option label="枚举转换" value="ENUM"/><el-option label="默认值" value="DEFAULT"/><el-option label="日期格式化" value="DATE"/></el-option-group><el-option-group label="安全处理"><el-option label="加密处理" value="ENCRYPT"/><el-option label="签名计算" value="SIGN"/></el-option-group></el-select><span class="connector-arrow">→</span></div>
-                      <div class="field-cell"><label>{{ mappingDirection === 'REQUEST' ? '上游请求字段' : '平台标准字段' }}</label><el-input v-model="row.targetPath" placeholder="目标字段路径" aria-label="目标字段路径" /><div v-if="row.transformType === 'ENUM'" class="enum-summary" :class="{ready:Object.keys(row.transformConfig ?? {}).length}"><div><span>枚举规则</span><strong>{{ enumSummary(row) }}</strong></div><el-button size="small" plain @click="openEnumDrawer(row)">{{ Object.keys(row.transformConfig ?? {}).length ? '修改配置' : '立即配置' }}</el-button></div><div v-else-if="row.transformType === 'ENCRYPT' || row.transformType === 'SIGN'" class="algorithm-summary" :class="{ready:algorithmConfigured(row)}"><div><span>{{ row.transformType === 'ENCRYPT' ? '加密算法' : '签名算法' }}</span><strong>{{ algorithmName(row) }}</strong></div><el-button size="small" plain @click="openAlgorithmDrawer(row)">{{ algorithmConfigured(row) ? '修改配置' : '立即配置' }}</el-button></div><el-input v-else class="enum-input" v-model="row.defaultValue" placeholder="默认值（可选）" /></div>
+                      <div class="field-cell"><label>{{ mappingDirection === 'REQUEST' ? '行内标准字段' : '供应商响应来源' }}</label><el-select v-if="mappingDirection==='RESPONSE'" :model-value="row.transformType==='WHOLE_BODY' ? 'WHOLE_BODY' : 'FIELD'" aria-label="响应来源类型" @change="onResponseSourceChange(row,$event)"><el-option label="完整供应商报文" value="WHOLE_BODY"/><el-option label="指定字段 / 对象" value="FIELD"/></el-select><el-input v-if="row.transformType!=='WHOLE_BODY'" v-model="row.sourcePath" :placeholder="mappingDirection==='RESPONSE' ? '$.support.url' : '来源字段路径'" aria-label="来源字段路径" /></div>
+                      <div class="transform-cell"><label class="mapping-rule-label">处理方式</label><span class="connector-line"></span><span v-if="row.transformType==='WHOLE_BODY'" class="whole-body-method">原样复制</span><el-select v-else v-model="row.transformType" aria-label="转换规则" :teleported="false" :persistent="true" placement="bottom-start" popper-class="mapping-rule-dropdown" @visible-change="onMappingRuleVisibleChange(row, $event)" @change="onTransformTypeChange(row)"><el-option-group label="基础转换"><el-option label="直接映射" value="DIRECT"/><el-option label="枚举转换" value="ENUM"/><el-option label="默认值" value="DEFAULT"/><el-option label="日期格式化" value="DATE"/></el-option-group><el-option-group label="安全处理"><el-option label="加密处理" value="ENCRYPT"/><el-option label="签名计算" value="SIGN"/></el-option-group></el-select><span class="connector-arrow">→</span></div>
+                      <div class="field-cell"><label>{{ mappingDirection === 'REQUEST' ? '上游请求字段' : '平台响应目标路径' }}</label><el-input v-model="row.targetPath" :placeholder="mappingDirection==='RESPONSE' ? '$.payload.supplierResult' : '目标字段路径'" aria-label="目标字段路径" /><div v-if="row.transformType === 'ENUM'" class="enum-summary" :class="{ready:Object.keys(row.transformConfig ?? {}).length}"><div><span>枚举规则</span><strong>{{ enumSummary(row) }}</strong></div><el-button size="small" plain @click="openEnumDrawer(row)">{{ Object.keys(row.transformConfig ?? {}).length ? '修改配置' : '立即配置' }}</el-button></div><div v-else-if="row.transformType === 'ENCRYPT' || row.transformType === 'SIGN'" class="algorithm-summary" :class="{ready:algorithmConfigured(row)}"><div><span>{{ row.transformType === 'ENCRYPT' ? '加密算法' : '签名算法' }}</span><strong>{{ algorithmName(row) }}</strong></div><el-button size="small" plain @click="openAlgorithmDrawer(row)">{{ algorithmConfigured(row) ? '修改配置' : '立即配置' }}</el-button></div><el-input v-else-if="row.transformType !== 'WHOLE_BODY'" class="enum-input" v-model="row.defaultValue" placeholder="默认值（可选）" /></div>
                       <div class="mapping-actions"><el-switch v-model="row.required" inline-prompt active-text="必" inactive-text="选" aria-label="必填字段" /><el-button :icon="Delete" text type="danger" aria-label="删除映射" @click="deleteMapping(row)" /></div>
                     </div>
                   </div>
+                  <div v-if="mappingDirection==='RESPONSE'" class="response-preview-panel"><div class="section-toolbar"><strong>平台响应结构预览</strong><HelpTip title="结构预览" content="展示原样复制和直接映射的目标层级。枚举、日期、安全算法及真实返回码以链路测试结果为准。"/></div><CopyableBlock :value="responseStructurePreview"><pre>{{ responseStructurePreview }}</pre></CopyableBlock></div>
                   <div v-if="validation" class="validation-result" :class="validation.valid ? 'valid' : 'invalid'"><el-icon><CircleCheck /></el-icon><div><strong>{{ validation.valid ? '配置校验通过' : '配置校验失败' }}</strong><span v-for="item in [...validation.errors, ...validation.warnings]" :key="item">{{ item }}</span></div></div>
                 </el-tab-pane>
                 <el-tab-pane v-if="serviceDevelopmentStage==='ORCHESTRATION'" name="codes" label="结果码映射">
-                  <div v-if="detail.responsePolicy.codeMode==='HTTP_SUCCESS'" class="response-policy-state">HTTP 调用成功时返回平台成功码 {{ detail.responsePolicy.successCode }}；上游 HTTP 错误按调用失败处理。</div>
+                  <div class="section-toolbar"><div><strong>统一返回码</strong></div><el-button :icon="Edit" @click="codeDictionaryDialog=true; refreshPlatformCodes()">维护平台返回码</el-button></div>
+                  <div class="code-mode-row"><span>成功判定</span><el-select v-model="detail.responsePolicy.codeMode" aria-label="成功判定方式"><el-option label="按供应商业务码" value="VENDOR_CODE"/><el-option label="HTTP 成功即成功" value="HTTP_SUCCESS"/></el-select></div>
+                  <div v-if="detail.responsePolicy.codeMode==='HTTP_SUCCESS'" class="code-mode-row"><span>平台成功码</span><el-select v-model="detail.responsePolicy.successCode" filterable aria-label="平台成功码"><el-option v-for="item in platformResponseCodes.filter(code => code.enabled && code.resultStatus==='HIT')" :key="item.code" :label="`${item.code} · ${item.name}`" :value="item.code"/></el-select></div>
                   <template v-else>
-                    <div class="section-toolbar"><div><strong>上游结果码 → 平台标准码</strong><HelpTip title="结果码映射" content="先填写供应商响应中返回码的取值路径，再将原始码映射为平台标准码和结果状态。命中表示查到数据，未命中表示正常返回但无数据，异常表示调用失败。"/></div><div><el-button :icon="Plus" @click="addResponseCode">新增规则</el-button></div></div>
+                    <div class="section-toolbar"><div><strong>上游结果码 → 平台返回码</strong><HelpTip title="结果码映射" content="供应商码由响应字段提取，平台返回码从统一字典选择。结果状态由所选平台码确定。"/></div><div><el-button :icon="Plus" @click="addResponseCode">新增规则</el-button></div></div>
                     <section class="vendor-code-path-panel"><div><strong>供应商返回码字段路径</strong><HelpTip title="返回码取值路径" content="从供应商原始响应按路径提取返回码，例如 result.code、status.code 或 data.retCode。请以该接口的实际响应结构为准。"/></div><el-input v-model="detail.vendorCodePath" placeholder="例如：result.code" clearable /></section>
-                    <el-table :data="detail.responseCodes" border><el-table-column label="上游原始码值" width="170"><template #default="{ row }"><el-input v-model="row.vendorCode" placeholder="例如 0000" /></template></el-table-column><el-table-column label="平台标准码" min-width="190"><template #default="{ row }"><el-input v-model="row.standardCode" /></template></el-table-column><el-table-column label="结果状态" width="135"><template #default="{ row }"><el-select v-model="row.resultStatus"><el-option label="命中数据" value="HIT"/><el-option label="未命中" value="MISS"/><el-option label="调用异常" value="ERROR"/></el-select></template></el-table-column><el-table-column label="允许重试" width="100" align="center"><template #default="{ row }"><el-switch v-model="row.retryable" /></template></el-table-column><el-table-column label="参与计量" width="100" align="center"><template #default="{ row }"><el-switch v-model="row.billable" /></template></el-table-column></el-table>
+                    <el-table :data="detail.responseCodes" border><el-table-column label="上游原始码值" min-width="130"><template #default="{ row }"><el-input v-model="row.vendorCode" placeholder="例如 0000" /></template></el-table-column><el-table-column label="平台返回码" min-width="190"><template #default="{ row }"><el-select v-model="row.standardCode" filterable @change="selectPlatformCode(row,$event)"><el-option v-for="item in platformResponseCodes.filter(code => code.enabled)" :key="item.code" :label="`${item.code} · ${item.name}`" :value="item.code"/></el-select></template></el-table-column><el-table-column label="结果状态" width="100"><template #default="{ row }">{{ row.resultStatus==='HIT' ? '命中' : row.resultStatus==='MISS' ? '未命中' : '异常' }}</template></el-table-column><el-table-column label="允许重试" width="90" align="center"><template #default="{ row }"><el-switch v-model="row.retryable" /></template></el-table-column><el-table-column label="参与计量" width="90" align="center"><template #default="{ row }"><el-switch v-model="row.billable" /></template></el-table-column><el-table-column label="操作" width="70" align="center"><template #default="{ $index }"><el-button :icon="Delete" text type="danger" aria-label="删除返回码规则" @click="detail.responseCodes.splice($index,1)"/></template></el-table-column></el-table>
                   </template>
                 </el-tab-pane>
                 <el-tab-pane v-if="serviceDevelopmentStage==='ORCHESTRATION'" name="security" label="安全处理">
@@ -3055,6 +3151,14 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
       <el-form-item label="上游 HTTP 方法" required><el-select v-model="apiMetadataForm.httpMethod" style="width:100%"><el-option v-for="method in ['GET','POST','PUT','DELETE','PATCH']" :key="method" :label="method" :value="method"/></el-select></el-form-item>
     </el-form>
     <template #footer><el-button @click="apiMetadataDialog=false">取消</el-button><el-button type="primary" :loading="apiMetadataSaving" @click="saveResourceApiMetadata">保存修改</el-button></template>
+  </el-dialog>
+  <el-dialog v-model="codeDictionaryDialog" title="平台返回码字典" width="min(760px,94vw)">
+    <div class="dictionary-toolbar"><span>接口结果码从这里选择</span><el-button type="primary" :icon="Plus" @click="editPlatformCode()">新增返回码</el-button></div>
+    <el-table :data="platformResponseCodes" height="360" class="dictionary-table"><el-table-column prop="code" label="返回码" min-width="130"/><el-table-column prop="name" label="名称" min-width="130"/><el-table-column label="结果状态" width="90"><template #default="{ row }">{{ row.resultStatus==='HIT' ? '命中' : row.resultStatus==='MISS' ? '未命中' : '异常' }}</template></el-table-column><el-table-column label="状态" width="80"><template #default="{ row }">{{ row.enabled ? '启用' : '停用' }}</template></el-table-column><el-table-column label="操作" width="122"><template #default="{ row }"><el-button :icon="Edit" text aria-label="修改返回码" @click="editPlatformCode(row)"/><el-button :icon="Delete" text type="danger" aria-label="删除返回码" @click="deletePlatformCode(row)"/></template></el-table-column></el-table>
+  </el-dialog>
+  <el-dialog v-model="codeEditorDialog" :title="codeEditorOriginal ? '修改平台返回码' : '新增平台返回码'" width="min(520px,94vw)" append-to-body>
+    <el-form label-position="top"><div class="form-grid"><el-form-item label="返回码" required><el-input v-model="codeEditorForm.code" maxlength="64"/></el-form-item><el-form-item label="名称" required><el-input v-model="codeEditorForm.name" maxlength="128"/></el-form-item><el-form-item label="结果状态"><el-select v-model="codeEditorForm.resultStatus"><el-option label="命中" value="HIT"/><el-option label="未命中" value="MISS"/><el-option label="异常" value="ERROR"/></el-select></el-form-item><el-form-item label="启用"><el-switch v-model="codeEditorForm.enabled"/></el-form-item></div><el-form-item label="说明"><CopyableBlock :value="codeEditorForm.description"><el-input v-model="codeEditorForm.description" maxlength="500" type="textarea" :rows="2"/></CopyableBlock></el-form-item></el-form>
+    <template #footer><el-button @click="codeEditorDialog=false">取消</el-button><el-button type="primary" :loading="codeEditorSaving" @click="savePlatformCode">保存</el-button></template>
   </el-dialog>
   <el-dialog v-model="platformServiceDialog" title="基于资源 API 创建平台标准服务" width="680px">
     <el-form label-position="top">

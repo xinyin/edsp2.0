@@ -110,7 +110,7 @@ export interface FieldMapping {
   direction: 'REQUEST' | 'RESPONSE'
   sourcePath: string
   targetPath: string
-  transformType: 'DIRECT' | 'ENUM' | 'DEFAULT' | 'DATE' | 'ENCRYPT' | 'SIGN'
+  transformType: 'DIRECT' | 'ENUM' | 'DEFAULT' | 'DATE' | 'ENCRYPT' | 'SIGN' | 'WHOLE_BODY'
   transformConfig: Record<string, string>
   defaultValue?: string
   required: boolean
@@ -156,6 +156,14 @@ export interface ResponseCodeMapping {
   resultStatus: string
   retryable: boolean
   billable: boolean
+}
+
+export interface PlatformResponseCode {
+  code: string
+  name: string
+  resultStatus: 'HIT' | 'MISS' | 'ERROR'
+  description: string
+  enabled: boolean
 }
 
 export interface ResponsePolicy {

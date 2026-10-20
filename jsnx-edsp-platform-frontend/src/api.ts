@@ -1,5 +1,5 @@
 import * as mock from './mock'
-import type { AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary, DataApplicationProvisionResult, DataApplicationProvisionSettings, DataSourceSummary, EsbDiagnosticResult, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult, MonitorAlert, MonitorPoint, MonitorSummary, ProviderAccount, ProviderSummary, ReleaseApproval, ResourceApiDetail, ResourceApiSummary, ResourceDirectoryPage, ResourceDocument, SecurityAlgorithmDescriptor, SecurityPolicy, TestResult, UsageRecord, UsageReportRow, ValidationResult, VendorDataSourceDefinition } from './types'
+import type { AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary, DataApplicationProvisionResult, DataApplicationProvisionSettings, DataSourceSummary, EsbDiagnosticResult, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult, MonitorAlert, MonitorPoint, MonitorSummary, PlatformResponseCode, ProviderAccount, ProviderSummary, ReleaseApproval, ResourceApiDetail, ResourceApiSummary, ResourceDirectoryPage, ResourceDocument, SecurityAlgorithmDescriptor, SecurityPolicy, TestResult, UsageRecord, UsageReportRow, ValidationResult, VendorDataSourceDefinition } from './types'
 
 const demoMode = import.meta.env.VITE_DEMO_MODE === 'mock'
 export const isDemoMode = () => demoMode
@@ -154,6 +154,19 @@ export const api = {
     mock.interfaceDetail.summary.currentVersion += 1
     if (mock.interfaceDetail.summary.status !== 'OFFLINE') mock.interfaceDetail.summary.status = 'DRAFT'
     return structuredClone(mock.interfaceDetail.responseCodes)
+  }),
+  platformResponseCodes: () => request<PlatformResponseCode[]>('/api/platform-response-codes', undefined, () => [
+    { code: '0000', name: '成功', resultStatus: 'HIT', description: '', enabled: true },
+    { code: 'EXT-SUCCESS', name: '查询成功', resultStatus: 'HIT', description: '', enabled: true }
+  ]),
+  createPlatformResponseCode: (body: PlatformResponseCode) => request<PlatformResponseCode>('/api/platform-response-codes', {
+    method: 'POST', headers: { 'X-Edsp-Operator-Token': operatorToken }, body: JSON.stringify(body)
+  }),
+  updatePlatformResponseCode: (code: string, body: PlatformResponseCode) => request<PlatformResponseCode>(`/api/platform-response-codes/${encodeURIComponent(code)}`, {
+    method: 'PUT', headers: { 'X-Edsp-Operator-Token': operatorToken }, body: JSON.stringify(body)
+  }),
+  deletePlatformResponseCode: (code: string) => request<{ deleted: boolean }>(`/api/platform-response-codes/${encodeURIComponent(code)}`, {
+    method: 'DELETE', headers: { 'X-Edsp-Operator-Token': operatorToken }
   }),
   securityPolicy: (id: number) => request<SecurityPolicy>(`/api/interfaces/${id}/security-policy`, undefined, () => ({
     ...(structuredClone(mock.interfaceDetail.securityPolicy)), interfaceId: id

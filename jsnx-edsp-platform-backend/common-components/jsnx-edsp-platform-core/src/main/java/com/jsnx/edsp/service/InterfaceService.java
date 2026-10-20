@@ -43,7 +43,7 @@ public class InterfaceService {
             "/api/auth", "/api/dashboard", "/api/providers", "/api/data-sources",
             "/api/resource-apis", "/api/platform-services", "/api/interfaces",
             "/api/approvals", "/api/clients", "/api/authorizations", "/api/billing",
-            "/api/usage-records", "/api/security-algorithms", "/api/call-logs",
+            "/api/usage-records", "/api/security-algorithms", "/api/platform-response-codes", "/api/call-logs",
             "/api/monitor", "/vendor-api", "/internal", "/actuator", "/error");
     private final JdbcTemplate jdbc;
     private final JsonSupport json;
@@ -1021,6 +1021,11 @@ public class InterfaceService {
     public List<ResponseCodeMapping> saveResponseCodes(long interfaceId, SaveResponseCodesRequest request) {
         lockEditableInterface(interfaceId);
         String vendorCodePath = normalizeVendorCodePath(request.vendorCodePath());
+        Set<String> vendorCodes = new HashSet<>();
+        for (ResponseCodeMapping code : request.responseCodes()) {
+            if (!vendorCodes.add(code.vendorCode())) throw new IllegalArgumentException("供应商返回码重复：" + code.vendorCode());
+            requirePlatformResponseCode(code.standardCode(), code.resultStatus());
+        }
         jdbc.update("DELETE FROM response_code_mapping WHERE interface_id=?", interfaceId);
         for (ResponseCodeMapping code : request.responseCodes()) {
             jdbc.update("""
@@ -1038,13 +1043,30 @@ public class InterfaceService {
         return responseCodes(interfaceId);
     }
 
+    private void requirePlatformResponseCode(String code, String resultStatus) {
+        List<String> statuses = jdbc.query("""
+                SELECT result_status FROM platform_response_code WHERE code=? AND enabled=1
+                """, (rs, index) -> rs.getString(1), code);
+        if (statuses.isEmpty()) throw new IllegalArgumentException("平台返回码不存在或已停用：" + code);
+        if (!statuses.get(0).equals(resultStatus)) {
+            throw new IllegalArgumentException("平台返回码与结果状态不一致：" + code);
+        }
+    }
+
     @Transactional
     public List<FieldMapping> saveMappings(long interfaceId, SaveMappingsRequest request) {
         lockEditableInterface(interfaceId);
         boolean hasResponseMappings = request.mappings().stream().anyMatch(m -> "RESPONSE".equals(m.direction()));
         Map<String, Object> responsePolicy = ResponsePolicySupport.normalize(request.responsePolicy(), hasResponseMappings);
+        if ("HTTP_SUCCESS".equals(responsePolicy.get("codeMode"))) {
+            requirePlatformResponseCode(String.valueOf(responsePolicy.get("successCode")), "HIT");
+        }
         if ("FIELD_MAPPING".equals(responsePolicy.get("dataMode")) && !hasResponseMappings) {
             throw new IllegalArgumentException("字段映射封装模式至少需要一条响应映射");
+        }
+        if ("FIELD_MAPPING".equals(responsePolicy.get("dataMode"))) {
+            ResponsePolicySupport.validateTargets(mapper.convertValue(request.mappings().stream()
+                    .filter(m -> "RESPONSE".equals(m.direction())).toList(), new TypeReference<>() {}));
         }
         jdbc.update("DELETE FROM field_mapping WHERE interface_id=?", interfaceId);
         for (FieldMapping mapping : request.mappings()) {
@@ -1099,6 +1121,11 @@ public class InterfaceService {
             if (!targets.add(key)) errors.add("目标字段重复：" + mapping.targetPath());
             if (mapping.sourcePath().isBlank() || mapping.targetPath().isBlank()) errors.add("字段路径不能为空");
             try { validateMappingConfiguration(mapping); }
+            catch (IllegalArgumentException e) { errors.add(e.getMessage()); }
+        }
+        if ("FIELD_MAPPING".equals(detail.responsePolicy().get("dataMode"))) {
+            try { ResponsePolicySupport.validateTargets(mapper.convertValue(detail.mappings().stream()
+                    .filter(m -> "RESPONSE".equals(m.direction())).toList(), new TypeReference<>() {})); }
             catch (IllegalArgumentException e) { errors.add(e.getMessage()); }
         }
         try {
@@ -1167,6 +1194,13 @@ public class InterfaceService {
 
     private void validateMappingConfiguration(FieldMapping mapping) {
         String type = valueOr(mapping.transformType(), "DIRECT").toUpperCase(Locale.ROOT);
+        if ("WHOLE_BODY".equals(type)) {
+            if (!"RESPONSE".equals(mapping.direction()) || !"$".equals(mapping.sourcePath())) {
+                throw new IllegalArgumentException("完整报文规则仅用于响应映射，来源必须为 $");
+            }
+            ResponsePolicySupport.targetPath(mapping.targetPath());
+            return;
+        }
         Map<String, String> config = mapping.transformConfig() == null ? Map.of() : mapping.transformConfig();
         if ("ENUM".equals(type) && config.isEmpty()) {
             throw new IllegalArgumentException("字段 " + mapping.sourcePath() + " 至少需要配置一条枚举转换规则");
@@ -1423,8 +1457,8 @@ public class InterfaceService {
                 : executionCodes.stream().filter(c -> c.vendorCode().equals(vendorCode))
                     .findFirst().orElse(new ResponseCodeMapping(null, vendorCode, "EXT-PLATFORM-ERROR", "ERROR", false, false));
         // MISS/ERROR responses carry no business data; required HIT mappings must not turn them into platform errors.
-        Map<String, Object> standardData = "HIT".equals(code.resultStatus())
-                ? ResponsePolicySupport.data(upstreamResponse,
+        Map<String, Object> responseFields = "HIT".equals(code.resultStatus())
+                ? ResponsePolicySupport.fields(upstreamResponse,
                     mapper.convertValue(effectiveMappings.stream().filter(m -> "RESPONSE".equals(m.direction())).toList(), new TypeReference<>() {}),
                     responsePolicy, secretResolver) : Map.of();
         Map<String, Object> response = new LinkedHashMap<>();
@@ -1433,7 +1467,8 @@ public class InterfaceService {
                 : "MISS".equals(code.resultStatus()) ? "未查得企业信息" : "供应商返回异常");
         response.put("resultStatus", code.resultStatus());
         response.put("traceId", traceId);
-        response.put("data", standardData);
+        response.putAll(responseFields);
+        response.putIfAbsent("data", Map.of());
         steps.add(new ExecutionStep("响应解析", "通过", "供应商返回码 " + vendorCode, 1));
         long standardizeDurationMs = elapsedMs(standardizeStarted);
         steps.add(new ExecutionStep("字段标准化", "通过", "生成统一标准响应", standardizeDurationMs));

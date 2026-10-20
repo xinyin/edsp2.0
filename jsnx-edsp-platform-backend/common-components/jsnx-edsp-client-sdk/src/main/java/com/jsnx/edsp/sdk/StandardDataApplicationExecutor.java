@@ -21,13 +21,13 @@ public final class StandardDataApplicationExecutor {
         this.events = events;
     }
 
-    public StandardResponse<Map<String, Object>> execute(String interfaceCode, String application,
+    public Map<String, Object> execute(String interfaceCode, String application,
                                                           Map<String, Object> request, String traceId,
                                                           String clientCode, String entryChannel) {
         return execute(interfaceCode, application, request, traceId, clientCode, entryChannel, null);
     }
 
-    public StandardResponse<Map<String, Object>> execute(String interfaceCode, String application,
+    public Map<String, Object> execute(String interfaceCode, String application,
                                                           Map<String, Object> request, String traceId,
                                                           String clientCode, String entryChannel,
                                                           Integer expectedPlanVersion) {
@@ -60,8 +60,13 @@ public final class StandardDataApplicationExecutor {
             long responseDuration = elapsed(responseStarted);
             String message = "HIT".equals(completed.resultStatus()) ? "查询成功"
                     : "MISS".equals(completed.resultStatus()) ? "未查询到符合条件的数据" : "供应商返回异常";
-            StandardResponse<Map<String, Object>> result = new StandardResponse<>(completed.standardCode(), message,
-                    completed.resultStatus(), traceId, completed.data());
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("code", completed.standardCode());
+            result.put("message", message);
+            result.put("resultStatus", completed.resultStatus());
+            result.put("traceId", traceId);
+            result.putAll(completed.responseFields());
+            result.putIfAbsent("data", Map.of());
             event.put("planVersion", prepared.planVersion());
             event.put("upstreamUrl", prepared.upstreamUrl());
             event.put("upstreamRequest", prepared.upstreamRequest());
@@ -85,10 +90,16 @@ public final class StandardDataApplicationExecutor {
             events.publishCall(event);
             return result;
         } catch (Exception error) {
-            StandardResponse<Map<String, Object>> result = StandardResponse.failure(traceId,
+            StandardResponse<Map<String, Object>> failure = StandardResponse.failure(traceId,
                     "EXT-PLATFORM-ERROR", error.getMessage());
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("code", failure.code());
+            result.put("message", failure.message());
+            result.put("resultStatus", failure.resultStatus());
+            result.put("traceId", failure.traceId());
+            result.put("data", Map.of());
             event.put("standardResponse", result);
-            event.put("responseCode", result.code());
+            event.put("responseCode", failure.code());
             event.put("resultStatus", "ERROR");
             event.put("billable", false);
             event.put("requestStatus", "FAILED");
