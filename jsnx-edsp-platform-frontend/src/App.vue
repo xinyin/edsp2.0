@@ -2743,7 +2743,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                             <summary>自定义请求头 <span>{{ connectionForm.requestHeaders.length ? `${connectionForm.requestHeaders.length} 项` : '未配置' }}</span></summary>
                             <div class="upstream-header-rows" v-for="(header, index) in connectionForm.requestHeaders" :key="index">
                               <el-input v-model="header.name" placeholder="Header 名称" aria-label="Header 名称"/>
-                              <el-input v-model="header.value" placeholder="值或 ${env:变量名}" aria-label="Header 值"/>
+                              <el-input v-model="header.value" placeholder="请求头值" aria-label="Header 值"/>
                               <el-button :icon="Delete" text aria-label="删除请求头" @click="connectionForm.requestHeaders.splice(index, 1)"/>
                             </div>
                             <el-button :icon="Plus" text @click="connectionForm.requestHeaders.push({ name: '', value: '' })">添加请求头</el-button>

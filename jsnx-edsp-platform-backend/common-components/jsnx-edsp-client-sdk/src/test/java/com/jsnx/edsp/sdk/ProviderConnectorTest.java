@@ -50,11 +50,13 @@ class ProviderConnectorTest {
         AtomicReference<String> captured = new AtomicReference<>();
         AtomicReference<String> trace = new AtomicReference<>();
         AtomicReference<String> customHeader = new AtomicReference<>();
+        AtomicReference<String> apiKey = new AtomicReference<>();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/query", exchange -> {
             captured.set(exchange.getRequestMethod() + " " + exchange.getRequestURI().getRawQuery());
             trace.set(exchange.getRequestHeaders().getFirst("X-Trace-Id"));
             customHeader.set(exchange.getRequestHeaders().getFirst("X-Provider-Channel"));
+            apiKey.set(exchange.getRequestHeaders().getFirst("X-Api-Key"));
             byte[] response = "{\"code\":\"0000\"}".getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, response.length);
@@ -80,6 +82,11 @@ class ProviderConnectorTest {
                     Map.of("name", "test"), "TRACE-HEADER", 1000)).containsEntry("code", "0000");
             assertThat(customHeader.get()).isEqualTo("EDSP");
             assertThat(trace.get()).isEqualTo("TRACE-HEADER");
+            assertThat(client.execute(Map.of("accessMode", "HTTP", "requestHeaders",
+                            Map.of("X-Api-Key", "plain-test-key")), "POST",
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/query",
+                    Map.of("name", "test"), "TRACE-KEY", 1000)).containsEntry("code", "0000");
+            assertThat(apiKey.get()).isEqualTo("plain-test-key");
         } finally { server.stop(0); }
     }
 }

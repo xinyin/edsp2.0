@@ -2462,12 +2462,6 @@ public class InterfaceService {
                     "x-trace-id").contains(name.toLowerCase(Locale.ROOT))) {
                 throw new IllegalArgumentException("不允许自定义受控请求头：" + name);
             }
-            String lower = name.toLowerCase(Locale.ROOT);
-            if ((lower.contains("key") || lower.contains("token") || lower.contains("secret")
-                    || lower.equals("authorization") || lower.equals("cookie"))
-                    && !value.matches("\\$\\{env:[A-Za-z_][A-Za-z0-9_]*}")) {
-                throw new IllegalArgumentException("敏感请求头请使用 ${env:变量名} 引用：" + name);
-            }
             if (result.keySet().stream().anyMatch(existing -> existing.equalsIgnoreCase(name))) {
                 throw new IllegalArgumentException("请求头名称重复：" + name);
             }
