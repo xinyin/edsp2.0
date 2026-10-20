@@ -15,7 +15,7 @@
 html, body, #app { width: 100%; min-width: 0; max-width: 100%; }
 body { margin: 0; overflow-x: auto; background: #f3f5f8; }
 button, input, textarea { font-family: inherit; }
-.login-page { position: relative; min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 48px 24px 64px; overflow: auto; background: #426f91; }
+.login-page { position: relative; min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 48px 24px 64px; overflow: auto; background: #2d6f9e; }
 .login-form-panel { position: relative; z-index: 1; width: min(420px, 100%); }
 .login-box { width: 100%; padding: 32px 36px 26px; border: 1px solid rgba(210, 222, 232, .9); border-radius: 6px; background: rgba(255, 255, 255, .96); box-shadow: 0 22px 58px rgba(5, 19, 31, .32); backdrop-filter: blur(10px); }
 .login-brand { display: flex; align-items: center; gap: 12px; padding-bottom: 22px; border-bottom: 1px solid #e1e7ec; }
