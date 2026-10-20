@@ -366,9 +366,9 @@ button, input, textarea { font-family: inherit; }
 .trace-inspector-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
 .trace-inspector-grid section { min-width: 0; border-right: 1px solid #d5dfe2; background: #fff; }
 .trace-inspector-grid section:last-child { border-right: 0; }
-.trace-inspector-grid section > div { height: 38px; padding: 0 11px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e1e7e9; background: #f5f7f8; }
-.trace-inspector-grid section > div span { color: #2c6573; font: 8px Menlo, Monaco, monospace; }
-.trace-inspector-grid section > div small { color: #849399; font-size: 7px; }
+.trace-inspector-grid section > div:first-child { height: 38px; padding: 0 11px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e1e7e9; background: #f5f7f8; }
+.trace-inspector-grid section > div:first-child span { color: #2c6573; font: 8px Menlo, Monaco, monospace; }
+.trace-inspector-grid section > div:first-child small { color: #849399; font-size: 7px; }
 .trace-inspector-grid pre { min-height: 190px; max-height: 330px; margin: 0; padding: 12px; overflow: auto; color: #263b44; background: #fff; font: 9px/1.6 Menlo, Monaco, monospace; white-space: pre-wrap; word-break: break-word; }
 .trace-step-strip { position: relative; z-index: 1; padding: 0 16px 16px; display: flex; gap: 8px; overflow-x: auto; }
 .trace-step-strip > div { flex: 1 0 155px; min-height: 62px; padding: 9px; display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 7px; border-top: 2px solid #3a8277; background: rgba(29,57,64,.72); }

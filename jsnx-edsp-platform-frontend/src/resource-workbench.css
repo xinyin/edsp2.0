@@ -282,8 +282,8 @@
 .upstream-contract-panel h3 { color: #263f55; font-size: 13px; }
 .upstream-contract-panel p { margin-top: 3px; color: #6b7c8c; font-size: 10px; }
 .upstream-contract-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; padding: 14px; }
-.upstream-contract-grid label { min-width: 0; color: #40566b; font-size: 11px; font-weight: 650; }
-.upstream-contract-grid label > span { display: block; margin-bottom: 7px; }
+.upstream-contract-grid .upstream-contract-field { min-width: 0; color: #40566b; font-size: 11px; font-weight: 650; }
+.upstream-contract-grid .upstream-contract-field > span { display: block; margin-bottom: 7px; }
 .standard-contract-strip { display: grid; grid-template-columns: minmax(190px,.65fr) 120px minmax(280px,1fr); align-items: center; gap: 12px; margin-bottom: 14px; padding: 12px 14px; border: 1px solid #cedae3; border-left: 3px solid #286f9c; background: #f7fafc; }
 .standard-contract-strip > div strong, .standard-contract-strip > div span { display: block; }
 .standard-contract-strip > div strong { color: #29465e; font-size: 12px; }
