@@ -1,11 +1,11 @@
 package com.jsnx.edsp.capability;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jsnx.edsp.contracts.CapabilityContracts.*;
 import com.jsnx.edsp.plan.PlanBootstrap;
 import com.jsnx.edsp.plan.PlanMappingSupport;
 import com.jsnx.edsp.plan.PlanSnapshot;
+import com.jsnx.edsp.plan.ResponsePolicySupport;
 import com.jsnx.edsp.plan.SecurityPlanSupport;
 import com.jsnx.edsp.crypto.SecretReferenceResolver;
 import com.jsnx.edsp.transform.FieldTransformSupport;
@@ -52,22 +52,22 @@ public class CapabilityController {
         Map<String, Object> response = request.upstreamResponse() == null ? Map.of() : request.upstreamResponse();
         Object vendorCodeValue = FieldTransformSupport.readPath(response, plan.vendorCodePath());
         String vendorCode = vendorCodeValue == null ? "" : String.valueOf(vendorCodeValue);
-        String standardCode = plan.responseCodes().stream()
+        boolean httpSuccess = "HTTP_SUCCESS".equals(plan.responsePolicy().get("codeMode"));
+        String standardCode = httpSuccess ? String.valueOf(plan.responsePolicy().get("successCode")) : plan.responseCodes().stream()
                 .filter(code -> vendorCode.equals(String.valueOf(code.get("vendorCode"))))
                 .map(code -> String.valueOf(code.getOrDefault("standardCode", "EXT-VENDOR-ERROR")))
                 .findFirst().orElse("EXT-VENDOR-ERROR");
-        String resultStatus = plan.responseCodes().stream()
+        String resultStatus = httpSuccess ? "HIT" : plan.responseCodes().stream()
                 .filter(code -> standardCode.equals(String.valueOf(code.get("standardCode"))))
                 .map(code -> String.valueOf(code.getOrDefault("resultStatus", "ERROR"))).findFirst().orElse("ERROR");
-        boolean billable = plan.responseCodes().stream()
+        boolean billable = !httpSuccess && plan.responseCodes().stream()
                 .filter(code -> standardCode.equals(String.valueOf(code.get("standardCode"))))
                 .map(code -> Boolean.parseBoolean(String.valueOf(code.getOrDefault("billable", false))))
                 .findFirst().orElse(false);
-        Map<String, Object> mapped = PlanMappingSupport.apply(response, plan.responseMappings(), secrets);
-        Object data = mapped.get("data");
-        Map<String, Object> result = data instanceof Map<?, ?> value
-                ? mapper.convertValue(value, new TypeReference<Map<String, Object>>() {}) : mapped;
-        return new CompleteResponse(plan.interfaceCode(), plan.version(), standardCode, resultStatus, billable, result);
+        Map<String, Object> fields = ResponsePolicySupport.fields(response, plan.responseMappings(), plan.responsePolicy(), secrets);
+        Object data = fields.get("data");
+        Map<String, Object> result = data instanceof Map<?, ?> value ? mapper.convertValue(value, Map.class) : Map.of();
+        return new CompleteResponse(plan.interfaceCode(), plan.version(), standardCode, resultStatus, billable, result, fields);
     }
 
     @PostMapping("/refresh")
