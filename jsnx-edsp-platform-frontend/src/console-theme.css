@@ -248,6 +248,9 @@ body { background: var(--canvas); }
 .mapping-mode > span { display: none; }
 .mapping-sample-panel { margin-bottom: 9px; }
 .mapping-sample-head { min-height: 42px; padding: 7px 11px; background: #f5f8fc; }
+.mapping-sample-head { gap: 8px; flex-wrap: wrap; }
+.mapping-sample-head > div:last-child { flex-wrap: wrap; }
+.mapping-sample-head .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .mapping-sample-head small { display: none; }
 .mapping-sample-panel .el-textarea__inner { min-height: 150px !important; border: 0; }
 .mapping-summary { min-height: 52px; padding: 8px 0; border: 1px solid var(--border); border-radius: 2px; background: #f5f8fc; }

@@ -7,7 +7,7 @@ import {
   Bell, Check, CircleCheck, Connection, DataAnalysis, DataBoard, Delete,
   DocumentChecked, DocumentCopy, Edit, Files, Key, Lock, Monitor, Plus, Promotion, Refresh,
   Search, Setting, SwitchButton, Tickets, User as UserIcon, Wallet, OfficeBuilding, Warning,
-  Fold, Expand,
+  Fold, Expand, Upload,
   Guide, ArrowRight
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -173,6 +173,7 @@ let releaseRequestSequence = 0
 const releaseNote = ref('完成接口字段标准化配置并通过联调验证')
 const requestText = ref('{}')
 const responseText = ref('{}')
+const responseFileInput = ref<HTMLInputElement | null>(null)
 const upstreamRequestText = ref('{}')
 const testMode = ref<'UPSTREAM' | 'PLATFORM' | 'E2E'>('PLATFORM')
 const savedRequestBaseline = ref('{}')
@@ -1851,14 +1852,18 @@ async function saveMappings() {
     requestExample = syncRequestExampleForMappingEdits(
       JSON.parse(requestText.value) as Record<string, unknown>, detail.value.mappings)
     upstreamResponseExample = JSON.parse(responseText.value) as Record<string, unknown>
-  } catch {
-    guideError.value = '行内请求样例或上游响应样例不是有效的 JSON，请检查后再保存。'
+    if (!upstreamResponseExample || typeof upstreamResponseExample !== 'object' || Array.isArray(upstreamResponseExample)) {
+      throw new Error('上游响应样例必须是 JSON 对象')
+    }
+  } catch (error) {
+    guideError.value = error instanceof Error && error.message === '上游响应样例必须是 JSON 对象'
+      ? error.message : '行内请求样例或上游响应样例不是有效的 JSON，请检查后再保存。'
     ElMessage.error(guideError.value)
     return false
   }
   const saved = await api.saveMappings(selectedInterfaceId.value, detail.value.mappings,
     standardServiceForm.value.servicePath, standardServiceForm.value.httpMethod,
-    requestExample)
+    requestExample, upstreamResponseExample)
   detailCache.delete(selectedInterfaceId.value)
   detail.value.mappings = saved
   detail.value.requestExample = requestExample
@@ -1875,6 +1880,24 @@ async function saveMappings() {
   validation.value = null
   ElMessage.success('映射配置已保存，请重新验证当前草稿')
   return true
+}
+async function importUpstreamResponse(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  try {
+    if (file.size > 1024 * 1024) throw new Error('JSON 文件不能超过 1 MB')
+    const parsed: unknown = JSON.parse(await file.text())
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('响应样例的根节点必须是 JSON 对象')
+    }
+    responseText.value = JSON.stringify(parsed, null, 2)
+    ElMessage.success('响应样例已导入，请保存映射配置')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '导入 JSON 失败')
+  } finally {
+    input.value = ''
+  }
 }
 function addMapping() {
   if (!detail.value) return
@@ -2800,7 +2823,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                     <div class="mapping-mode"><el-segmented v-model="mappingDirection" :options="[{ label: '请求转换', value: 'REQUEST' }, { label: '响应标准化', value: 'RESPONSE' }]" /><el-tag :type="mappingIsPassThrough ? 'success' : 'warning'" effect="plain">{{ mappingModeLabel }}</el-tag><span>{{ mappingDirection === 'REQUEST' ? '行内标准请求 → 上游原始请求' : '上游原始响应 → 行内标准响应' }}</span></div>
                     <div><el-button :icon="DocumentChecked" @click="validateConfig">校验配置</el-button><el-button :icon="Plus" @click="startMappingConfiguration">{{ mappingIsPassThrough ? '配置字段转换' : '新增一行' }}</el-button></div>
                   </div>
-                  <div class="mapping-sample-panel"><div class="mapping-sample-head"><div><DocumentCopy/><span><strong>{{ mappingDirection === 'REQUEST' ? '行内标准请求样例' : '上游原始响应样例' }}</strong><HelpTip title="报文与映射" :content="mappingDirection==='REQUEST' ? '填写行内标准请求 JSON，可从样例批量生成字段映射。嵌套对象和数组请按实际路径配置。' : '响应样例来自资源接口。可生成映射后修改目标字段，定义平台标准响应。'"/></span></div><el-button type="primary" plain :icon="DocumentCopy" @click="generateMappingsFromSample">从样例生成映射</el-button></div><el-input v-if="mappingDirection === 'REQUEST'" v-model="requestText" type="textarea" :autosize="{minRows:5,maxRows:10}"/><el-input v-else v-model="responseText" readonly type="textarea" :autosize="{minRows:5,maxRows:10}"/></div>
+                  <div class="mapping-sample-panel"><div class="mapping-sample-head"><div><DocumentCopy/><span><strong>{{ mappingDirection === 'REQUEST' ? '行内标准请求样例' : '上游原始响应样例' }}</strong><HelpTip title="报文与映射" :content="mappingDirection==='REQUEST' ? '填写行内标准请求 JSON，可从样例批量生成字段映射。嵌套对象和数组请按实际路径配置。' : '可编辑或导入上游响应 JSON 样例，再生成映射规则。修改仅保存到当前标准服务草稿。'"/></span></div><div><input v-if="mappingDirection === 'RESPONSE'" ref="responseFileInput" type="file" accept=".json,application/json" class="visually-hidden" aria-label="选择响应 JSON 文件" @change="importUpstreamResponse"/><el-button v-if="mappingDirection === 'RESPONSE'" :icon="Upload" @click="responseFileInput?.click()">导入 JSON</el-button><el-button type="primary" plain :icon="DocumentCopy" @click="generateMappingsFromSample">从样例生成映射</el-button></div></div><el-input v-if="mappingDirection === 'REQUEST'" v-model="requestText" type="textarea" :autosize="{minRows:5,maxRows:10}"/><el-input v-else v-model="responseText" type="textarea" :autosize="{minRows:5,maxRows:10}" aria-label="上游原始响应样例"/></div>
                   <div class="mapping-summary"><div><strong>{{ mappingIsPassThrough ? '自动透传' : filteredMappings.length }}</strong><span>{{ mappingIsPassThrough ? '当前处理模式' : '映射规则' }}</span></div><div><strong>{{ filteredMappings.filter(item => item.required).length }}</strong><span>必填字段</span></div><HelpTip title="字段处理模式" content="不配置映射时，报文按原字段名和路径透传。配置后按映射规则执行字段提取、转换及目标字段写入。来源路径和目标路径支持嵌套 JSON 路径。"/></div>
                   <div class="mapping-board">
                     <div class="mapping-board-head"><span>#</span><span>{{ mappingDirection === 'REQUEST' ? '行内标准字段' : '上游原始字段' }}</span><span>转换规则</span><span>{{ mappingDirection === 'REQUEST' ? '上游请求字段' : '平台标准字段' }}</span><span>属性</span></div>

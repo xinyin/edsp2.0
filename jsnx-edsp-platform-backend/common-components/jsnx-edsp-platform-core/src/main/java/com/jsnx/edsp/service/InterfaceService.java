@@ -1051,10 +1051,11 @@ public class InterfaceService {
                 throw new IllegalArgumentException("不支持的平台服务 HTTP 方法");
             }
             jdbc.update("""
-                    UPDATE api_interface SET service_path=?,http_method=?,request_example=?,
+                    UPDATE api_interface SET service_path=?,http_method=?,request_example=?,upstream_response_example=?,
                     current_version=COALESCE(published_version,0)+1,
                     status=CASE WHEN status='OFFLINE' THEN 'OFFLINE' ELSE 'DRAFT' END WHERE id=?
                     """, servicePath, httpMethod, json.write(request.requestExample()),
+                    json.write(request.upstreamResponseExample()),
                     interfaceId);
         } else {
             jdbc.update("""

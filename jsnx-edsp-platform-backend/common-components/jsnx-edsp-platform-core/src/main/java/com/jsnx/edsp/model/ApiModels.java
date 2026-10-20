@@ -75,7 +75,8 @@ public final class ApiModels {
     public record SaveMappingsRequest(
             @NotNull List<FieldMapping> mappings,
             @NotBlank String servicePath, @NotBlank String httpMethod,
-            @NotNull Map<String, Object> requestExample) {}
+            @NotNull Map<String, Object> requestExample,
+            @NotNull Map<String, Object> upstreamResponseExample) {}
 
     public record TestRequest(
             @NotNull Map<String, Object> request,

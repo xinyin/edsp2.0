@@ -672,6 +672,36 @@ test('资源方管理保留在资源管理主菜单中', () => {
   assert.ok(resourceGroup)
   assert.match(resourceGroup, /<el-menu-item aria-label="资源方管理" index="providers" @click="navigate\('providers'\)"/)
 })
+test('响应标准化样例可编辑并可导入 JSON，保存时写入标准服务草稿', () => {
+  assert.match(appText, /v-model="responseText" type="textarea"[^>]*aria-label="上游原始响应样例"/)
+  assert.match(appText, /@change="importUpstreamResponse"/)
+  assert.match(appText, /await file\.text\(\)/)
+  assert.match(appText, /requestExample, upstreamResponseExample\)/)
+  assert.match(apiText, /JSON\.stringify\(\{ mappings, servicePath, httpMethod, requestExample, upstreamResponseExample \}\)/)
+})
+test('导入响应 JSON 校验根节点与大小，失败时保留编辑内容', async () => {
+  const declaration = sourceFile.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'importUpstreamResponse')
+  assert.ok(declaration)
+  const compiled = ts.transpileModule(declaration.getText(sourceFile), { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText
+  const responseText = { value: '{"old":true}' }
+  const messages = []
+  const importResponse = vm.runInNewContext(`(${compiled.trim()})`, {
+    responseText,
+    ElMessage: { success: value => messages.push(value), error: value => messages.push(value) }
+  })
+  const input = value => ({ files: [{ size: value.length, text: async () => value }], value: 'sample.json' })
+  const valid = input('{"data":{"items":[{"id":1}]}}')
+  await importResponse({ target: valid })
+  assert.deepEqual(JSON.parse(responseText.value), { data: { items: [{ id: 1 }] } })
+  assert.equal(valid.value, '')
+  const previous = responseText.value
+  await importResponse({ target: input('[1,2]') })
+  assert.equal(responseText.value, previous)
+  assert.match(messages.at(-1), /根节点必须是 JSON 对象/)
+  await importResponse({ target: { files: [{ size: 1024 * 1024 + 1, text: async () => '{}' }], value: 'large.json' } })
+  assert.equal(responseText.value, previous)
+  assert.match(messages.at(-1), /不能超过 1 MB/)
+})
 test('没有接口级超时的草稿继续继承数据源默认配置', async () => {
   let loaded
   const s = harness({ detail: async () => loaded })
