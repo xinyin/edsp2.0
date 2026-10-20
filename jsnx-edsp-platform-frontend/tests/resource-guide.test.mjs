@@ -42,17 +42,18 @@ function harness(overrides = {}, confirm = async () => true) {
       resourceValidationStatus: async () => ({ upstreamVerified: false }), ...overrides },
       { get: (target, name) => target[name] ?? (() => { throw new Error('Unexpected API call: ' + String(name)) }) })
   })
-  const state = vm.runInNewContext('(() => { ' + appJS + ' return { platformServiceDialog, platformServiceForm, serviceResourceOptions, serviceCreationResource, selectServiceResource, openPlatformServiceDialog, createPlatformService, validateUpstreamCapability, testResult, testError, testSucceeded, navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, activeMenu, activeTab, detail, canDeleteApi, deleteApiRestriction, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, allResourceApis, catalogProviders, filteredCatalogProviders, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, providerExpansion, sourceExpansion, isProviderExpanded, isSourceExpanded, sourceInterfaces, filteredProviderGroups, filteredSources, setAllSourcesExpanded, locateSelectedApi, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, apiForm, apiDialog, apiMetadataDialog, apiMetadataSaving, apiMetadataForm, openResourceApiMetadataEditor, saveResourceApiMetadata, mappingDirection, mappingIsPassThrough, mappingModeLabel, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
+  const state = vm.runInNewContext('(() => { ' + appJS + ' return { savedResponsePolicyBaseline, platformServiceDialog, platformServiceForm, serviceResourceOptions, serviceCreationResource, selectServiceResource, openPlatformServiceDialog, createPlatformService, validateUpstreamCapability, testResult, testError, testSucceeded, navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, activeMenu, activeTab, detail, canDeleteApi, deleteApiRestriction, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, allResourceApis, catalogProviders, filteredCatalogProviders, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, providerExpansion, sourceExpansion, isProviderExpanded, isSourceExpanded, sourceInterfaces, filteredProviderGroups, filteredSources, setAllSourcesExpanded, locateSelectedApi, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, apiForm, apiDialog, apiMetadataDialog, apiMetadataSaving, apiMetadataForm, openResourceApiMetadataEditor, saveResourceApiMetadata, mappingDirection, mappingIsPassThrough, mappingModeLabel, onResponseDataModeChange, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
   state.selectedSourceId.value = 1
   state.activeMenu.value = 'resource'
   state.selectedInterfaceId.value = 11
   state.providers.value = [{ id: 10, providerCode: 'QX', providerName: '企信资源提供商', status: 'ACTIVE' }]
   state.sources.value = [{ id: 1, providerId: 10, providerName: '企信资源提供商', sourceName: '企业工商数据源', sourceCode: 'ENTERPRISE', endpointUrl: 'http://localhost', defaultTimeoutMs: 5000 }]
-  state.detail.value = { summary: { id: 11, dataSourceId: 1, interfaceCode: 'ENTERPRISE_QUERY', interfaceName: '企业查询', httpMethod: 'POST', currentVersion: 2, publishedVersion: 1, status: 'DRAFT', upstreamUrl: 'http://localhost/query', servicePath: '/api/query' }, mappings: [mapping('REQUEST'), mapping('RESPONSE')], responseCodes: codes, vendorCodePath: 'result.code', requestExample: { name: '测试企业' }, upstreamRequestExample: { name: '测试企业' }, upstreamResponseExample: { name: '测试企业' }, standardResponseExample: { name: '测试企业' } }
+  state.detail.value = { summary: { id: 11, dataSourceId: 1, interfaceCode: 'ENTERPRISE_QUERY', interfaceName: '企业查询', httpMethod: 'POST', currentVersion: 2, publishedVersion: 1, status: 'DRAFT', upstreamUrl: 'http://localhost/query', servicePath: '/api/query' }, mappings: [mapping('REQUEST'), mapping('RESPONSE')], responseCodes: codes, vendorCodePath: 'result.code', requestExample: { name: '测试企业' }, upstreamRequestExample: { name: '测试企业' }, upstreamResponseExample: { name: '测试企业' }, standardResponseExample: { name: '测试企业' }, responsePolicy: { dataMode: 'FIELD_MAPPING', codeMode: 'VENDOR_CODE', successCode: '0000' } }
   state.connectionForm.value = { configScope: 'INHERIT', upstreamPath: '/query', upstreamUrl: 'http://localhost/query', timeoutMode: 'INHERIT', timeoutMs: 5000 }
   state.savedConnectionBaseline.value = JSON.stringify(state.connectionForm.value)
   state.upstreamRequestText.value = state.savedUpstreamRequestBaseline.value = '{"name":"测试企业"}'
   state.savedMappingsBaseline.value = [mapping('REQUEST'), mapping('RESPONSE')]
+  state.savedResponsePolicyBaseline.value = JSON.stringify(state.detail.value.responsePolicy)
   state.savedResponseCodesBaseline.value = JSON.stringify(codes)
   state.savedSecurityBaseline.value = JSON.stringify(state.securityPolicy.value)
   state.requestText.value = state.savedRequestBaseline.value = '{"name":"测试企业"}'
@@ -62,6 +63,24 @@ function harness(overrides = {}, confirm = async () => true) {
   state.savedStandardServiceBaseline.value = JSON.stringify(state.standardServiceForm.value)
   return { ...state, messages }
 }
+
+test('整报文封装和 HTTP 成功判定无需响应映射或业务码，切换模式保留原有映射', () => {
+  const s = harness()
+  const originalMapping = s.detail.value.mappings.find(item => item.direction === 'RESPONSE')
+  s.detail.value.responsePolicy = { dataMode: 'WHOLE_BODY', codeMode: 'HTTP_SUCCESS', successCode: '0000' }
+  s.detail.value.responseCodes = []
+  const steps = guide.buildResourceGuide({ ...baseGuide, mappings: s.detail.value.mappings,
+    responseCodes: [], responsePolicy: s.detail.value.responsePolicy })
+  assert.equal(steps.find(item => item.key === 'request').done, true)
+  assert.equal(steps.find(item => item.key === 'codes').done, true)
+  s.detail.value.responsePolicy.dataMode = 'FIELD_MAPPING'
+  s.onResponseDataModeChange('FIELD_MAPPING')
+  assert.equal(s.detail.value.mappings.find(item => item.direction === 'RESPONSE'), originalMapping)
+  s.detail.value.mappings = s.detail.value.mappings.filter(item => item.direction !== 'RESPONSE')
+  s.mappingDirection.value = 'REQUEST'
+  s.onResponseDataModeChange('FIELD_MAPPING')
+  assert.equal(s.detail.value.mappings.filter(item => item.direction === 'RESPONSE').length, 1)
+})
 
 test('标准服务可以独立选择已保存的资源 API，不以测试通过为前提', () => {
   const s = harness()
@@ -196,18 +215,18 @@ test('授权清单同时按调用系统与接口关键词过滤，单页最多20
   assert.equal(s.filteredAuthorizations.value[0].id, 44)
 })
 
-test('请求和响应可以独立选择映射或原报文透传；关闭安全策略是可跳过项', () => {
+test('请求映射与响应整报文封装独立配置；关闭安全策略可跳过', () => {
   const steps = guide.buildResourceGuide({ ...baseGuide, mappings: [mapping('REQUEST')] })
   assert.equal(steps[1].done, true)
-  assert.match(steps[1].hint, /响应 透传/)
+  assert.match(steps[1].hint, /响应 无映射/)
   assert.equal(steps[3].done, true)
   assert.match(steps[3].hint, /可选/)
 })
 
-test('空映射被视为已完成的自动透传，无需生成一对一配置数据', async () => {
+test('空映射被视为已完成，响应可整报文封装', async () => {
   const steps = guide.buildResourceGuide({ ...baseGuide, mappings: [] })
   assert.equal(steps[1].done, true)
-  assert.match(steps[1].hint, /请求、响应均透传/)
+  assert.match(steps[1].hint, /响应整报文/)
   const s = harness()
   s.activeTab.value = 'request'
   s.detail.value.mappings = []
@@ -676,8 +695,8 @@ test('响应标准化样例可编辑并可导入 JSON，保存时写入标准服
   assert.match(appText, /v-model="responseText" type="textarea"[^>]*aria-label="上游原始响应样例"/)
   assert.match(appText, /@change="importUpstreamResponse"/)
   assert.match(appText, /await file\.text\(\)/)
-  assert.match(appText, /requestExample, upstreamResponseExample\)/)
-  assert.match(apiText, /JSON\.stringify\(\{ mappings, servicePath, httpMethod, requestExample, upstreamResponseExample \}\)/)
+  assert.match(appText, /requestExample, upstreamResponseExample, detail\.value\.responsePolicy\)/)
+  assert.match(apiText, /JSON\.stringify\(\{ mappings, servicePath, httpMethod, requestExample, upstreamResponseExample, responsePolicy \}\)/)
 })
 test('导入响应 JSON 校验根节点与大小，失败时保留编辑内容', async () => {
   const declaration = sourceFile.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'importUpstreamResponse')

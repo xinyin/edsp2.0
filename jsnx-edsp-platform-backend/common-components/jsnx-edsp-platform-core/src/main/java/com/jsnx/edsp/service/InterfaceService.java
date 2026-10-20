@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jsnx.edsp.crypto.SecretReferenceResolver;
 import com.jsnx.edsp.model.ApiModels.*;
 import com.jsnx.edsp.plan.PlanMappingSupport;
+import com.jsnx.edsp.plan.ResponsePolicySupport;
 import com.jsnx.edsp.plan.SecurityPlanSupport;
 import com.jsnx.edsp.plan.SecurityAlgorithm;
 import com.jsnx.edsp.plan.SecurityAlgorithmRegistry;
@@ -136,7 +137,8 @@ public class InterfaceService {
                             mapper.convertValue(snapshot.get("summary"), InterfaceSummary.class),
                             normalizeVendorCodePath(String.valueOf(snapshot.getOrDefault("vendorCodePath", "result.code"))),
                             mapper.convertValue(snapshot.get("responseCodes"), new TypeReference<List<ResponseCodeMapping>>() {}),
-                            mapper.convertValue(snapshot.get("securityPolicy"), SecurityPolicy.class)));
+                            mapper.convertValue(snapshot.get("securityPolicy"), SecurityPolicy.class),
+                            responsePolicy(snapshot.get("responsePolicy"), !((List<?>) snapshot.getOrDefault("responseMappings", List.of())).isEmpty())));
                     return;
                 }
             } catch (Exception ignored) {
@@ -148,7 +150,7 @@ public class InterfaceService {
                     detail.summary().publishedVersion() == null ? detail.summary().currentVersion() : detail.summary().publishedVersion(),
                     mappings.stream().filter(item -> "REQUEST".equals(item.direction())).toList(),
                     mappings.stream().filter(item -> "RESPONSE".equals(item.direction())).toList(),
-                    checksum(detail), Instant.now(), detail.summary(), detail.vendorCodePath(), detail.responseCodes(), detail.securityPolicy()));
+                    checksum(detail), Instant.now(), detail.summary(), detail.vendorCodePath(), detail.responseCodes(), detail.securityPolicy(), detail.responsePolicy()));
         });
     }
 
@@ -278,6 +280,13 @@ public class InterfaceService {
                 """, Integer.class);
         if (vendorCodePathColumns == null || vendorCodePathColumns == 0) {
             jdbc.execute("ALTER TABLE api_interface ADD COLUMN vendor_code_path VARCHAR(256) NOT NULL DEFAULT 'result.code' AFTER retry_count");
+        }
+        Integer responsePolicyColumns = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_schema=DATABASE() AND table_name='api_interface' AND column_name='response_policy'
+                """, Integer.class);
+        if (responsePolicyColumns == null || responsePolicyColumns == 0) {
+            jdbc.execute("ALTER TABLE api_interface ADD COLUMN response_policy JSON NULL AFTER vendor_code_path");
         }
     }
 
@@ -758,7 +767,8 @@ public class InterfaceService {
                         String.valueOf(snapshots.get(0).get("checksum")), Instant.now(), publishedSummary,
                         normalizeVendorCodePath(String.valueOf(snapshot.getOrDefault("vendorCodePath", "result.code"))),
                         mapper.convertValue(snapshot.get("responseCodes"), new TypeReference<List<ResponseCodeMapping>>() {}),
-                        mapper.convertValue(snapshot.get("securityPolicy"), SecurityPolicy.class));
+                        mapper.convertValue(snapshot.get("securityPolicy"), SecurityPolicy.class),
+                        responsePolicy(snapshot.get("responsePolicy"), !((List<?>) snapshot.getOrDefault("responseMappings", List.of())).isEmpty()));
             } catch (Exception e) {
                 throw new IllegalStateException("已发布版本 V" + publishedVersion + " 的执行计划快照无法解析，不能安全恢复", e);
             }
@@ -774,7 +784,7 @@ public class InterfaceService {
                     detail.mappings().stream().filter(item -> "REQUEST".equals(item.direction())).toList(),
                     detail.mappings().stream().filter(item -> "RESPONSE".equals(item.direction())).toList(),
                     checksum(detail), Instant.now(), publishedSummary, detail.vendorCodePath(),
-                    detail.responseCodes(), detail.securityPolicy());
+                    detail.responseCodes(), detail.securityPolicy(), detail.responsePolicy());
         }
 
         requireDataApplicationRoute(publishedSummary);
@@ -824,6 +834,7 @@ public class InterfaceService {
         Integer configuredTimeoutMs = row.get("timeout_ms") == null ? null : ((Number) row.get("timeout_ms")).intValue();
         int effectiveTimeoutMs = configuredTimeoutMs == null
                 ? ((Number) row.get("default_timeout_ms")).intValue() : configuredTimeoutMs;
+        List<FieldMapping> fieldMappings = mappings(id);
         return new InterfaceDetail(summary,
                 json.readMap((String) row.get("request_schema")), json.readMap((String) row.get("response_schema")),
                 json.readMap((String) row.get("request_example")), json.readMap((String) row.get("upstream_request_example")),
@@ -831,7 +842,8 @@ public class InterfaceService {
                 json.readMap((String) row.get("standard_response_example")), effectiveTimeoutMs, configuredTimeoutMs,
                 configuredTimeoutMs == null ? "DATA_SOURCE" : "INTERFACE",
                 ((Number) row.get("retry_count")).intValue(),
-                normalizeVendorCodePath((String) row.get("vendor_code_path")), mappings(id), responseCodes(id), securityPolicy(id));
+                normalizeVendorCodePath((String) row.get("vendor_code_path")), fieldMappings, responseCodes(id), securityPolicy(id),
+                responsePolicy(row.get("response_policy"), fieldMappings.stream().anyMatch(m -> "RESPONSE".equals(m.direction()))));
     }
 
     @Transactional
@@ -1029,9 +1041,16 @@ public class InterfaceService {
     @Transactional
     public List<FieldMapping> saveMappings(long interfaceId, SaveMappingsRequest request) {
         lockEditableInterface(interfaceId);
+        boolean hasResponseMappings = request.mappings().stream().anyMatch(m -> "RESPONSE".equals(m.direction()));
+        Map<String, Object> responsePolicy = ResponsePolicySupport.normalize(request.responsePolicy(), hasResponseMappings);
+        if ("FIELD_MAPPING".equals(responsePolicy.get("dataMode")) && !hasResponseMappings) {
+            throw new IllegalArgumentException("字段映射封装模式至少需要一条响应映射");
+        }
         jdbc.update("DELETE FROM field_mapping WHERE interface_id=?", interfaceId);
         for (FieldMapping mapping : request.mappings()) {
-            validateMappingConfiguration(mapping);
+            if (!"RESPONSE".equals(mapping.direction()) || "FIELD_MAPPING".equals(responsePolicy.get("dataMode"))) {
+                validateMappingConfiguration(mapping);
+            }
             Map<String, String> transformConfig = mapping.transformConfig() == null ? Map.of() : mapping.transformConfig();
             jdbc.update("""
                     INSERT INTO field_mapping(interface_id,mapping_direction,source_path,target_path,transform_type,
@@ -1051,17 +1070,17 @@ public class InterfaceService {
                 throw new IllegalArgumentException("不支持的平台服务 HTTP 方法");
             }
             jdbc.update("""
-                    UPDATE api_interface SET service_path=?,http_method=?,request_example=?,upstream_response_example=?,
+                    UPDATE api_interface SET service_path=?,http_method=?,request_example=?,upstream_response_example=?,response_policy=?,
                     current_version=COALESCE(published_version,0)+1,
                     status=CASE WHEN status='OFFLINE' THEN 'OFFLINE' ELSE 'DRAFT' END WHERE id=?
                     """, servicePath, httpMethod, json.write(request.requestExample()),
-                    json.write(request.upstreamResponseExample()),
+                    json.write(request.upstreamResponseExample()), json.write(responsePolicy),
                     interfaceId);
         } else {
             jdbc.update("""
-                    UPDATE api_interface SET current_version=COALESCE(published_version,0)+1,
+                    UPDATE api_interface SET response_policy=?,current_version=COALESCE(published_version,0)+1,
                     status=CASE WHEN status='OFFLINE' THEN 'OFFLINE' ELSE 'DRAFT' END WHERE id=?
-                    """, interfaceId);
+                    """, json.write(responsePolicy), interfaceId);
         }
         invalidateDraftValidation(interfaceId);
         return mappings(interfaceId);
@@ -1074,6 +1093,8 @@ public class InterfaceService {
         if (detail.mappings().isEmpty()) warnings.add("请求和响应均采用原报文透传");
         Set<String> targets = new HashSet<>();
         for (FieldMapping mapping : detail.mappings()) {
+            if ("RESPONSE".equals(mapping.direction())
+                    && !"FIELD_MAPPING".equals(detail.responsePolicy().get("dataMode"))) continue;
             String key = mapping.direction() + ":" + mapping.targetPath();
             if (!targets.add(key)) errors.add("目标字段重复：" + mapping.targetPath());
             if (mapping.sourcePath().isBlank() || mapping.targetPath().isBlank()) errors.add("字段路径不能为空");
@@ -1093,8 +1114,11 @@ public class InterfaceService {
             validateSecurityPolicy(policy.enabled(), policy.encryptMode(), policy.signatureMode(),
                     policy.requestFields(), policy.encryptionKeyReference(), policy.signingKeyReference(), policy.signatureField());
         } catch (IllegalArgumentException e) { errors.add(e.getMessage()); }
-        if (detail.responseCodes().isEmpty()) warnings.add("尚未配置供应商返回码映射");
-        if (readPath(detail.upstreamResponseExample(), detail.vendorCodePath()) == null) {
+        if ("VENDOR_CODE".equals(detail.responsePolicy().get("codeMode")) && detail.responseCodes().isEmpty()) {
+            warnings.add("尚未配置供应商返回码映射");
+        }
+        if ("VENDOR_CODE".equals(detail.responsePolicy().get("codeMode"))
+                && readPath(detail.upstreamResponseExample(), detail.vendorCodePath()) == null) {
             warnings.add("供应商响应样例中未找到返回码字段：" + detail.vendorCodePath() + "，请确认路径或更新样例报文");
         }
         if (detail.retryCount() > 0) warnings.add("已启用重试，请确认供应商接口具备幂等性");
@@ -1254,7 +1278,7 @@ public class InterfaceService {
                         detail.summary().publishedVersion() == null ? detail.summary().currentVersion() : detail.summary().publishedVersion(),
                         detail.mappings().stream().filter(m -> "REQUEST".equals(m.direction())).toList(),
                         detail.mappings().stream().filter(m -> "RESPONSE".equals(m.direction())).toList(),
-                        checksum(detail), Instant.now(), detail.summary(), detail.vendorCodePath(), detail.responseCodes(), detail.securityPolicy());
+                        checksum(detail), Instant.now(), detail.summary(), detail.vendorCodePath(), detail.responseCodes(), detail.securityPolicy(), detail.responsePolicy());
                 plans.activate(plan);
             }
             return executeTestInternal(interfaceId, request, clientId, started, traceId, traceNodes, plan);
@@ -1393,27 +1417,28 @@ public class InterfaceService {
         Object vendorCodeValue = readPath(upstreamResponse, vendorCodePath);
         String vendorCode = vendorCodeValue == null ? "" : String.valueOf(vendorCodeValue);
         List<ResponseCodeMapping> executionCodes = publishedPlan == null ? detail.responseCodes() : publishedPlan.responseCodes();
-        ResponseCodeMapping code = executionCodes.stream().filter(c -> c.vendorCode().equals(vendorCode))
-                .findFirst().orElse(new ResponseCodeMapping(null, vendorCode, "EXT-PLATFORM-ERROR", "ERROR", false, false));
+        Map<String, Object> responsePolicy = publishedPlan == null ? detail.responsePolicy() : publishedPlan.responsePolicy();
+        ResponseCodeMapping code = "HTTP_SUCCESS".equals(responsePolicy.get("codeMode"))
+                ? new ResponseCodeMapping(null, "", String.valueOf(responsePolicy.get("successCode")), "HIT", false, false)
+                : executionCodes.stream().filter(c -> c.vendorCode().equals(vendorCode))
+                    .findFirst().orElse(new ResponseCodeMapping(null, vendorCode, "EXT-PLATFORM-ERROR", "ERROR", false, false));
         // MISS/ERROR responses carry no business data; required HIT mappings must not turn them into platform errors.
-        boolean responsePassThrough = effectiveMappings.stream().noneMatch(m -> "RESPONSE".equals(m.direction()));
         Map<String, Object> standardData = "HIT".equals(code.resultStatus())
-                ? applyMappings(upstreamResponse, effectiveMappings, "RESPONSE") : Map.of();
-        Map<String, Object> response = responsePassThrough
-                ? new LinkedHashMap<>(upstreamResponse) : new LinkedHashMap<>();
-        if (!responsePassThrough) {
-            response.put("code", code.standardCode());
-            response.put("message", "HIT".equals(code.resultStatus()) ? "查询成功"
-                    : "MISS".equals(code.resultStatus()) ? "未查得企业信息" : "供应商返回异常");
-            response.put("resultStatus", code.resultStatus());
-            response.put("traceId", traceId);
-            response.put("data", standardData.getOrDefault("data", standardData));
-        }
+                ? ResponsePolicySupport.data(upstreamResponse,
+                    mapper.convertValue(effectiveMappings.stream().filter(m -> "RESPONSE".equals(m.direction())).toList(), new TypeReference<>() {}),
+                    responsePolicy, secretResolver) : Map.of();
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("code", code.standardCode());
+        response.put("message", "HIT".equals(code.resultStatus()) ? "查询成功"
+                : "MISS".equals(code.resultStatus()) ? "未查得企业信息" : "供应商返回异常");
+        response.put("resultStatus", code.resultStatus());
+        response.put("traceId", traceId);
+        response.put("data", standardData);
         steps.add(new ExecutionStep("响应解析", "通过", "供应商返回码 " + vendorCode, 1));
         long standardizeDurationMs = elapsedMs(standardizeStarted);
         steps.add(new ExecutionStep("字段标准化", "通过", "生成统一标准响应", standardizeDurationMs));
         traceNodes.add(new TraceNode("RESPONSE_MAPPING", "响应标准化", "PLATFORM", "ERROR".equals(code.resultStatus()) ? "ERROR" : "SUCCESS",
-                responsePassThrough ? "未配置响应映射，原样返回供应商响应" : "完成供应商返回码转换与响应字段标准化", standardizeDurationMs,
+                "完成供应商响应封装", standardizeDurationMs,
                 Map.of("vendorResponse", upstreamResponse, "responseMappingCount", effectiveMappings.stream()
                         .filter(mapping -> "RESPONSE".equals(mapping.direction())).count()), response));
         long totalDurationMs = Math.max(1, (System.nanoTime() - started) / 1_000_000);
@@ -2154,6 +2179,12 @@ public class InterfaceService {
         return PlanMappingSupport.apply(input, planMappings, secretResolver);
     }
 
+    private Map<String, Object> responsePolicy(Object raw, boolean hasResponseMappings) {
+        Map<String, Object> value = raw == null ? Map.of() : raw instanceof Map<?, ?>
+                ? mapper.convertValue(raw, new TypeReference<>() {}) : json.readMap(String.valueOf(raw));
+        return ResponsePolicySupport.normalize(value, hasResponseMappings);
+    }
+
     @Transactional
     public InterfaceSummary publishDirect(long interfaceId, PublishRequest request) {
         lockEditableInterface(interfaceId);
@@ -2191,7 +2222,7 @@ public class InterfaceService {
         plans.activate(new PublishedPlanRegistry.PublishedPlan(interfaceId, publishedDetail.summary().interfaceCode(),
                 version, mappings.stream().filter(m -> "REQUEST".equals(m.direction())).toList(),
                 mappings.stream().filter(m -> "RESPONSE".equals(m.direction())).toList(), releaseChecksum, Instant.now(),
-                publishedDetail.summary(), publishedDetail.vendorCodePath(), publishedDetail.responseCodes(), publishedDetail.securityPolicy()));
+                publishedDetail.summary(), publishedDetail.vendorCodePath(), publishedDetail.responseCodes(), publishedDetail.securityPolicy(), publishedDetail.responsePolicy()));
         savePlanSnapshot(interfaceId, version, releaseChecksum, publishedDetail);
         notifyPublishedRouteAfterCommit(publishedDetail);
         return interfaceSummary(interfaceId);
@@ -2365,7 +2396,7 @@ public class InterfaceService {
         plans.activate(new PublishedPlanRegistry.PublishedPlan(approval.interfaceId(), detail.summary().interfaceCode(),
                 approval.releaseVersion(), mappings.stream().filter(m -> "REQUEST".equals(m.direction())).toList(),
                 mappings.stream().filter(m -> "RESPONSE".equals(m.direction())).toList(), checksum, Instant.now(),
-                detail.summary(), detail.vendorCodePath(), detail.responseCodes(), detail.securityPolicy()));
+                detail.summary(), detail.vendorCodePath(), detail.responseCodes(), detail.securityPolicy(), detail.responsePolicy()));
         savePlanSnapshot(approval.interfaceId(), approval.releaseVersion(), checksum, detail);
         notifyPublishedRouteAfterCommit(detail);
         return approval(id);
@@ -2560,6 +2591,7 @@ public class InterfaceService {
         snapshot.put("upstreamRequestHeaders", upstreamRequestHeaders(detail.summary()));
         snapshot.put("vendorCodePath", detail.vendorCodePath());
         snapshot.put("responseCodes", detail.responseCodes());
+        snapshot.put("responsePolicy", detail.responsePolicy());
         snapshot.put("securityPolicy", detail.securityPolicy());
         snapshot.put("checksum", checksum);
         jdbc.update("""

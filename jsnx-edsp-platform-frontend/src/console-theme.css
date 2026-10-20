@@ -247,6 +247,12 @@ body { background: var(--canvas); }
 .mapping-mode { flex-wrap: wrap; gap: 7px; }
 .mapping-mode > span { display: none; }
 .mapping-sample-panel { margin-bottom: 9px; }
+.response-policy-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; padding: 12px 14px; border: 1px solid var(--border); border-bottom: 0; background: #fff; }
+.response-policy-panel > div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.response-policy-panel > div > span { color: var(--text-regular); font-size: 12px; font-weight: 600; }
+.response-policy-panel .el-select { width: 170px; }
+.response-policy-panel .el-input { width: 150px; }
+.response-policy-state { padding: 12px 14px; border: 1px solid var(--border); background: #fff; color: var(--text-regular); font-size: 12px; }
 .mapping-sample-head { min-height: 42px; padding: 7px 11px; background: #f5f8fc; }
 .mapping-sample-head { gap: 8px; flex-wrap: wrap; }
 .mapping-sample-head > div:last-child { flex-wrap: wrap; }

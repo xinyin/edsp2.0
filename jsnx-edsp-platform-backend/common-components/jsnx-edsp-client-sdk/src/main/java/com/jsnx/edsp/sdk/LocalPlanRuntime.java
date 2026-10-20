@@ -8,6 +8,7 @@ import com.jsnx.edsp.crypto.SecretReferenceResolver;
 import com.jsnx.edsp.plan.PlanBootstrap;
 import com.jsnx.edsp.plan.PlanMappingSupport;
 import com.jsnx.edsp.plan.PlanSnapshot;
+import com.jsnx.edsp.plan.ResponsePolicySupport;
 import com.jsnx.edsp.plan.SecurityPlanSupport;
 import com.jsnx.edsp.transform.FieldTransformSupport;
 import org.springframework.web.client.RestClient;
@@ -61,17 +62,16 @@ public final class LocalPlanRuntime {
         Map<String, Object> response = upstreamResponse == null ? Map.of() : upstreamResponse;
         Object vendorCodeValue = FieldTransformSupport.readPath(response, plan.vendorCodePath());
         String vendorCode = vendorCodeValue == null ? "" : String.valueOf(vendorCodeValue);
-        Map<String, Object> code = plan.responseCodes().stream()
+        boolean httpSuccess = "HTTP_SUCCESS".equals(plan.responsePolicy().get("codeMode"));
+        Map<String, Object> code = httpSuccess ? Map.of("standardCode", plan.responsePolicy().get("successCode"),
+                "resultStatus", "HIT", "billable", false) : plan.responseCodes().stream()
                 .filter(item -> vendorCode.equals(String.valueOf(item.get("vendorCode"))))
                 .findFirst().orElse(Map.of());
         String standardCode = String.valueOf(code.getOrDefault("standardCode", "EXT-VENDOR-ERROR"));
         String resultStatus = String.valueOf(code.getOrDefault("resultStatus", "ERROR"));
         boolean billable = Boolean.parseBoolean(String.valueOf(code.getOrDefault("billable", false)));
-        Map<String, Object> mapped = "HIT".equals(resultStatus)
-                ? PlanMappingSupport.apply(response, plan.responseMappings(), secrets) : Map.of();
-        Object data = mapped.get("data");
-        Map<String, Object> standardData = data instanceof Map<?, ?> value
-                ? mapper.convertValue(value, new TypeReference<>() {}) : mapped;
+        Map<String, Object> standardData = "HIT".equals(resultStatus)
+                ? ResponsePolicySupport.data(response, plan.responseMappings(), plan.responsePolicy(), secrets) : Map.of();
         return new CompleteResponse(plan.interfaceCode(), plan.version(), standardCode,
                 resultStatus, billable, standardData);
     }

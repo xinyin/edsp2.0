@@ -158,6 +158,12 @@ export interface ResponseCodeMapping {
   billable: boolean
 }
 
+export interface ResponsePolicy {
+  dataMode: 'FIELD_MAPPING' | 'WHOLE_BODY'
+  codeMode: 'VENDOR_CODE' | 'HTTP_SUCCESS'
+  successCode: string
+}
+
 export interface InterfaceDetail {
   summary: InterfaceSummary
   requestHeaders?: Record<string, string>
@@ -174,6 +180,7 @@ export interface InterfaceDetail {
   vendorCodePath: string
   mappings: FieldMapping[]
   responseCodes: ResponseCodeMapping[]
+  responsePolicy: ResponsePolicy
   securityPolicy: SecurityPolicy
 }
 

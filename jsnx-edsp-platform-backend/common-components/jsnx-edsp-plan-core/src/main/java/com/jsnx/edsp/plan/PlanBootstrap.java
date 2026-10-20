@@ -21,7 +21,7 @@ public final class PlanBootstrap {
                 list(body.get("responseCodes"), mapper), String.valueOf(body.getOrDefault("vendorCodePath", "result.code")),
                 map(body.get("securityPolicy"), mapper), Instant.now(),
                 String.valueOf(body.getOrDefault("upstreamHttpMethod", "POST")),
-                map(body.get("providerConnection"), mapper));
+                map(body.get("providerConnection"), mapper), map(body.get("responsePolicy"), mapper));
     }
 
     private static long number(Object value) { return value instanceof Number n ? n.longValue() : Long.parseLong(String.valueOf(value)); }

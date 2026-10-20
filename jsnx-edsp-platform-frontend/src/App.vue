@@ -115,6 +115,7 @@ const selectedInterfaceId = ref(0)
 const detail = ref<InterfaceDetail | null>(null)
 const securityPolicy = ref<SecurityPolicy>({ interfaceId: 0, enabled: false, encryptMode: 'NONE', signatureMode: 'NONE', requestFields: '', encryptionKeyReference: '', signingKeyReference: '', signatureField: 'signature', description: '' })
 const savedMappingsBaseline = ref<FieldMapping[]>([])
+const savedResponsePolicyBaseline = ref('')
 const detailLoading = ref(false)
 const sourceSwitching = ref(false)
 const interfaceCache = new Map<number, InterfaceSummary[]>()
@@ -470,6 +471,7 @@ function adaptResourceDetail(item: ResourceApiDetail): InterfaceDetail {
     timeoutMs: item.summary.effectiveTimeoutMs, configuredTimeoutMs: item.configuredTimeoutMs,
     timeoutSource: item.timeoutSource === 'RESOURCE_API' ? 'INTERFACE' : 'DATA_SOURCE', retryCount: 0,
     vendorCodePath: 'result.code', mappings: [], responseCodes: [],
+    responsePolicy: { dataMode: 'WHOLE_BODY', codeMode: 'VENDOR_CODE', successCode: '0000' },
     securityPolicy: { interfaceId: item.summary.id, enabled: false, encryptMode: 'NONE', signatureMode: 'NONE', requestFields: '', encryptionKeyReference: '', signingKeyReference: '', signatureField: 'signature', description: '' }
   }
 }
@@ -538,7 +540,10 @@ async function locateSelectedApi() {
 }
 const filteredMappings = computed(() => detail.value?.mappings.filter(item => item.direction === mappingDirection.value) ?? [])
 const mappingIsPassThrough = computed(() => filteredMappings.value.length === 0)
-const mappingModeLabel = computed(() => mappingIsPassThrough.value ? '自动透传' : '字段转换')
+const mappingModeLabel = computed(() => mappingDirection.value === 'REQUEST'
+  ? (mappingIsPassThrough.value ? '自动透传' : '字段转换')
+  : detail.value?.responsePolicy?.dataMode === 'WHOLE_BODY' ? '整报文封装'
+  : '字段映射')
 const hasUnpublishedChanges = computed(() => !!detail.value && detail.value.summary.publishedVersion !== detail.value.summary.currentVersion)
 const authorizableInterfaces = computed(() => allInterfaces.value.filter(item =>
   item.publishedVersion != null && !['OFFLINE', 'DELETED'].includes(item.status)))
@@ -677,16 +682,19 @@ const currentOrchestrationVerified = computed(() => !!detail.value
 const resourceContractChanged = ref(false)
 function draftEditorMatchesSaved() {
   return !!detail.value && JSON.stringify(detail.value.mappings) === JSON.stringify(savedMappingsBaseline.value)
+    && JSON.stringify(detail.value.responsePolicy) === savedResponsePolicyBaseline.value
     && requestText.value === savedRequestBaseline.value
     && responseText.value === savedResponseBaseline.value
     && JSON.stringify(securityPolicy.value) === savedSecurityBaseline.value
-    && JSON.stringify(detail.value.responseCodes) === savedResponseCodesBaseline.value
-    && (detail.value.vendorCodePath || 'result.code') === (savedVendorCodePathBaseline.value || 'result.code')
+    && (detail.value.responsePolicy.codeMode === 'HTTP_SUCCESS'
+      || JSON.stringify(detail.value.responseCodes) === savedResponseCodesBaseline.value
+        && (detail.value.vendorCodePath || 'result.code') === (savedVendorCodePathBaseline.value || 'result.code'))
     && JSON.stringify(standardServiceForm.value) === savedStandardServiceBaseline.value
 }
 const apiGuideSteps = computed(() => buildResourceGuide({
   upstreamUrl: detail.value?.summary.upstreamUrl ?? '', servicePath: detail.value?.summary.servicePath ?? '',
   mappings: savedMappingsBaseline.value, responseCodes: JSON.parse(savedResponseCodesBaseline.value || '[]'),
+  responsePolicy: JSON.parse(savedResponsePolicyBaseline.value || 'null') ?? undefined,
   securityEnabled: JSON.parse(savedSecurityBaseline.value || '{}').enabled === true,
   status: detail.value?.summary.status ?? 'DRAFT', currentVersion: detail.value?.summary.currentVersion ?? 0,
   publishedVersion: detail.value?.summary.publishedVersion, orchestrationVerified: currentOrchestrationVerified.value
@@ -707,10 +715,13 @@ const hasUnsavedChanges = computed(() => {
     || upstreamRequestText.value !== savedUpstreamRequestBaseline.value
     || responseText.value !== savedUpstreamResponseBaseline.value
   if (activeTab.value === 'request') return JSON.stringify(detail.value.mappings) !== JSON.stringify(savedMappingsBaseline.value)
+    || JSON.stringify(detail.value.responsePolicy) !== savedResponsePolicyBaseline.value
     || requestText.value !== savedRequestBaseline.value || responseText.value !== savedResponseBaseline.value
     || JSON.stringify(standardServiceForm.value) !== savedStandardServiceBaseline.value
-  if (activeTab.value === 'codes') return JSON.stringify(detail.value.responseCodes) !== savedResponseCodesBaseline.value
+  if (activeTab.value === 'codes') return detail.value.responsePolicy.codeMode !== 'HTTP_SUCCESS'
+    && (JSON.stringify(detail.value.responseCodes) !== savedResponseCodesBaseline.value
     || detail.value.vendorCodePath !== savedVendorCodePathBaseline.value
+    )
   if (activeTab.value === 'security') return JSON.stringify(securityPolicy.value) !== savedSecurityBaseline.value
   return false
 })
@@ -852,6 +863,10 @@ async function loadDetail() {
     }
     if (requestedInterfaceId !== selectedInterfaceId.value) return
     loadedDetail.vendorCodePath = loadedDetail.vendorCodePath || 'result.code'
+    loadedDetail.responsePolicy = loadedDetail.responsePolicy ?? {
+      dataMode: loadedDetail.mappings.some(item => item.direction === 'RESPONSE') ? 'FIELD_MAPPING' : 'WHOLE_BODY',
+      codeMode: 'VENDOR_CODE', successCode: '0000'
+    }
     if (!resourceWorkspace) detailCache.set(requestedInterfaceId, structuredClone(loadedDetail))
     detail.value = loadedDetail
     interfaceVersions.value = loadedVersions
@@ -868,6 +883,7 @@ async function loadDetail() {
     }
     securityPolicy.value = loadedDetail.securityPolicy ?? { interfaceId: loadedDetail.summary.id, enabled: false, encryptMode: 'NONE', signatureMode: 'NONE', requestFields: '', encryptionKeyReference: '', signingKeyReference: '', signatureField: 'signature', description: '' }
     savedMappingsBaseline.value = structuredClone(loadedDetail.mappings)
+    savedResponsePolicyBaseline.value = JSON.stringify(loadedDetail.responsePolicy)
     requestText.value = JSON.stringify(loadedDetail.requestExample, null, 2)
     responseText.value = JSON.stringify(loadedDetail.upstreamResponseExample, null, 2)
     const persistedUpstreamRequestExample = Object.keys(loadedDetail.upstreamRequestExample ?? {}).length
@@ -960,6 +976,7 @@ async function confirmDiscardUnsaved() {
     }
     if (activeTab.value === 'request' && detail.value) {
       detail.value.mappings = JSON.parse(JSON.stringify(savedMappingsBaseline.value))
+      detail.value.responsePolicy = JSON.parse(savedResponsePolicyBaseline.value)
       requestText.value = savedRequestBaseline.value
       responseText.value = savedResponseBaseline.value
       standardServiceForm.value = JSON.parse(savedStandardServiceBaseline.value)
@@ -1864,11 +1881,12 @@ async function saveMappings() {
   }
   const saved = await api.saveMappings(selectedInterfaceId.value, detail.value.mappings,
     standardServiceForm.value.servicePath, standardServiceForm.value.httpMethod,
-    requestExample, upstreamResponseExample)
+    requestExample, upstreamResponseExample, detail.value.responsePolicy)
   detailCache.delete(selectedInterfaceId.value)
   detail.value.mappings = saved
   detail.value.requestExample = requestExample
   savedMappingsBaseline.value = structuredClone(saved)
+  savedResponsePolicyBaseline.value = JSON.stringify(detail.value.responsePolicy)
   requestText.value = JSON.stringify(requestExample, null, 2)
   detail.value.upstreamResponseExample = upstreamResponseExample
   responseText.value = JSON.stringify(upstreamResponseExample, null, 2)
@@ -1900,15 +1918,29 @@ async function importUpstreamResponse(event: Event) {
     input.value = ''
   }
 }
-function addMapping() {
+function addMapping(direction = mappingDirection.value) {
   if (!detail.value) return
-  detail.value.mappings.push({ direction: mappingDirection.value, sourcePath: '', targetPath: '', transformType: 'DIRECT', transformConfig: {}, defaultValue: '', required: false, sortOrder: filteredMappings.value.length * 10 + 10 })
+  detail.value.mappings.push({ direction, sourcePath: '', targetPath: '', transformType: 'DIRECT', transformConfig: {}, defaultValue: '', required: false, sortOrder: detail.value.mappings.filter(item => item.direction === direction).length * 10 + 10 })
   nextTick(() => ElMessage.info('已新增映射行'))
 }
 function startMappingConfiguration() {
+  if (mappingDirection.value === 'RESPONSE' && detail.value?.responsePolicy.dataMode !== 'FIELD_MAPPING') {
+    detail.value!.responsePolicy.dataMode = 'FIELD_MAPPING'
+  }
   addMapping()
 }
-function deleteMapping(row: FieldMapping) { if (detail.value) detail.value.mappings = detail.value.mappings.filter(item => item !== row) }
+function onResponseDataModeChange(value: string | number | boolean) {
+  if (value === 'FIELD_MAPPING' && !detail.value?.mappings.some(item => item.direction === 'RESPONSE')) {
+    addMapping('RESPONSE')
+  }
+}
+function deleteMapping(row: FieldMapping) {
+  if (!detail.value) return
+  detail.value.mappings = detail.value.mappings.filter(item => item !== row)
+  if (row.direction === 'RESPONSE' && !detail.value.mappings.some(item => item.direction === 'RESPONSE')) {
+    detail.value.responsePolicy.dataMode = 'WHOLE_BODY'
+  }
+}
 
 function flattenLeafPaths(value: unknown, prefix = ''): string[] {
   if (Array.isArray(value)) return prefix ? [prefix] : []
@@ -1926,6 +1958,7 @@ function generateMappingsFromSample() {
     const sample = JSON.parse(mappingDirection.value === 'REQUEST' ? requestText.value : responseText.value)
     const paths = flattenLeafPaths(sample)
     if (!paths.length) return ElMessage.warning('样例报文中没有可生成的字段')
+    if (mappingDirection.value === 'RESPONSE') detail.value.responsePolicy.dataMode = 'FIELD_MAPPING'
     const existing = new Set(detail.value.mappings
       .filter(item => item.direction === mappingDirection.value)
       .map(item => item.sourcePath))
@@ -1948,6 +1981,7 @@ function generateMappingsFromSample() {
 
 async function saveResponseCodes() {
   if (!detail.value) return false
+  if (detail.value.responsePolicy.codeMode === 'HTTP_SUCCESS') return true
   detail.value.vendorCodePath = detail.value.vendorCodePath?.trim() || 'result.code'
   detail.value.responseCodes = await api.saveResponseCodes(selectedInterfaceId.value, detail.value.vendorCodePath, detail.value.responseCodes)
   savedResponseCodesBaseline.value = JSON.stringify(detail.value.responseCodes)
@@ -2822,11 +2856,16 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                   <details class="advanced-settings internal-service-route"><summary>内部转发配置<HelpTip title="内部转发配置" content="ESB Adapter 根据服务编码查询此路径，将解析后的请求经 Gateway 转发至提供商应用。行内调用系统使用 ESB 队列，无需填写此 HTTP 路径。"/></summary><div class="form-grid"><el-form-item label="内部 HTTP 方法"><el-select v-model="standardServiceForm.httpMethod" aria-label="内部 HTTP 方法"><el-option v-for="method in ['POST','GET','PUT','PATCH']" :key="method" :label="method" :value="method"/></el-select></el-form-item><el-form-item label="内部服务路径"><el-input v-model="standardServiceForm.servicePath" aria-label="内部服务路径"/></el-form-item></div></details>
                   <div class="mapping-toolbar refined">
                     <div class="mapping-mode"><el-segmented v-model="mappingDirection" :options="[{ label: '请求转换', value: 'REQUEST' }, { label: '响应标准化', value: 'RESPONSE' }]" /><el-tag :type="mappingIsPassThrough ? 'success' : 'warning'" effect="plain">{{ mappingModeLabel }}</el-tag><span>{{ mappingDirection === 'REQUEST' ? '行内标准请求 → 上游原始请求' : '上游原始响应 → 行内标准响应' }}</span></div>
-                    <div><el-button :icon="DocumentChecked" @click="validateConfig">校验配置</el-button><el-button :icon="Plus" @click="startMappingConfiguration">{{ mappingIsPassThrough ? '配置字段转换' : '新增一行' }}</el-button></div>
+                    <div><el-button :icon="DocumentChecked" @click="validateConfig">校验配置</el-button><el-button v-if="mappingDirection==='REQUEST' || detail.responsePolicy.dataMode==='FIELD_MAPPING'" :icon="Plus" @click="startMappingConfiguration">{{ mappingIsPassThrough ? '配置字段转换' : '新增一行' }}</el-button></div>
+                  </div>
+                  <div v-if="mappingDirection==='RESPONSE'" class="response-policy-panel">
+                    <div><span>响应封装</span><el-segmented v-model="detail.responsePolicy.dataMode" :options="[{label:'字段映射',value:'FIELD_MAPPING'},{label:'整报文放入 data',value:'WHOLE_BODY'}]" aria-label="响应封装方式" @change="onResponseDataModeChange"/></div>
+                    <div><span>成功判定</span><el-select v-model="detail.responsePolicy.codeMode" aria-label="成功判定方式"><el-option label="按供应商业务码" value="VENDOR_CODE"/><el-option label="HTTP 成功即成功" value="HTTP_SUCCESS"/></el-select><el-input v-if="detail.responsePolicy.codeMode==='HTTP_SUCCESS'" v-model="detail.responsePolicy.successCode" aria-label="平台成功码" placeholder="平台成功码，如 0000"/></div>
                   </div>
                   <div class="mapping-sample-panel"><div class="mapping-sample-head"><div><DocumentCopy/><span><strong>{{ mappingDirection === 'REQUEST' ? '行内标准请求样例' : '上游原始响应样例' }}</strong><HelpTip title="报文与映射" :content="mappingDirection==='REQUEST' ? '填写行内标准请求 JSON，可从样例批量生成字段映射。嵌套对象和数组请按实际路径配置。' : '可编辑或导入上游响应 JSON 样例，再生成映射规则。修改仅保存到当前标准服务草稿。'"/></span></div><div><input v-if="mappingDirection === 'RESPONSE'" ref="responseFileInput" type="file" accept=".json,application/json" class="visually-hidden" aria-label="选择响应 JSON 文件" @change="importUpstreamResponse"/><el-button v-if="mappingDirection === 'RESPONSE'" :icon="Upload" @click="responseFileInput?.click()">导入 JSON</el-button><el-button type="primary" plain :icon="DocumentCopy" @click="generateMappingsFromSample">从样例生成映射</el-button></div></div><CopyableBlock :value="mappingDirection === 'REQUEST' ? requestText : responseText"><el-input v-if="mappingDirection === 'REQUEST'" v-model="requestText" type="textarea" :autosize="{minRows:5,maxRows:10}"/><el-input v-else v-model="responseText" type="textarea" :autosize="{minRows:5,maxRows:10}" aria-label="上游原始响应样例"/></CopyableBlock></div>
-                  <div class="mapping-summary"><div><strong>{{ mappingIsPassThrough ? '自动透传' : filteredMappings.length }}</strong><span>{{ mappingIsPassThrough ? '当前处理模式' : '映射规则' }}</span></div><div><strong>{{ filteredMappings.filter(item => item.required).length }}</strong><span>必填字段</span></div><HelpTip title="字段处理模式" content="不配置映射时，报文按原字段名和路径透传。配置后按映射规则执行字段提取、转换及目标字段写入。来源路径和目标路径支持嵌套 JSON 路径。"/></div>
-                  <div class="mapping-board">
+                  <div v-if="mappingDirection==='REQUEST' || detail.responsePolicy.dataMode==='FIELD_MAPPING'" class="mapping-summary"><div><strong>{{ mappingIsPassThrough ? '自动透传' : filteredMappings.length }}</strong><span>{{ mappingIsPassThrough ? '当前处理模式' : '映射规则' }}</span></div><div><strong>{{ filteredMappings.filter(item => item.required).length }}</strong><span>必填字段</span></div><HelpTip title="字段处理模式" content="不配置映射时，报文按原字段名和路径透传。配置后按映射规则执行字段提取、转换及目标字段写入。来源路径和目标路径支持嵌套 JSON 路径。"/></div>
+                  <div v-if="mappingDirection==='RESPONSE' && detail.responsePolicy.dataMode==='WHOLE_BODY'" class="response-policy-state">供应商响应的完整 JSON 将放入平台标准响应的 data 节点。</div>
+                  <div v-if="mappingDirection==='REQUEST' || detail.responsePolicy.dataMode==='FIELD_MAPPING'" class="mapping-board">
                     <div class="mapping-board-head"><span>#</span><span>{{ mappingDirection === 'REQUEST' ? '行内标准字段' : '上游原始字段' }}</span><span>转换规则</span><span>{{ mappingDirection === 'REQUEST' ? '上游请求字段' : '平台标准字段' }}</span><span>属性</span></div>
                     <div v-if="mappingIsPassThrough" class="mapping-empty"><Connection/><strong>当前采用自动透传</strong><el-button type="primary" :icon="Plus" @click="startMappingConfiguration">配置字段转换</el-button></div>
                     <div v-for="(row,index) in filteredMappings" :key="mappingRowKey(row)" class="mapping-row" :class="{'is-rule-open':activeMappingRuleRow===row}">
@@ -2839,7 +2878,14 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                   </div>
                   <div v-if="validation" class="validation-result" :class="validation.valid ? 'valid' : 'invalid'"><el-icon><CircleCheck /></el-icon><div><strong>{{ validation.valid ? '配置校验通过' : '配置校验失败' }}</strong><span v-for="item in [...validation.errors, ...validation.warnings]" :key="item">{{ item }}</span></div></div>
                 </el-tab-pane>
-                <el-tab-pane v-if="serviceDevelopmentStage==='ORCHESTRATION'" name="codes" label="结果码映射"><div class="section-toolbar"><div><strong>上游结果码 → 平台标准码</strong><HelpTip title="结果码映射" content="先填写供应商响应中返回码的取值路径，再将原始码映射为平台标准码和结果状态。命中表示查到数据，未命中表示正常返回但无数据，异常表示调用失败。"/></div><div><el-button :icon="Plus" @click="addResponseCode">新增规则</el-button></div></div><section class="vendor-code-path-panel"><div><strong>供应商返回码字段路径</strong><HelpTip title="返回码取值路径" content="从供应商原始响应按路径提取返回码，例如 result.code、status.code 或 data.retCode。请以该接口的实际响应结构为准。"/></div><el-input v-model="detail.vendorCodePath" placeholder="例如：result.code" clearable /></section><el-table :data="detail.responseCodes" border><el-table-column label="上游原始码值" width="170"><template #default="{ row }"><el-input v-model="row.vendorCode" placeholder="例如 0000" /></template></el-table-column><el-table-column label="平台标准码" min-width="190"><template #default="{ row }"><el-input v-model="row.standardCode" /></template></el-table-column><el-table-column label="结果状态" width="135"><template #default="{ row }"><el-select v-model="row.resultStatus"><el-option label="命中数据" value="HIT"/><el-option label="未命中" value="MISS"/><el-option label="调用异常" value="ERROR"/></el-select></template></el-table-column><el-table-column label="允许重试" width="100" align="center"><template #default="{ row }"><el-switch v-model="row.retryable" /></template></el-table-column><el-table-column label="参与计量" width="100" align="center"><template #default="{ row }"><el-switch v-model="row.billable" /></template></el-table-column></el-table></el-tab-pane>
+                <el-tab-pane v-if="serviceDevelopmentStage==='ORCHESTRATION'" name="codes" label="结果码映射">
+                  <div v-if="detail.responsePolicy.codeMode==='HTTP_SUCCESS'" class="response-policy-state">HTTP 调用成功时返回平台成功码 {{ detail.responsePolicy.successCode }}；上游 HTTP 错误按调用失败处理。</div>
+                  <template v-else>
+                    <div class="section-toolbar"><div><strong>上游结果码 → 平台标准码</strong><HelpTip title="结果码映射" content="先填写供应商响应中返回码的取值路径，再将原始码映射为平台标准码和结果状态。命中表示查到数据，未命中表示正常返回但无数据，异常表示调用失败。"/></div><div><el-button :icon="Plus" @click="addResponseCode">新增规则</el-button></div></div>
+                    <section class="vendor-code-path-panel"><div><strong>供应商返回码字段路径</strong><HelpTip title="返回码取值路径" content="从供应商原始响应按路径提取返回码，例如 result.code、status.code 或 data.retCode。请以该接口的实际响应结构为准。"/></div><el-input v-model="detail.vendorCodePath" placeholder="例如：result.code" clearable /></section>
+                    <el-table :data="detail.responseCodes" border><el-table-column label="上游原始码值" width="170"><template #default="{ row }"><el-input v-model="row.vendorCode" placeholder="例如 0000" /></template></el-table-column><el-table-column label="平台标准码" min-width="190"><template #default="{ row }"><el-input v-model="row.standardCode" /></template></el-table-column><el-table-column label="结果状态" width="135"><template #default="{ row }"><el-select v-model="row.resultStatus"><el-option label="命中数据" value="HIT"/><el-option label="未命中" value="MISS"/><el-option label="调用异常" value="ERROR"/></el-select></template></el-table-column><el-table-column label="允许重试" width="100" align="center"><template #default="{ row }"><el-switch v-model="row.retryable" /></template></el-table-column><el-table-column label="参与计量" width="100" align="center"><template #default="{ row }"><el-switch v-model="row.billable" /></template></el-table-column></el-table>
+                  </template>
+                </el-tab-pane>
                 <el-tab-pane v-if="serviceDevelopmentStage==='ORCHESTRATION'" name="security" label="安全处理">
                   <div class="security-config-panel">
                     <div class="section-toolbar"><div><strong>接口级安全策略</strong><HelpTip title="接口安全策略" content="执行顺序为字段映射、加密、签名、上游调用。密钥仅保存配置引用，不得填入明文。草稿测试使用草稿策略，正式调用使用已发布策略。"/></div></div>

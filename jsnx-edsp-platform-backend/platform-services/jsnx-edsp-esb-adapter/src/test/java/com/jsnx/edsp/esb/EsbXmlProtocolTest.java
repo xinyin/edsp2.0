@@ -81,6 +81,28 @@ class EsbXmlProtocolTest {
     }
 
     @Test
+    void serializesWholeSupplierBodyUnderDataWithoutDroppingNestedFields() throws Exception {
+        Map<String, Object> supplier = Map.of(
+                "page", 1,
+                "data", List.of(Map.of("id", 1, "email", "a@example.com"),
+                        Map.of("id", 2, "email", "b@example.com")),
+                "support", Map.of("url", "https://example.com", "text", "Help & support"),
+                "_meta", Map.of("variant", "v1_b"));
+        String response = protocol.success(protocol.parse(REQUEST), Map.of(
+                "code", "0000", "message", "查询成功", "resultStatus", "HIT", "data", supplier));
+
+        Document document = parseXml(response);
+        Element responseData = (Element) document.getElementsByTagName("response").item(0);
+        Element data = (Element) responseData.getElementsByTagName("data").item(0);
+        assertEquals("1", ((Element) data.getElementsByTagName("page").item(0)).getTextContent());
+        assertEquals(2, data.getElementsByTagName("id").getLength());
+        assertEquals("b@example.com", data.getElementsByTagName("email").item(1).getTextContent());
+        assertEquals("Help & support", data.getElementsByTagName("text").item(0).getTextContent());
+        assertEquals("v1_b", data.getElementsByTagName("variant").item(0).getTextContent());
+        assertEquals("0000", text(document, "resp_code"));
+    }
+
+    @Test
     void serializesFailureInTheSameProductionEnvelope() throws Exception {
         String response = protocol.failure(protocol.parse(REQUEST), "ESB_FORWARD_503", "数据源不可用");
         Document document = parseXml(response);

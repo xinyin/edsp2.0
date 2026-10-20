@@ -11,6 +11,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -32,7 +33,7 @@ class ResponseSamplePersistenceTest {
                 Map.of("query", "A"), response));
 
         verify(jdbc).update(contains("upstream_response_example=?"), eq("/api/query"), eq("POST"),
-                eq("{\"query\":\"A\"}"), eq("{\"data\":{\"items\":[{\"id\":1}]}}"), eq(42L));
+                eq("{\"query\":\"A\"}"), eq("{\"data\":{\"items\":[{\"id\":1}]}}"), anyString(), eq(42L));
         assertThat(response).containsKey("data");
     }
 }

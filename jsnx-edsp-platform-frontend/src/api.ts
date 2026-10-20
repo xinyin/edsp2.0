@@ -136,13 +136,14 @@ export const api = {
   }),
   saveConnectionConfig: (id: number, body: { configScope: 'INHERIT'|'OVERRIDE'; upstreamPath?: string; upstreamUrl?: string; timeoutMs: number|null; upstreamRequestExample: Record<string, unknown>; upstreamResponseExample: Record<string, unknown> }) =>
     request<InterfaceDetail>(`/api/interfaces/${id}/connection-config`, { method: 'PUT', body: JSON.stringify(body) }),
-  saveMappings: (id: number, mappings: FieldMapping[], servicePath: string, httpMethod: string, requestExample: Record<string, unknown>, upstreamResponseExample: Record<string, unknown>) => request<FieldMapping[]>(`/api/interfaces/${id}/mappings`, {
-    method: 'PUT', body: JSON.stringify({ mappings, servicePath, httpMethod, requestExample, upstreamResponseExample })
+  saveMappings: (id: number, mappings: FieldMapping[], servicePath: string, httpMethod: string, requestExample: Record<string, unknown>, upstreamResponseExample: Record<string, unknown>, responsePolicy?: import('./types').ResponsePolicy) => request<FieldMapping[]>(`/api/interfaces/${id}/mappings`, {
+    method: 'PUT', body: JSON.stringify({ mappings, servicePath, httpMethod, requestExample, upstreamResponseExample, responsePolicy })
   }, () => {
     const plainMappings = JSON.parse(JSON.stringify(mappings)) as FieldMapping[]
     mock.interfaceDetail.mappings = plainMappings
     mock.interfaceDetail.requestExample = structuredClone(requestExample)
     mock.interfaceDetail.upstreamResponseExample = structuredClone(upstreamResponseExample)
+    if (responsePolicy) mock.interfaceDetail.responsePolicy = structuredClone(responsePolicy)
     mock.interfaceDetail.summary.currentVersion += 1
     if (mock.interfaceDetail.summary.status !== 'OFFLINE') mock.interfaceDetail.summary.status = 'DRAFT'
     return plainMappings

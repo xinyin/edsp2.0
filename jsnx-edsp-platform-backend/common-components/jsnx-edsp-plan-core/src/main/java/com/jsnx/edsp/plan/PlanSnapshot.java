@@ -21,7 +21,8 @@ public record PlanSnapshot(
         Map<String, Object> securityPolicy,
         Instant activatedAt,
         String upstreamHttpMethod,
-        Map<String, Object> providerConnection) {
+        Map<String, Object> providerConnection,
+        Map<String, Object> responsePolicy) {
     public PlanSnapshot {
         requestMappings = requestMappings == null ? List.of() : List.copyOf(requestMappings);
         responseMappings = responseMappings == null ? List.of() : List.copyOf(responseMappings);
@@ -33,6 +34,8 @@ public record PlanSnapshot(
         upstreamHttpMethod = upstreamHttpMethod == null || upstreamHttpMethod.isBlank() ? "POST" : upstreamHttpMethod;
         providerConnection = providerConnection == null ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(providerConnection));
+        responsePolicy = Collections.unmodifiableMap(
+                ResponsePolicySupport.normalize(responsePolicy, !responseMappings.isEmpty()));
     }
 
     public PlanSnapshot(long interfaceId, String interfaceCode, int version, String checksum,
@@ -40,7 +43,7 @@ public record PlanSnapshot(
                         List<Map<String, Object>> responseMappings, List<Map<String, Object>> responseCodes,
                         String vendorCodePath, Map<String, Object> securityPolicy, Instant activatedAt) {
         this(interfaceId, interfaceCode, version, checksum, upstreamUrl, timeoutMs, requestMappings,
-                responseMappings, responseCodes, vendorCodePath, securityPolicy, activatedAt, "POST", Map.of());
+                responseMappings, responseCodes, vendorCodePath, securityPolicy, activatedAt, "POST", Map.of(), Map.of());
     }
 
     public PlanSnapshot(long interfaceId, String interfaceCode, int version, String checksum,
@@ -52,5 +55,15 @@ public record PlanSnapshot(
                         Instant activatedAt) {
         this(interfaceId, interfaceCode, version, checksum, upstreamUrl, timeoutMs,
                 requestMappings, responseMappings, responseCodes, "result.code", securityPolicy, activatedAt);
+    }
+
+    public PlanSnapshot(long interfaceId, String interfaceCode, int version, String checksum,
+                        String upstreamUrl, int timeoutMs, List<Map<String, Object>> requestMappings,
+                        List<Map<String, Object>> responseMappings, List<Map<String, Object>> responseCodes,
+                        String vendorCodePath, Map<String, Object> securityPolicy, Instant activatedAt,
+                        String upstreamHttpMethod, Map<String, Object> providerConnection) {
+        this(interfaceId, interfaceCode, version, checksum, upstreamUrl, timeoutMs, requestMappings,
+                responseMappings, responseCodes, vendorCodePath, securityPolicy, activatedAt,
+                upstreamHttpMethod, providerConnection, Map.of());
     }
 }

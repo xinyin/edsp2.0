@@ -32,6 +32,18 @@ class PlanCoreTest {
     }
 
     @Test
+    void adminBootstrapKeepsThePublishedResponsePolicy() {
+        PlanSnapshot plan = PlanBootstrap.fromAdmin(Map.of(
+                "interfaceId", 12, "interfaceCode", "QUERY", "version", 3,
+                "summary", Map.of("upstreamUrl", "https://provider/query"),
+                "responsePolicy", Map.of("dataMode", "WHOLE_BODY", "codeMode", "HTTP_SUCCESS", "successCode", "0000")
+        ), new ObjectMapper());
+        assertEquals("WHOLE_BODY", plan.responsePolicy().get("dataMode"));
+        assertEquals("HTTP_SUCCESS", plan.responsePolicy().get("codeMode"));
+        assertThrows(UnsupportedOperationException.class, () -> plan.responsePolicy().put("dataMode", "FIELD_MAPPING"));
+    }
+
+    @Test
     void replacesOneInterfaceAtomicallyAndMapsNestedFields() {
         PlanRegistry registry = new PlanRegistry();
         registry.activate(new PlanSnapshot(1, "ENTERPRISE_BASIC", 2, "v2", "http://upstream", 3000,
@@ -49,6 +61,29 @@ class PlanCoreTest {
         assertEquals(input, output);
         assertNotSame(input, output);
         assertEquals(Map.of(), PlanMappingSupport.apply(null, List.of()));
+    }
+
+    @Test
+    void wholeBodyResponseKeepsNestedArraysAndMetadata() {
+        Map<String, Object> upstream = Map.of(
+                "page", 1, "data", List.of(Map.of("id", 1, "email", "a@example.com")),
+                "support", Map.of("url", "https://example.com"),
+                "_meta", Map.of("variant", "v1"));
+        Map<String, Object> policy = ResponsePolicySupport.normalize(
+                Map.of("dataMode", "WHOLE_BODY", "codeMode", "HTTP_SUCCESS", "successCode", "0000"), false);
+        Map<String, Object> data = ResponsePolicySupport.data(upstream, List.of(), policy, null);
+        assertEquals(upstream, data);
+        assertNotSame(upstream, data);
+        assertEquals("HTTP_SUCCESS", policy.get("codeMode"));
+    }
+
+    @Test
+    void fieldMappingResponseExtractsConfiguredFieldsOnly() {
+        Map<String, Object> upstream = Map.of("data", Map.of("company", "Acme", "unused", "hidden"));
+        Map<String, Object> data = ResponsePolicySupport.data(upstream,
+                List.of(Map.of("sourcePath", "data.company", "targetPath", "data.name", "transformType", "DIRECT")),
+                ResponsePolicySupport.normalize(Map.of("dataMode", "FIELD_MAPPING"), true), null);
+        assertEquals(Map.of("name", "Acme"), data);
     }
 
     @Test

@@ -55,7 +55,19 @@ public final class ApiModels {
             String timeoutSource, int retryCount,
             String vendorCodePath,
             List<FieldMapping> mappings, List<ResponseCodeMapping> responseCodes,
-            SecurityPolicy securityPolicy) {}
+            SecurityPolicy securityPolicy, Map<String, Object> responsePolicy) {
+        public InterfaceDetail(InterfaceSummary summary, Map<String, Object> requestSchema,
+                Map<String, Object> responseSchema, Map<String, Object> requestExample,
+                Map<String, Object> upstreamRequestExample, Map<String, Object> upstreamResponseExample,
+                Map<String, Object> standardResponseExample, int timeoutMs, Integer configuredTimeoutMs,
+                String timeoutSource, int retryCount, String vendorCodePath,
+                List<FieldMapping> mappings, List<ResponseCodeMapping> responseCodes,
+                SecurityPolicy securityPolicy) {
+            this(summary, requestSchema, responseSchema, requestExample, upstreamRequestExample,
+                    upstreamResponseExample, standardResponseExample, timeoutMs, configuredTimeoutMs,
+                    timeoutSource, retryCount, vendorCodePath, mappings, responseCodes, securityPolicy, Map.of());
+        }
+    }
 
     public record SecurityPolicy(
             long interfaceId, boolean enabled, String encryptMode,
@@ -76,7 +88,13 @@ public final class ApiModels {
             @NotNull List<FieldMapping> mappings,
             @NotBlank String servicePath, @NotBlank String httpMethod,
             @NotNull Map<String, Object> requestExample,
-            @NotNull Map<String, Object> upstreamResponseExample) {}
+            @NotNull Map<String, Object> upstreamResponseExample,
+            Map<String, Object> responsePolicy) {
+        public SaveMappingsRequest(List<FieldMapping> mappings, String servicePath, String httpMethod,
+                Map<String, Object> requestExample, Map<String, Object> upstreamResponseExample) {
+            this(mappings, servicePath, httpMethod, requestExample, upstreamResponseExample, null);
+        }
+    }
 
     public record TestRequest(
             @NotNull Map<String, Object> request,

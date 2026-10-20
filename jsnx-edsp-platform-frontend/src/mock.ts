@@ -47,6 +47,7 @@ export let interfaceDetail: InterfaceDetail = {
   standardResponseExample: { code: 'EXT-SUCCESS', message: '查询成功', resultStatus: 'HIT', data: { enterpriseName: '昆山示例科技有限公司', creditCode: '91320583MA1EXAMPLE', legalPerson: '张三', sex: 'MALE' } },
   timeoutMs: 3000,
   vendorCodePath: 'result.code',
+  responsePolicy: { dataMode: 'FIELD_MAPPING', codeMode: 'VENDOR_CODE', successCode: '0000' },
   retryCount: 0,
   mappings: [...requestMappings, ...responseMappings],
   securityPolicy: {

@@ -124,6 +124,7 @@ CREATE TABLE IF NOT EXISTS api_interface (
     timeout_ms INT,
     retry_count INT NOT NULL DEFAULT 0,
     vendor_code_path VARCHAR(256) NOT NULL DEFAULT 'result.code',
+    response_policy JSON NULL,
     upstream_status VARCHAR(16) NOT NULL DEFAULT 'DRAFT',
     status VARCHAR(16) NOT NULL DEFAULT 'DRAFT',
     current_version INT NOT NULL DEFAULT 1,
