@@ -667,6 +667,11 @@ test('标准服务只展示上游已保存接口，菜单支持横向和分组�
   assert.match(appText, /menuGroups\.services/)
   assert.doesNotMatch(appText, /<el-menu-item index="approvals"/)
 })
+test('资源方管理保留在资源管理主菜单中', () => {
+  const resourceGroup = appText.match(/<template v-if="menuGroups\.resources\|\|sidebarCollapsed">([\s\S]*?)<\/template>/)?.[1]
+  assert.ok(resourceGroup)
+  assert.match(resourceGroup, /<el-menu-item aria-label="资源方管理" index="providers" @click="navigate\('providers'\)"/)
+})
 test('没有接口级超时的草稿继续继承数据源默认配置', async () => {
   let loaded
   const s = harness({ detail: async () => loaded })

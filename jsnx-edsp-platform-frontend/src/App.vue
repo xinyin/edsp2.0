@@ -2485,8 +2485,9 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
         <el-menu-item aria-label="全局概览" index="overview" @click="navigate('overview')"><el-icon><DataBoard /></el-icon><template #title>全局概览</template></el-menu-item>
         <button v-if="!sidebarCollapsed" class="menu-section-label" type="button" @click="menuGroups.resources=!menuGroups.resources"><span>资源管理</span><ArrowRight :class="{expanded:menuGroups.resources}"/></button>
         <template v-if="menuGroups.resources||sidebarCollapsed">
+          <el-menu-item aria-label="资源方管理" index="providers" @click="navigate('providers')"><el-icon><OfficeBuilding /></el-icon><template #title>资源方管理</template></el-menu-item>
           <el-menu-item aria-label="数据资源接入" index="resource" @click="navigate('resource')"><el-icon><Connection /></el-icon><template #title>数据资源接入</template></el-menu-item>
-          <el-menu-item aria-label="资源目录" index="discovery" @click="navigate('discovery')"><el-icon><OfficeBuilding /></el-icon><template #title>资源目录</template></el-menu-item>
+          <el-menu-item aria-label="资源目录" index="discovery" @click="navigate('discovery')"><el-icon><Search /></el-icon><template #title>资源目录</template></el-menu-item>
           <el-menu-item aria-label="文档管理" index="documents" @click="navigate('documents')"><el-icon><DocumentCopy /></el-icon><template #title>文档管理</template></el-menu-item>
         </template>
         <button v-if="!sidebarCollapsed" class="menu-section-label" type="button" @click="menuGroups.services=!menuGroups.services"><span>服务管理</span><ArrowRight :class="{expanded:menuGroups.services}"/></button>
