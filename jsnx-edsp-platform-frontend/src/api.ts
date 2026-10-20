@@ -23,7 +23,9 @@ async function request<T>(path: string, init?: RequestInit, fallback?: () => T |
   const timer = globalThis.setTimeout(() => { timedOut = true; controller.abort() }, timeoutMs)
   let response: Response
   try {
-    response = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...init, signal: controller.signal })
+    const headers = new Headers(init?.headers)
+    if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+    response = await fetch(path, { ...init, headers, signal: controller.signal })
   } catch (error) {
     if (controller.signal.aborted) {
       if (timedOut) throw new Error(`请求超过 ${Math.ceil(timeoutMs / 1000)} 秒，已自动终止`)
