@@ -782,6 +782,11 @@ test('折叠侧边栏的展开按钮作为内嵌控制条而非悬浮卡片', ()
   assert.match(consoleThemeText, /\.sidebar\.collapsed \.sidebar-collapse-button:hover \{ color: var\(--brand-dark\); background: var\(--nav-hover\); \}/)
   assert.match(consoleThemeText, /\.sidebar\.collapsed \.side-menu \{ padding-top: 42px; \}/)
 })
+test('侧边栏菜单超出视口时可独立滚动，品牌与底部区域不被挤走', () => {
+  assert.match(stylesText, /\.side-menu \{[^}]*min-height: 0;[^}]*overflow-y: auto;/)
+  assert.match(stylesText, /\.brand \{[^}]*flex: 0 0 auto;/)
+  assert.match(stylesText, /\.sidebar-footer \{[^}]*flex: 0 0 auto;/)
+})
 test('已下线接口提供恢复最近线上版本入口并保留更高版本草稿', () => {
   assert.match(apiText, /interfaces\/\$\{id\}\/online/)
   assert.match(appText, /status==='OFFLINE'.*恢复线上 V\{\{ releaseDetail\.summary\.publishedVersion \}\}/s)
