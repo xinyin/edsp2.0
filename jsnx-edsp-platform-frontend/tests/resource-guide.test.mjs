@@ -35,9 +35,13 @@ function harness(overrides = {}, confirm = async () => true) {
   Object.assign(deps, guide, { ref, computed, nextTick, watch, useDisplayPreference: (_key, initial = false) => ref(initial), URL, AbortController, structuredClone,
     setInterval: () => 1, clearInterval: () => {}, setTimeout: callback => { callback(); return 1 },
     document: { querySelector: () => null }, navigator: {},
+    DOMParser: class { parseFromString(xml) { return { getElementsByTagName: tag => {
+      const match = xml.match(new RegExp(`<${tag}>([^<]*)</${tag}>`))
+      return match ? [{ textContent: match[1] }] : []
+    } } } },
     ElMessage: Object.fromEntries(['error', 'warning', 'success', 'info'].map(kind => [kind, message => messages.push({ kind, message })])),
     ElMessageBox: { confirm }, isDemoMode: () => false,
-    api: new Proxy({ securityAlgorithms: async () => [],
+    api: new Proxy({ securityAlgorithms: async () => [], clearOperatorSession: () => {},
       validationStatus: async () => ({ upstreamVerified: false, orchestrationVerified: false }),
       resourceValidationStatus: async () => ({ upstreamVerified: false }), ...overrides },
       { get: (target, name) => target[name] ?? (() => { throw new Error('Unexpected API call: ' + String(name)) }) })
@@ -682,6 +686,13 @@ test('标准服务链路测试模式使用完整内容列并在窄编辑区纵�
   assert.match(consoleThemeText, /\.test-mode-selector\.orchestration-modes button \{[^}]*grid-template-columns: minmax\(0,1fr\)/)
   assert.match(consoleThemeText, /\.test-mode-selector\.orchestration-modes button > div \{ width: 100%; min-width: 0; \}/)
   assert.match(consoleThemeText, /@container \(max-width: 740px\)[\s\S]*?\.test-mode-selector\.orchestration-modes \{ grid-template-columns: minmax\(0,1fr\); \}/)
+})
+test('全链路测试提交可编辑 XML，并在登录会话失效时要求重新登录', () => {
+  assert.match(appText, /v-model="esbXmlText"[^>]*aria-label="行内 XML 入队报文"/)
+  assert.match(appText, /api\.esbDiagnostic\('EDSP_TEST_TOOL', xmlRequest, traceId/)
+  assert.match(appText, /apiError\?\.status === 401 && testingMode === 'E2E'/)
+  assert.match(appText, /api\.clearOperatorSession\(\)/)
+  assert.match(apiText, /clearOperatorSession:\s*\(\) => \{ operatorToken = '' \}/)
 })
 test('状态标签文字继承语义前景色且调用链标题样式不污染标签内容', () => {
   assert.match(consoleThemeText, /\.el-tag \.el-tag__content \{ color: inherit; \}/)

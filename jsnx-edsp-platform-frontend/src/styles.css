@@ -286,6 +286,8 @@ button, input, textarea { font-family: inherit; }
 .result-stack .result-pane pre { min-height: 120px; max-height: 240px; }
 .code-pane { min-width: 0; border: 1px solid var(--border); }
 .code-title { min-height: 38px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; background: #f5f7fa; border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600; }
+.code-title > div { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.code-title > div .el-button { width: 28px; height: 28px; padding: 0; flex: none; }
 .code-title small { color: var(--muted); font-weight: 400; }
 .code-pane .el-textarea__inner { border: 0; border-radius: 0; box-shadow: none; resize: vertical; font: 12px/1.6 Menlo, Monaco, monospace; color: #263143; }
 .code-pane.readonly { background: #f8fafb; }

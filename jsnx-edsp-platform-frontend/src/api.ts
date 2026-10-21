@@ -54,6 +54,7 @@ async function request<T>(path: string, init?: RequestInit, fallback?: () => T |
 }
 
 export const api = {
+  clearOperatorSession: () => { operatorToken = '' },
   resourceDirectory: (filters: { keyword: string; providerId: number; dataSourceId: number; status: string; protocolType: string; page: number; size: number }) =>
     request<ResourceDirectoryPage>(`/api/resource-directory?${new URLSearchParams(Object.entries(filters).map(([key, value]) => [key, String(value)]))}`),
   resourceDocuments: (providerId?: number) => request<ResourceDocument[]>(`/api/resource-documents${providerId ? `?providerId=${providerId}` : ''}`),

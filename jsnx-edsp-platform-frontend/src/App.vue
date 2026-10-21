@@ -447,9 +447,24 @@ function buildEsbXml(serviceId: string, serviceSn: string, requesterId: string, 
 }
 const esbXmlPreview = computed(() => {
   if (!detail.value) return ''
-  try { return buildEsbXml(detail.value.summary.interfaceCode, 'TRACE_PREVIEW', activeClients.value[0]?.clientCode ?? 'REQUESTER_ID', JSON.parse(requestText.value)) }
+  try { return buildEsbXml(detail.value.summary.interfaceCode, esbTestTraceId.value, 'EDSP_TEST_TOOL', JSON.parse(requestText.value)) }
   catch { return '请输入有效 JSON 后生成 XML 入队报文' }
 })
+const esbTestTraceId = ref(`EDSP-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`)
+const esbXmlOverride = ref<string | null>(null)
+const esbXmlText = computed({
+  get: () => esbXmlOverride.value ?? esbXmlPreview.value,
+  set: value => { esbXmlOverride.value = value }
+})
+watch(selectedInterfaceId, () => { esbXmlOverride.value = null; esbTestTraceId.value = `EDSP-${Date.now()}-${Math.random().toString(16).slice(2, 10)}` })
+function resetEsbXml() {
+  esbXmlOverride.value = null
+  esbTestTraceId.value = `EDSP-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
+}
+function esbTraceId(xml: string, fallback: string) {
+  const parsed = new DOMParser().parseFromString(xml, 'application/xml')
+  return parsed.getElementsByTagName('service_sn')[0]?.textContent?.trim() || fallback
+}
 const esbXmlResponsePreview = computed(() => {
   const node = testResult.value?.traceNodes.find(item => item.key === 'STANDARD_RESPONSE')
   const output = node?.output
@@ -1402,7 +1417,7 @@ async function saveProvider() {
 }
 function openAccountDialog() { accountForm.value = { username: '', displayName: '', mobile: '', email: '', roleCode: 'PROVIDER_ADMIN', permissions: ['DATASOURCE_VIEW', 'API_VIEW'], status: 'ACTIVE' }; accountDialog.value = true }
 async function saveAccount() { if (!selectedProviderId.value) return; await api.createProviderAccount(selectedProviderId.value, accountForm.value); accountDialog.value = false; await loadProviderAccounts(); ElMessage.success('资源提供商账号已创建') }
-function logout() { loggedIn.value = false; user.value = null; activeMenu.value = 'overview' }
+function logout() { loggedIn.value = false; user.value = null; api.clearOperatorSession(); activeMenu.value = 'overview' }
 
 function openSourceWizard() {
   sourceStep.value = 0
@@ -2278,8 +2293,8 @@ async function runTest() {
       testElapsedSeconds.value = Math.max(1, Math.floor((Date.now() - traceStartedAt) / 1000))
       if (chainPhase.value < activeTraceDefinitions.value.length - 1) chainPhase.value += 1
     }, 320)
-    const requestPayload = JSON.parse(testMode.value === 'UPSTREAM' ? upstreamRequestText.value : requestText.value)
-    if (testMode.value !== 'UPSTREAM') {
+    const requestPayload = testingMode === 'E2E' ? {} : JSON.parse(testingMode === 'UPSTREAM' ? upstreamRequestText.value : requestText.value)
+    if (testingMode === 'PLATFORM') {
       const missingRequiredSources = mappingSnapshot
         .filter(mapping => mapping.direction === 'REQUEST' && mapping.required)
         .filter(mapping => readObjectPath(requestPayload, mapping.sourcePath) === undefined)
@@ -2288,9 +2303,17 @@ async function runTest() {
         throw new Error(`联调请求缺少映射必填来源字段：${missingRequiredSources.join('、')}。请修改请求样例后重新保存草稿。`)
       }
     }
-    const traceId = `EDSP-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
-    const result = testMode.value === 'E2E'
-      ? await api.esbDiagnostic('EDSP_TEST_TOOL', buildEsbXml(detail.value.summary.interfaceCode, traceId, 'EDSP_TEST_TOOL', requestPayload), traceId,
+    if (testingMode === 'E2E' && esbXmlOverride.value === null) {
+      esbTestTraceId.value = `EDSP-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
+    }
+    const xmlRequest = testingMode === 'E2E' ? esbXmlText.value.trim() : ''
+    if (testingMode === 'E2E' && (!xmlRequest || xmlRequest.startsWith('请输入有效 JSON'))) {
+      throw new Error('请填写有效的 ESB XML 请求报文')
+    }
+    const traceId = testingMode === 'E2E' ? esbTraceId(xmlRequest, esbTestTraceId.value)
+      : `EDSP-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
+    const result = testingMode === 'E2E'
+      ? await api.esbDiagnostic('EDSP_TEST_TOOL', xmlRequest, traceId,
           { timeoutMs: requestDeadlineMs(previewTimeoutMs.value), signal: controller.signal }).then(diagnostic => ({
             upstreamRequest: diagnostic.upstreamRequest,
             upstreamResponse: diagnostic.upstreamResponse,
@@ -2337,6 +2360,14 @@ async function runTest() {
   } catch (error) {
     const apiError = error && typeof error === 'object' && 'payload' in error && 'message' in error
       ? error as ApiRequestError : null
+    if (apiError?.status === 401 && testingMode === 'E2E') {
+      testError.value = '登录状态已失效，请重新登录后执行全链路测试'
+      loggedIn.value = false
+      user.value = null
+      api.clearOperatorSession()
+      ElMessage.warning(testError.value)
+      return false
+    }
     if (apiError?.payload.code === 'TEST_EXECUTION_FAILED') {
       const nodes = Array.isArray(apiError.payload.traceNodes) ? apiError.payload.traceNodes as TestResult['traceNodes'] : []
       testResult.value = { upstreamRequest: {}, upstreamResponse: {}, standardResponse: {}, steps: [], traceNodes: nodes }
@@ -3163,7 +3194,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                   <div class="test-context-bar"><span>{{ activeTestMode.label }}<HelpTip :title="activeTestMode.label" :content="activeTestMode.description"/></span><code>{{ detail.summary.servicePath }}</code></div>
                     <el-alert v-if="resourceContractChanged && testMode==='PLATFORM'" type="warning" :closable="false" show-icon title="来源资源接口定义已变更。如需采用新入参，请先回到请求转换，点击“同步资源接口定义”并核对映射。" />
                   <div class="test-grid">
-                    <div class="code-pane"><div class="code-title"><span>{{ testMode === 'UPSTREAM' ? '上游请求报文' : testMode === 'E2E' ? '行内 XML 入队报文' : '行内标准请求' }}</span><small>{{ testMode === 'UPSTREAM' ? '资源提供商处理应用发送' : testMode === 'E2E' ? 'ESB Adapter 消费并解析' : '用于验证请求转换' }}</small></div><CopyableBlock :value="testMode === 'UPSTREAM' ? upstreamRequestText : testMode === 'PLATFORM' ? requestText : esbXmlPreview"><el-input v-if="testMode==='UPSTREAM'" v-model="upstreamRequestText" type="textarea" :autosize="{ minRows: 10, maxRows: 16 }"/><el-input v-else-if="testMode==='PLATFORM'" v-model="requestText" type="textarea" :autosize="{ minRows: 10, maxRows: 16 }"/><pre v-else class="esb-xml-preview">{{ esbXmlPreview }}</pre></CopyableBlock></div>
+                    <div class="code-pane"><div class="code-title"><span>{{ testMode === 'UPSTREAM' ? '上游请求报文' : testMode === 'E2E' ? '行内 XML 入队报文' : '行内标准请求' }}</span><div v-if="testMode==='E2E'"><el-button v-if="esbXmlOverride !== null" text :icon="Refresh" title="恢复自动生成报文" aria-label="恢复自动生成报文" @click="resetEsbXml"/><small>ESB Adapter 消费并解析</small></div><small v-else>{{ testMode === 'UPSTREAM' ? '资源提供商处理应用发送' : '用于验证请求转换' }}</small></div><CopyableBlock :value="testMode === 'UPSTREAM' ? upstreamRequestText : testMode === 'PLATFORM' ? requestText : esbXmlText"><el-input v-if="testMode==='UPSTREAM'" v-model="upstreamRequestText" type="textarea" :autosize="{ minRows: 10, maxRows: 16 }"/><el-input v-else-if="testMode==='PLATFORM'" v-model="requestText" type="textarea" :autosize="{ minRows: 10, maxRows: 16 }"/><el-input v-else v-model="esbXmlText" type="textarea" :autosize="{ minRows: 10, maxRows: 16 }" aria-label="行内 XML 入队报文"/></CopyableBlock></div>
                     <div v-if="testMode==='PLATFORM'" class="code-pane readonly"><div class="code-title"><span>{{ testResult ? '上游实际响应' : '上游响应结构参考' }}</span><HelpTip title="编排测试范围" content="真实访问上游接口，验证报文转换和安全处理，不经过 ESB 和 Gateway。"/></div><CopyableBlock :value="testResult ? formatJson(testResult.upstreamResponse) : responseText"><pre>{{ testResult ? formatJson(testResult.upstreamResponse) : responseText }}</pre></CopyableBlock></div>
                     <div v-else-if="testMode==='E2E'" class="code-pane readonly"><div class="code-title"><span>{{ esbXmlResponsePreview ? '写回 ESB 的 XML 响应' : '解析后的标准请求' }}</span><small>{{ esbXmlResponsePreview ? 'ESB Adapter 已完成响应封装' : 'ESB Adapter 输出给 Gateway' }}</small></div><CopyableBlock :value="esbXmlResponsePreview || formatJson(standardRequestPreview)"><pre>{{ esbXmlResponsePreview || formatJson(standardRequestPreview) }}</pre></CopyableBlock></div>
                     <div v-else class="connection-target"><span>上游调用目标</span><strong>{{ detail.summary.upstreamUrl }}</strong><div><p><b>请求方式</b>{{ detail.summary.httpMethod }}</p><p><b>请求超时</b>{{ detail.timeoutMs }} ms</p><p><b>处理应用</b>{{ selectedSource.applicationName }}</p></div></div>
