@@ -310,3 +310,50 @@
 @media(max-width:900px){.service-origin-strip{grid-template-columns:1fr}.platform-service-origin{grid-template-columns:1fr}.platform-service-origin span{grid-row:auto}.platform-service-origin small{grid-column:auto}}
 .service-origin-strip > .el-button { grid-column: 2 / -1; justify-self: start; margin: 0; }
 @media (max-width:900px) { .service-origin-strip > .el-button { grid-column: 1; } }
+
+/* Platform-level configuration is intentionally separated from per-API orchestration. */
+.platform-management { min-width: 0; display: grid; gap: 14px; }
+.platform-management-nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; padding: 1px; border: 1px solid #d9e2e9; background: #d9e2e9; }
+.platform-management-nav > button { min-width: 0; min-height: 74px; display: flex; align-items: center; gap: 11px; padding: 14px 16px; border: 0; background: #fff; color: #607285; text-align: left; cursor: pointer; transition: background .16s ease, color .16s ease; }
+.platform-management-nav > button:hover { background: #f7fafc; color: #2b6387; }
+.platform-management-nav > button.active { color: #245c7d; background: #eef6fa; box-shadow: inset 0 -3px #2f7e9f; }
+.platform-management-nav > button > svg { width: 19px; height: 19px; flex: 0 0 auto; }
+.platform-management-nav > button > span { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.platform-management-nav strong { color: inherit; font-size: 13px; font-weight: 650; }
+.platform-management-nav small { overflow: hidden; color: #8493a0; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.platform-management-panel { min-width: 0; padding: 22px; }
+.platform-panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 18px; border-bottom: 1px solid #e6edf1; }
+.platform-panel-header h2 { margin: 4px 0 0; color: #203c50; font-size: 18px; font-weight: 650; }
+.platform-panel-header p { margin: 6px 0 0; color: #748594; font-size: 11px; line-height: 1.6; }
+.platform-eyebrow { color: #347c98; font: 10px/1.2 Menlo, Monaco, monospace; font-weight: 700; letter-spacing: 1.1px; }
+.platform-contract-banner { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 18px 0 12px; padding: 13px 15px; border: 1px solid #cbdde5; border-left: 3px solid #347e9e; background: #f5fafc; }
+.platform-contract-banner div { min-width: 0; }
+.platform-contract-banner strong, .platform-contract-banner span { display: block; }
+.platform-contract-banner strong { color: #244e68; font-size: 13px; }
+.platform-contract-banner span { margin-top: 4px; color: #718696; font-size: 10px; }
+.platform-contract-banner code { color: #527487; font: 10px Menlo, Monaco, monospace; }
+.platform-contract-table code, .platform-code-table code { color: #2f6f8f; font: 11px Menlo, Monaco, monospace; }
+.platform-contract-note { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding: 11px 13px; border: 1px solid #dbe7ed; background: #f8fbfc; color: #637b89; font-size: 11px; line-height: 1.55; }
+.platform-contract-note > svg { width: 15px; flex: 0 0 auto; color: #418269; }
+.platform-contract-note code { color: #36758d; font: 10px Menlo, Monaco, monospace; }
+.platform-toolbar { display: flex; align-items: center; gap: 8px; margin: 16px 0 10px; }
+.platform-toolbar .el-input { max-width: 360px; }
+.platform-code-table { width: 100%; }
+.platform-policy-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+.platform-policy-grid article { min-width: 0; min-height: 118px; padding: 15px; border: 1px solid #dce5eb; background: #fbfcfd; }
+.platform-policy-grid span, .platform-policy-grid strong, .platform-policy-grid small { display: block; }
+.platform-policy-grid span { color: #7b8d9a; font-size: 10px; }
+.platform-policy-grid strong { margin-top: 10px; color: #2a4f66; font-size: 14px; }
+.platform-policy-grid small { margin-top: 8px; color: #82919c; font-size: 10px; line-height: 1.5; }
+@media (max-width: 900px) {
+  .platform-management-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .platform-panel-header, .platform-contract-banner { align-items: flex-start; flex-direction: column; }
+  .platform-policy-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .platform-management-panel { padding: 16px; }
+  .platform-management-nav { grid-template-columns: minmax(0, 1fr); }
+  .platform-policy-grid { grid-template-columns: minmax(0, 1fr); }
+  .platform-toolbar { align-items: stretch; flex-direction: column; }
+  .platform-toolbar .el-input { max-width: none; }
+}
