@@ -42,7 +42,7 @@ function harness(overrides = {}, confirm = async () => true) {
       resourceValidationStatus: async () => ({ upstreamVerified: false }), ...overrides },
       { get: (target, name) => target[name] ?? (() => { throw new Error('Unexpected API call: ' + String(name)) }) })
   })
-  const state = vm.runInNewContext('(() => { ' + appJS + ' return { savedResponsePolicyBaseline, platformServiceDialog, platformServiceForm, serviceResourceOptions, serviceCreationResource, selectServiceResource, openPlatformServiceDialog, createPlatformService, validateUpstreamCapability, testResult, testError, testSucceeded, navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, activeMenu, activeTab, detail, canDeleteApi, deleteApiRestriction, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, allResourceApis, catalogProviders, filteredCatalogProviders, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, providerExpansion, sourceExpansion, isProviderExpanded, isSourceExpanded, sourceInterfaces, filteredProviderGroups, filteredSources, setAllSourcesExpanded, locateSelectedApi, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, apiForm, apiDialog, apiMetadataDialog, apiMetadataSaving, apiMetadataForm, openResourceApiMetadataEditor, saveResourceApiMetadata, mappingDirection, mappingIsPassThrough, mappingModeLabel, onResponseSourceChange, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
+  const state = vm.runInNewContext('(() => { ' + appJS + ' return { platformResponseContracts, contractEditorForm, contractEditorDialog, contractEditorSaving, platformContractFieldsDrawer, platformContractFields, selectedPlatformContractId, viewPlatformContract, editPlatformContract, savePlatformContract, platformManagementTab, openPlatformManagement, activeSidebarMenu, pageMeta, savedResponsePolicyBaseline, platformServiceDialog, platformServiceForm, serviceResourceOptions, serviceCreationResource, selectServiceResource, openPlatformServiceDialog, createPlatformService, validateUpstreamCapability, testResult, testError, testSucceeded, navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, activeMenu, activeTab, detail, canDeleteApi, deleteApiRestriction, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, allResourceApis, catalogProviders, filteredCatalogProviders, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, providerExpansion, sourceExpansion, isProviderExpanded, isSourceExpanded, sourceInterfaces, filteredProviderGroups, filteredSources, setAllSourcesExpanded, locateSelectedApi, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, apiForm, apiDialog, apiMetadataDialog, apiMetadataSaving, apiMetadataForm, openResourceApiMetadataEditor, saveResourceApiMetadata, mappingDirection, mappingIsPassThrough, mappingModeLabel, onResponseSourceChange, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
   state.selectedSourceId.value = 1
   state.activeMenu.value = 'resource'
   state.selectedInterfaceId.value = 11
@@ -63,6 +63,48 @@ function harness(overrides = {}, confirm = async () => true) {
   state.savedStandardServiceBaseline.value = JSON.stringify(state.standardServiceForm.value)
   return { ...state, messages }
 }
+
+test('标准响应查看打开所选记录的字段抽屉，编辑响应式记录不影响原列表并可保存', async () => {
+  const contract = { id: 7, contractCode: 'BANK_STANDARD', contractName: '行内标准响应', version: 1,
+    description: '', enabled: true, defaultContract: true,
+    fields: [{ key: 'data', label: '业务数据', type: 'OBJECT', required: true, description: '' }] }
+  let payload
+  const s = harness({
+    updatePlatformResponseContract: async (id, form) => { assert.equal(id, 7); payload = form; return form },
+    platformResponseContracts: async () => [payload]
+  })
+  s.platformResponseContracts.value = [contract, { ...contract, id: 8, contractName: '其他响应', defaultContract: false,
+    fields: [{ key: 'result', label: '结果', type: 'OBJECT', required: false, description: '' }] }]
+  assert.equal(s.platformContractFieldsDrawer.value, false)
+  s.viewPlatformContract(s.platformResponseContracts.value[1])
+  assert.equal(s.platformContractFieldsDrawer.value, true)
+  assert.equal(s.selectedPlatformContractId.value, 8)
+  assert.equal(s.platformContractFields.value[0].key, 'result')
+  s.editPlatformContract(s.platformResponseContracts.value[0])
+  assert.equal(s.contractEditorDialog.value, true)
+  s.contractEditorForm.value.contractName = '修改后的标准响应'
+  s.contractEditorForm.value.fields[0].label = '响应数据'
+  assert.equal(s.platformResponseContracts.value[0].fields[0].label, '业务数据')
+  assert.equal(s.platformResponseContracts.value[0].contractName, '行内标准响应')
+  await s.savePlatformContract()
+  assert.equal(payload.fields[0].label, '响应数据')
+  assert.equal(s.contractEditorDialog.value, false)
+  assert.equal(s.contractEditorSaving.value, false)
+  assert.equal(s.selectedPlatformContractId.value, 7)
+  assert.equal(s.platformResponseContracts.value[0].contractName, '修改后的标准响应')
+  assert.equal(s.messages.at(-1).kind, 'success')
+})
+
+test('平台管理子菜单在同一工作区切换，标题和高亮同步', () => {
+  const s = harness()
+  s.activeMenu.value = 'platform-management'
+  for (const [tab, label] of [['contract', '标准响应'], ['codes', '返回码字典'], ['security', '安全能力'], ['policies', '默认策略']]) {
+    s.openPlatformManagement(tab)
+    assert.equal(s.platformManagementTab.value, tab)
+    assert.equal(s.activeSidebarMenu.value, 'platform-management-' + tab)
+    assert.equal(s.pageMeta.value[0], label)
+  }
+})
 
 test('整报文封装和 HTTP 成功判定无需响应映射或业务码，切换模式保留原有映射', () => {
   const s = harness()

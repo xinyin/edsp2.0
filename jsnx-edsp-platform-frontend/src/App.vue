@@ -19,7 +19,7 @@ import type {
   DataSourceSummary, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult,
   MonitorAlert, MonitorPoint, MonitorSummary, PlatformResponseCode, ProviderAccount, ProviderSummary, ReleaseApproval, TestResult,
   ResourceApiDetail, ResourceApiSummary, ResourceDirectoryRow, ResourceDocument, UsageRecord, UsageReportRow, ValidationResult,
-  DataApplicationProvisionResult, DataApplicationProvisionSettings, SecurityAlgorithmDescriptor, SecurityPolicy, PlatformResponseContract, PlatformResponseField
+  DataApplicationProvisionResult, DataApplicationProvisionSettings, SecurityAlgorithmDescriptor, SecurityPolicy, PlatformResponseContract
 } from './types'
 
 const loggedIn = ref(false)
@@ -190,6 +190,7 @@ const platformManagementTab = ref<PlatformManagementTab>('contract')
 const platformCodeSearch = ref('')
 const platformResponseContracts = ref<PlatformResponseContract[]>([])
 const selectedPlatformContractId = ref(0)
+const platformContractFieldsDrawer = ref(false)
 const contractEditorDialog = ref(false)
 const contractEditorOriginalId = ref(0)
 const contractEditorSaving = ref(false)
@@ -200,6 +201,9 @@ const selectedPlatformContract = computed(() => platformResponseContracts.value.
   ?? platformResponseContracts.value.find(item => item.defaultContract)
   ?? platformResponseContracts.value[0])
 const platformContractFields = computed(() => selectedPlatformContract.value?.fields ?? [])
+const activeSidebarMenu = computed(() => activeMenu.value === 'platform-management'
+  ? `platform-management-${platformManagementTab.value}`
+  : activeMenu.value)
 const filteredPlatformResponseCodes = computed(() => {
   const keyword = platformCodeSearch.value.trim().toLowerCase()
   if (!keyword) return platformResponseCodes.value
@@ -469,7 +473,12 @@ const pageMeta = computed(() => ({
   monitor: ['运行监控', '监控 Gateway、资源提供商处理应用和上游服务的全链路耗时'],
   logs: ['链路追踪', '统一检索全行 API 调用，定位失败节点并查看节点级输入输出'],
   providers: ['资源方管理', '维护资源提供方资料、平台账号、角色与数据权限'],
-  'platform-management': ['平台管理', '维护平台级标准响应、返回码和安全能力目录'],
+  'platform-management': ({
+    contract: ['标准响应', '维护平台统一返回结构，点击查看可浏览字段定义。'],
+    codes: ['返回码字典', '维护平台返回码和结果状态，供标准服务引用。'],
+    security: ['安全能力', '查看平台已注册的签名和加密算法。密钥和接口启用范围在标准服务开发中配置。'],
+    policies: ['默认策略', '新接口采用以下初始策略，不会覆盖已有配置。接口级调整请进入标准服务开发。']
+  })[platformManagementTab.value],
   approvals: ['变更审批', '统一处理服务发布申请，审批通过后才会激活发布计划'],
   releases: ['服务发布', '集中查看版本档案、上线状态、下线和归档操作']
 }[activeMenu.value] ?? ['外部数据平台', '统一管理']))
@@ -1159,7 +1168,11 @@ async function navigate(menu: string) {
 }
 function openPlatformManagement(tab: PlatformManagementTab = 'contract') {
   platformManagementTab.value = tab
-  void navigate('platform-management')
+  if (activeMenu.value !== 'platform-management') void navigate('platform-management')
+}
+function viewPlatformContract(item: PlatformResponseContract) {
+  selectedPlatformContractId.value = item.id ?? 0
+  platformContractFieldsDrawer.value = true
 }
 async function refreshCurrentWorkspace() {
   if (guideBusy.value || testRunning.value || connectionSaving.value) return
@@ -2125,9 +2138,12 @@ async function savePlatformCode() {
   } catch (error) { ElMessage.error(error instanceof Error ? error.message : '保存失败') }
   finally { codeEditorSaving.value = false }
 }
+function clonePlatformContract(item: PlatformResponseContract): PlatformResponseContract {
+  return { ...item, fields: item.fields.map(field => ({ ...field })) }
+}
 function editPlatformContract(item?: PlatformResponseContract) {
   contractEditorOriginalId.value = item?.id ?? 0
-  contractEditorForm.value = item ? structuredClone(item) : {
+  contractEditorForm.value = item ? clonePlatformContract(item) : {
     contractCode: '', contractName: '', version: 1, description: '', enabled: true, defaultContract: false,
     fields: [{ key: '', label: '', type: 'STRING', required: false, description: '' }]
   }
@@ -2144,7 +2160,8 @@ function removeContractField(index: number) {
   contractEditorForm.value.fields.splice(index, 1)
 }
 async function savePlatformContract() {
-  const form = structuredClone(contractEditorForm.value)
+  if (contractEditorSaving.value) return
+  const form = clonePlatformContract(contractEditorForm.value)
   form.contractCode = form.contractCode.trim()
   form.contractName = form.contractName.trim()
   form.description = form.description.trim()
@@ -2731,7 +2748,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
   <el-container v-else class="app-shell" :class="{'sidebar-collapsed':sidebarCollapsed}" v-loading="loading">
     <el-aside :width="sidebarCollapsed ? '68px' : '224px'" class="sidebar" :class="{collapsed:sidebarCollapsed}">
       <div class="brand"><div class="brand-mark">ED</div><div class="brand-copy"><div class="brand-name">外部数据平台</div><div class="brand-sub">External Data Service</div></div><button class="sidebar-collapse-button" type="button" :title="sidebarCollapsed?'展开菜单':'收起菜单'" :aria-label="sidebarCollapsed?'展开菜单':'收起菜单'" :aria-expanded="!sidebarCollapsed" @click.stop="sidebarCollapsed=!sidebarCollapsed"><component :is="sidebarCollapsed?Expand:Fold"/></button></div>
-      <el-menu :default-active="activeMenu" :collapse="sidebarCollapsed" :collapse-transition="false" class="side-menu">
+      <el-menu :default-active="activeSidebarMenu" :collapse="sidebarCollapsed" :collapse-transition="false" class="side-menu">
         <el-menu-item aria-label="全局概览" index="overview" @click="navigate('overview')"><el-icon><DataBoard /></el-icon><template #title>全局概览</template></el-menu-item>
         <button v-if="!sidebarCollapsed" class="menu-section-label" type="button" @click="menuGroups.resources=!menuGroups.resources"><span>资源管理</span><ArrowRight :class="{expanded:menuGroups.resources}"/></button>
         <template v-if="menuGroups.resources||sidebarCollapsed">
@@ -2748,7 +2765,10 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
         </template>
         <button v-if="!sidebarCollapsed" class="menu-section-label" type="button" @click="menuGroups.platform=!menuGroups.platform"><span>平台管理</span><ArrowRight :class="{expanded:menuGroups.platform}"/></button>
         <template v-if="menuGroups.platform||sidebarCollapsed">
-          <el-menu-item aria-label="平台管理" index="platform-management" @click="navigate('platform-management')"><el-icon><Setting /></el-icon><template #title>平台管理</template></el-menu-item>
+          <el-menu-item aria-label="标准响应" index="platform-management-contract" @click="openPlatformManagement('contract')"><el-icon><DocumentChecked /></el-icon><template #title>标准响应</template></el-menu-item>
+          <el-menu-item aria-label="返回码字典" index="platform-management-codes" @click="openPlatformManagement('codes')"><el-icon><Tickets /></el-icon><template #title>返回码字典</template></el-menu-item>
+          <el-menu-item aria-label="安全能力" index="platform-management-security" @click="openPlatformManagement('security')"><el-icon><Lock /></el-icon><template #title>安全能力</template></el-menu-item>
+          <el-menu-item aria-label="默认策略" index="platform-management-policies" @click="openPlatformManagement('policies')"><el-icon><Setting /></el-icon><template #title>默认策略</template></el-menu-item>
         </template>
         <button v-if="!sidebarCollapsed" class="menu-section-label" type="button" @click="menuGroups.operations=!menuGroups.operations"><span>运行管理</span><ArrowRight :class="{expanded:menuGroups.operations}"/></button>
         <template v-if="menuGroups.operations||sidebarCollapsed">
@@ -2763,7 +2783,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
 
     <el-container>
       <el-header class="topbar">
-        <div class="crumbs"><span>外部数据平台</span><b>/</b><span>{{ pageMeta[0] }}</span></div>
+        <div class="crumbs"><span>外部数据平台</span><b>/</b><template v-if="activeMenu === 'platform-management'"><span>平台管理</span><b>/</b></template><span>{{ pageMeta[0] }}</span></div>
         <div class="top-actions"><el-tag v-if="demo" type="warning" effect="plain">演示数据模式</el-tag><el-tag type="info" effect="plain">TEST 环境</el-tag><el-dropdown><div class="user"><span>{{ user?.displayName }}</span><b>管</b></div><template #dropdown><el-dropdown-menu><el-dropdown-item @click="logout"><el-icon><SwitchButton /></el-icon>退出登录</el-dropdown-item></el-dropdown-menu></template></el-dropdown></div>
       </el-header>
 
@@ -2862,38 +2882,22 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
         </template>
         <template v-else-if="activeMenu === 'platform-management'">
           <section class="platform-management">
-            <div class="platform-management-nav" role="tablist" aria-label="平台配置分类">
-              <button type="button" :class="{active:platformManagementTab==='contract'}" @click="platformManagementTab='contract'"><DocumentChecked/><span><strong>标准响应</strong><small>平台统一返回结构</small></span></button>
-              <button type="button" :class="{active:platformManagementTab==='codes'}" @click="platformManagementTab='codes'"><Tickets/><span><strong>返回码字典</strong><small>{{ platformResponseCodes.length }} 个平台返回码</small></span></button>
-              <button type="button" :class="{active:platformManagementTab==='security'}" @click="platformManagementTab='security'"><Lock/><span><strong>安全能力</strong><small>{{ securityAlgorithms.length }} 个算法能力</small></span></button>
-              <button type="button" :class="{active:platformManagementTab==='policies'}" @click="platformManagementTab='policies'"><Setting/><span><strong>默认策略</strong><small>接口可单独覆盖</small></span></button>
-            </div>
-
             <section v-if="platformManagementTab==='contract'" class="platform-management-panel plain-panel">
-              <header class="platform-panel-header"><div><span class="platform-eyebrow">PLATFORM RESPONSE</span><h2>平台标准响应</h2><p>集中维护平台对外返回结构；标准服务开发只选择和引用。</p></div><el-button type="primary" :icon="Plus" @click="editPlatformContract()">新增标准响应</el-button></header>
-              <div class="platform-contract-banner"><div><strong>{{ selectedPlatformContract?.contractName || '暂无标准响应' }}</strong><span>{{ selectedPlatformContract ? `V${selectedPlatformContract.version} · ${selectedPlatformContract.defaultContract ? '默认使用' : '可选配置'}` : '请先新增标准响应' }}</span></div><code>JSON 对外结构 · ESB 返回时转换为 XML</code></div>
-              <el-table :data="platformResponseContracts" size="small" class="platform-contract-list" empty-text="暂无标准响应"><el-table-column prop="contractCode" label="编码" width="170"><template #default="{row}"><code>{{ row.contractCode }}</code></template></el-table-column><el-table-column prop="contractName" label="名称" min-width="170"/><el-table-column label="版本" width="80"><template #default="{row}">V{{ row.version }}</template></el-table-column><el-table-column label="状态" width="120"><template #default="{row}"><el-tag size="small" :type="row.defaultContract?'success':'info'">{{ row.defaultContract ? '默认使用' : row.enabled ? '可用' : '停用' }}</el-tag></template></el-table-column><el-table-column prop="description" label="说明" min-width="220" show-overflow-tooltip/><el-table-column label="操作" width="170" fixed="right"><template #default="{row}"><el-button text type="primary" @click="selectedPlatformContractId=row.id || 0">查看</el-button><el-button text type="primary" @click="editPlatformContract(row)">编辑</el-button><el-button text type="danger" :disabled="row.defaultContract" @click="deletePlatformContract(row)">删除</el-button></template></el-table-column></el-table>
-              <div v-if="selectedPlatformContract" class="platform-fields-heading"><strong>字段定义</strong><span>{{ selectedPlatformContract.contractName }} · 共 {{ platformContractFields.length }} 个字段</span></div>
-              <el-table v-if="selectedPlatformContract" :data="platformContractFields" size="small" class="platform-contract-table"><el-table-column prop="key" label="字段" width="180"><template #default="{row}"><code>{{ row.key }}</code></template></el-table-column><el-table-column prop="label" label="显示名称" width="150"/><el-table-column prop="type" label="类型" width="120"/><el-table-column label="必填" width="90"><template #default="{row}"><el-tag size="small" :type="row.required?'success':'info'" effect="plain">{{ row.required ? '是' : '否' }}</el-tag></template></el-table-column><el-table-column prop="description" label="说明" min-width="300"/></el-table>
-              <div class="platform-contract-note"><CircleCheck/><span>供应商报文和业务字段通过标准化映射写入 <code>data</code> 或指定目标节点；修改默认标准响应前请确认对外接口文档和 ESB XML 映射保持兼容。</span></div>
+              <div class="platform-list-toolbar"><el-button type="primary" :icon="Plus" @click="editPlatformContract()">新增标准响应</el-button></div>
+              <el-table :data="platformResponseContracts" size="small" class="platform-contract-list" empty-text="暂无标准响应"><el-table-column prop="contractCode" label="编码" width="180"><template #default="{row}"><code>{{ row.contractCode }}</code></template></el-table-column><el-table-column prop="contractName" label="名称" min-width="200"/><el-table-column label="版本" width="80"><template #default="{row}">V{{ row.version }}</template></el-table-column><el-table-column label="状态" width="120"><template #default="{row}"><el-tag size="small" :type="row.defaultContract?'success':'info'">{{ row.defaultContract ? '默认使用' : row.enabled ? '可用' : '停用' }}</el-tag></template></el-table-column><el-table-column prop="description" label="说明" min-width="220" show-overflow-tooltip/><el-table-column label="操作" width="170" fixed="right"><template #default="{row}"><el-button text type="primary" @click.stop="viewPlatformContract(row)">查看</el-button><el-button text type="primary" @click.stop="editPlatformContract(row)">编辑</el-button><el-button text type="danger" :disabled="row.defaultContract" @click.stop="deletePlatformContract(row)">删除</el-button></template></el-table-column></el-table>
             </section>
 
             <section v-else-if="platformManagementTab==='codes'" class="platform-management-panel plain-panel">
-              <header class="platform-panel-header"><div><span class="platform-eyebrow">RESPONSE CODE DICTIONARY</span><h2>平台返回码</h2><p>统一维护返回码和结果状态，标准服务开发中只选择和引用。</p></div><el-button type="primary" :icon="Plus" @click="editPlatformCode()">新增返回码</el-button></header>
-              <div class="platform-toolbar"><el-input v-model="platformCodeSearch" :prefix-icon="Search" clearable placeholder="搜索返回码、名称或说明"/><el-button :icon="Refresh" @click="refreshPlatformCodes">刷新</el-button></div>
+              <div class="platform-toolbar"><el-input v-model="platformCodeSearch" :prefix-icon="Search" clearable placeholder="搜索返回码、名称或说明"/><el-button type="primary" :icon="Plus" @click="editPlatformCode()">新增返回码</el-button></div>
               <el-table :data="filteredPlatformResponseCodes" v-loading="loading" size="small" class="platform-code-table" empty-text="暂无平台返回码"><el-table-column prop="code" label="返回码" width="180"><template #default="{row}"><code>{{ row.code }}</code></template></el-table-column><el-table-column prop="name" label="名称" min-width="160"/><el-table-column label="结果状态" width="110"><template #default="{row}"><el-tag size="small" :type="row.resultStatus==='HIT'?'success':row.resultStatus==='MISS'?'info':'danger'">{{ row.resultStatus==='HIT'?'命中':row.resultStatus==='MISS'?'未命中':'异常' }}</el-tag></template></el-table-column><el-table-column label="状态" width="90"><template #default="{row}">{{ row.enabled ? '启用' : '停用' }}</template></el-table-column><el-table-column prop="description" label="说明" min-width="240" show-overflow-tooltip/><el-table-column label="操作" width="130" fixed="right"><template #default="{row}"><el-button text type="primary" @click="editPlatformCode(row)">编辑</el-button><el-button text type="danger" @click="deletePlatformCode(row)">删除</el-button></template></el-table-column></el-table>
             </section>
 
             <section v-else-if="platformManagementTab==='security'" class="platform-management-panel plain-panel">
-              <header class="platform-panel-header"><div><span class="platform-eyebrow">SECURITY CAPABILITY</span><h2>安全能力目录</h2><p>平台统一注册的加密和签名能力，接口策略中按需选择。</p></div><el-tag type="info" effect="plain">运行时目录</el-tag></header>
               <el-table :data="securityAlgorithms" size="small" class="platform-code-table" empty-text="安全算法目录尚未加载"><el-table-column prop="code" label="能力编码" width="190"><template #default="{row}"><code>{{ row.code }}</code></template></el-table-column><el-table-column prop="name" label="名称" min-width="150"/><el-table-column label="类型" width="110"><template #default="{row}"><el-tag size="small" effect="plain">{{ row.kind==='ENCRYPT'?'加密':'签名' }}</el-tag></template></el-table-column><el-table-column prop="category" label="分类" width="150"/><el-table-column prop="description" label="说明" min-width="280" show-overflow-tooltip/><el-table-column label="来源" width="100"><template #default="{row}">{{ row.builtIn ? '内置' : '扩展' }}</template></el-table-column></el-table>
-              <div class="platform-contract-note"><Lock/><span>密钥、密钥引用和接口级启用范围仍在标准服务开发中绑定；本页只维护平台可用能力目录，避免业务人员在每个接口重复维护算法定义。</span></div>
             </section>
 
             <section v-else class="platform-management-panel plain-panel">
-              <header class="platform-panel-header"><div><span class="platform-eyebrow">DEFAULT POLICIES</span><h2>平台默认策略</h2><p>为接口提供统一默认值，特殊接口可在标准服务开发中覆盖。</p></div><el-tag type="info" effect="plain">统一默认</el-tag></header>
               <div class="platform-policy-grid"><article><span>响应封装</span><strong>按接口配置</strong><small>支持字段映射和完整报文封装</small></article><article><span>成功判定</span><strong>按供应商业务码</strong><small>接口可切换为 HTTP 成功即成功</small></article><article><span>超时策略</span><strong>继承数据源配置</strong><small>接口可设置单独超时时间</small></article><article><span>安全策略</span><strong>默认关闭</strong><small>仅在接口需要时启用加密或签名</small></article></div>
-              <div class="platform-contract-note"><Setting/><span>默认策略仅作为新接口的初始值，不会覆盖已保存的接口配置。接口级调整请进入“标准服务开发”。</span><el-button link type="primary" @click="navigate('service-development')">前往标准服务开发</el-button></div>
             </section>
           </section>
         </template>
@@ -3287,6 +3291,9 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
     </el-form>
     <template #footer><el-button @click="apiMetadataDialog=false">取消</el-button><el-button type="primary" :loading="apiMetadataSaving" @click="saveResourceApiMetadata">保存修改</el-button></template>
   </el-dialog>
+  <el-drawer v-model="platformContractFieldsDrawer" :title="selectedPlatformContract ? `${selectedPlatformContract.contractName} · 字段定义` : '字段定义'" size="min(820px,94vw)" append-to-body>
+    <el-table v-if="selectedPlatformContract" :data="platformContractFields" size="small" class="platform-contract-table" empty-text="暂无字段"><el-table-column type="index" label="#" width="54"/><el-table-column prop="key" label="字段编码" min-width="150"><template #default="{row}"><code>{{ row.key }}</code></template></el-table-column><el-table-column prop="label" label="显示名称" min-width="120"/><el-table-column prop="type" label="类型" width="100"/><el-table-column label="必填" width="76"><template #default="{row}"><el-tag size="small" :type="row.required?'success':'info'" effect="plain">{{ row.required ? '是' : '否' }}</el-tag></template></el-table-column><el-table-column prop="description" label="说明" min-width="180" show-overflow-tooltip/></el-table>
+  </el-drawer>
   <el-dialog v-model="contractEditorDialog" :title="contractEditorOriginalId ? '编辑标准响应' : '新增标准响应'" width="min(920px,94vw)" append-to-body>
     <el-form label-position="top">
       <div class="form-grid"><el-form-item label="标准响应编码" required><el-input v-model="contractEditorForm.contractCode" maxlength="64" placeholder="例如 EDSP_STANDARD"/></el-form-item><el-form-item label="标准响应名称" required><el-input v-model="contractEditorForm.contractName" maxlength="128" placeholder="例如 平台标准响应 V1"/></el-form-item><el-form-item label="版本号" required><el-input-number v-model="contractEditorForm.version" :min="1" :max="999"/></el-form-item><el-form-item label="默认使用"><el-switch v-model="contractEditorForm.defaultContract" active-text="是" inactive-text="否"/></el-form-item></div>
