@@ -10,7 +10,7 @@ PID_FILE="$DEPLOY_DIR/var/run/admin.pid"
 LOG_FILE="$DEPLOY_DIR/var/logs/admin.log"
 PORT=8081
 
-for command_name in mvn curl lsof; do
+for command_name in mvn curl lsof python3; do
   command -v "$command_name" >/dev/null || { echo "缺少命令：$command_name" >&2; exit 1; }
 done
 if [[ -z "${JAVA_HOME:-}" || ! -x "${JAVA_HOME:-}/bin/java" ]]; then
@@ -66,15 +66,24 @@ fi
 mkdir -p "$DEPLOY_DIR/var/run" "$DEPLOY_DIR/var/logs"
 if [[ -f "$LOG_FILE" ]]; then cp "$LOG_FILE" "$LOG_FILE.before-restart"; fi
 echo "启动新版 Admin..."
-(
-  cd "$MODULE_DIR"
-  nohup env -u SERVER_PORT SERVER_PORT="$PORT" \
-    NACOS_SERVER_ADDR="$NACOS_SERVER_ADDR" NACOS_USERNAME="$NACOS_USERNAME" NACOS_PASSWORD="$NACOS_PASSWORD" \
-    NACOS_CONFIG_USERNAME="$NACOS_CONFIG_USERNAME" NACOS_CONFIG_PASSWORD="$NACOS_CONFIG_PASSWORD" \
-    NACOS_DISCOVERY_USERNAME="$NACOS_DISCOVERY_USERNAME" NACOS_DISCOVERY_PASSWORD="$NACOS_DISCOVERY_PASSWORD" \
-    "$JAVA_HOME/bin/java" -jar "$JAR" >"$LOG_FILE" 2>&1 < /dev/null &
-  echo $! >"$PID_FILE"
-)
+export NACOS_SERVER_ADDR NACOS_USERNAME NACOS_PASSWORD
+export NACOS_CONFIG_USERNAME NACOS_CONFIG_PASSWORD
+export NACOS_DISCOVERY_USERNAME NACOS_DISCOVERY_PASSWORD
+python3 - "$MODULE_DIR" "$JAR" "$LOG_FILE" "$PORT" <<'PY' > "$PID_FILE"
+import os
+import subprocess
+import sys
+
+environment = os.environ.copy()
+environment["SERVER_PORT"] = sys.argv[4]
+with open(sys.argv[3], "ab") as log:
+    process = subprocess.Popen(
+        [os.path.join(environment["JAVA_HOME"], "bin", "java"), "-jar", sys.argv[2]],
+        cwd=sys.argv[1], env=environment, stdin=subprocess.DEVNULL,
+        stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
+    )
+    print(process.pid)
+PY
 new_pid="$(cat "$PID_FILE")"
 for _ in {1..40}; do
   if ! kill -0 "$new_pid" 2>/dev/null; then

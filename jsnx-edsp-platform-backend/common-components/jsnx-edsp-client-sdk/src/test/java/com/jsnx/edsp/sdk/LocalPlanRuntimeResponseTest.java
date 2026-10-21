@@ -6,12 +6,29 @@ import com.jsnx.edsp.plan.PlanSnapshot;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class LocalPlanRuntimeResponseTest {
+    @Test
+    void esbEntryRestoresSupplierTypesButJsonEntryKeepsSubmittedTypes() {
+        PlanSnapshot plan = new PlanSnapshot(1, "PRODUCTS", 1, "checksum", "https://supplier/products", 3000,
+                List.of(), List.of(), List.of(), "result.code", Map.of(), Instant.now(), "POST", Map.of(),
+                Map.of(), Map.of("data", Map.of("price", 59.99, "in_stock", true)));
+        LocalPlanRuntime runtime = new LocalPlanRuntime(new ObjectMapper(), "http://127.0.0.1:8081", "data-test");
+        Map<String, Object> request = Map.of("data", Map.of("price", "59.99", "in_stock", "true"));
+
+        Map<?, ?> esbData = (Map<?, ?>) runtime.prepare(plan, request, "ESB").upstreamRequest().get("data");
+        Map<?, ?> jsonData = (Map<?, ?>) runtime.prepare(plan, request, "HTTP").upstreamRequest().get("data");
+        assertEquals(new BigDecimal("59.99"), esbData.get("price"));
+        assertEquals(true, esbData.get("in_stock"));
+        assertEquals("59.99", jsonData.get("price"));
+        assertEquals("true", jsonData.get("in_stock"));
+    }
+
     @Test
     void upstreamOutputCodeDoesNotChangeOutcomeOrBilling() {
         List<Map<String, Object>> rules = List.of(

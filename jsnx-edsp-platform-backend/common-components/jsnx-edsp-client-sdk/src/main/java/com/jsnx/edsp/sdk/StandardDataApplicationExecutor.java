@@ -45,7 +45,7 @@ public final class StandardDataApplicationExecutor {
             long planStarted = System.nanoTime();
             PlanSnapshot selectedPlan = expectedPlanVersion == null
                     ? plans.current(interfaceCode) : plans.current(interfaceCode, expectedPlanVersion);
-            PrepareResponse prepared = plans.prepare(selectedPlan, request);
+            PrepareResponse prepared = plans.prepare(selectedPlan, request, entryChannel);
             preparedRequest = prepared.upstreamRequest();
             upstreamUrl = prepared.upstreamUrl();
             long planDuration = elapsed(planStarted);

@@ -5,6 +5,7 @@ import com.jsnx.edsp.crypto.CryptoSupport;
 import com.jsnx.edsp.crypto.SecretReferenceResolver;
 import org.junit.jupiter.api.Test;
 import java.nio.charset.StandardCharsets;
+import java.math.BigDecimal;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +16,47 @@ class PlanCoreTest {
             "0123456789abcdef0123456789abcdef".getBytes(StandardCharsets.UTF_8));
     private static final SecretReferenceResolver SECRETS = new SecretReferenceResolver(
             key -> "edsp.security.keys.test".equals(key) ? KEY : null);
+
+    @Test
+    void esbRequestRestoresNestedNumberAndBooleanTypesWithoutChangingTheParsedXml() {
+        Map<String, Object> request = Map.of("data", Map.of("price", "59.99", "in_stock", "true",
+                "name", "Wireless Headphones", "extra", "kept"));
+        Map<String, Object> example = Map.of("data", Map.of("price", 59.99, "in_stock", true,
+                "name", "Wireless Headphones"));
+
+        Map<String, Object> converted = XmlRequestTypeSupport.coerce(request, example);
+        Map<?, ?> data = (Map<?, ?>) converted.get("data");
+        assertEquals(new BigDecimal("59.99"), data.get("price"));
+        assertEquals(true, data.get("in_stock"));
+        assertEquals("kept", data.get("extra"));
+        assertEquals("59.99", ((Map<?, ?>) request.get("data")).get("price"));
+    }
+
+    @Test
+    void esbRequestRejectsInvalidTypedValuesAndConvertsArrayItems() {
+        Map<String, Object> example = Map.of("items", List.of(Map.of("price", 1, "active", true)));
+        Map<String, Object> converted = XmlRequestTypeSupport.coerce(Map.of("items", List.of(
+                Map.of("price", "1", "active", "false"), Map.of("price", "2", "active", "true"))), example);
+        List<?> items = (List<?>) converted.get("items");
+        assertEquals(new BigDecimal("2"), ((Map<?, ?>) items.get(1)).get("price"));
+        assertEquals(false, ((Map<?, ?>) items.get(0)).get("active"));
+        Map<String, Object> oneItem = XmlRequestTypeSupport.coerce(
+                Map.of("items", Map.of("price", "1", "active", "true")), example);
+        assertEquals(1, ((List<?>) oneItem.get("items")).size());
+        assertThrows(IllegalArgumentException.class, () -> XmlRequestTypeSupport.coerce(
+                Map.of("items", List.of(Map.of("price", "abc", "active", "true"))), example));
+        assertThrows(IllegalArgumentException.class, () -> XmlRequestTypeSupport.coerce(
+                Map.of("items", List.of(Map.of("price", "1", "active", "yes"))), example));
+    }
+
+    @Test
+    void adminBootstrapIncludesThePublishedUpstreamRequestExample() {
+        Map<String, Object> example = Map.of("data", Map.of("price", 59.99, "in_stock", true));
+        PlanSnapshot plan = PlanBootstrap.fromAdmin(Map.of("interfaceId", 12, "interfaceCode", "PRODUCTS",
+                "version", 1, "summary", Map.of("upstreamUrl", "https://provider/query"),
+                "upstreamRequestExample", example), new ObjectMapper());
+        assertEquals(example, plan.upstreamRequestExample());
+    }
 
     @Test
     void adminBootstrapPreservesProviderConnectionAndUpstreamMethod() {

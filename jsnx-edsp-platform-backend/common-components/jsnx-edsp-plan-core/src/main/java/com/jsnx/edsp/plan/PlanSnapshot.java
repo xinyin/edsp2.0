@@ -22,7 +22,8 @@ public record PlanSnapshot(
         Instant activatedAt,
         String upstreamHttpMethod,
         Map<String, Object> providerConnection,
-        Map<String, Object> responsePolicy) {
+        Map<String, Object> responsePolicy,
+        Map<String, Object> upstreamRequestExample) {
     public PlanSnapshot {
         requestMappings = requestMappings == null ? List.of() : List.copyOf(requestMappings);
         responseMappings = responseMappings == null ? List.of() : List.copyOf(responseMappings);
@@ -36,6 +37,19 @@ public record PlanSnapshot(
                 : Collections.unmodifiableMap(new LinkedHashMap<>(providerConnection));
         responsePolicy = Collections.unmodifiableMap(
                 ResponsePolicySupport.normalize(responsePolicy, !responseMappings.isEmpty()));
+        upstreamRequestExample = upstreamRequestExample == null ? Map.of()
+                : Collections.unmodifiableMap(new LinkedHashMap<>(upstreamRequestExample));
+    }
+
+    public PlanSnapshot(long interfaceId, String interfaceCode, int version, String checksum,
+                        String upstreamUrl, int timeoutMs, List<Map<String, Object>> requestMappings,
+                        List<Map<String, Object>> responseMappings, List<Map<String, Object>> responseCodes,
+                        String vendorCodePath, Map<String, Object> securityPolicy, Instant activatedAt,
+                        String upstreamHttpMethod, Map<String, Object> providerConnection,
+                        Map<String, Object> responsePolicy) {
+        this(interfaceId, interfaceCode, version, checksum, upstreamUrl, timeoutMs, requestMappings,
+                responseMappings, responseCodes, vendorCodePath, securityPolicy, activatedAt,
+                upstreamHttpMethod, providerConnection, responsePolicy, Map.of());
     }
 
     public PlanSnapshot(long interfaceId, String interfaceCode, int version, String checksum,

@@ -10,6 +10,7 @@ import com.jsnx.edsp.plan.PlanMappingSupport;
 import com.jsnx.edsp.plan.PlanSnapshot;
 import com.jsnx.edsp.plan.ResponsePolicySupport;
 import com.jsnx.edsp.plan.SecurityPlanSupport;
+import com.jsnx.edsp.plan.XmlRequestTypeSupport;
 import com.jsnx.edsp.transform.FieldTransformSupport;
 import org.springframework.web.client.RestClient;
 
@@ -47,9 +48,17 @@ public final class LocalPlanRuntime {
     }
 
     public PrepareResponse prepare(PlanSnapshot plan, Map<String, Object> standardRequest) {
+        return prepare(plan, standardRequest, null);
+    }
+
+    public PrepareResponse prepare(PlanSnapshot plan, Map<String, Object> standardRequest, String entryChannel) {
         Map<String, Object> mapped = PlanMappingSupport.apply(
                 standardRequest == null ? Map.of() : standardRequest, plan.requestMappings(), secrets);
-        Map<String, Object> secured = SecurityPlanSupport.apply(mapped, plan.securityPolicy(), secrets, mapper);
+        Map<String, Object> typedRequest = mapped;
+        if ("ESB".equalsIgnoreCase(entryChannel)) {
+            typedRequest = XmlRequestTypeSupport.coerce(mapped, plan.upstreamRequestExample());
+        }
+        Map<String, Object> secured = SecurityPlanSupport.apply(typedRequest, plan.securityPolicy(), secrets, mapper);
         return new PrepareResponse(plan.interfaceCode(), plan.version(), plan.upstreamUrl(),
                 plan.timeoutMs(), secured);
     }

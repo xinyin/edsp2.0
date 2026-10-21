@@ -9,6 +9,7 @@ import com.jsnx.edsp.plan.ResponsePolicySupport;
 import com.jsnx.edsp.plan.SecurityPlanSupport;
 import com.jsnx.edsp.plan.SecurityAlgorithm;
 import com.jsnx.edsp.plan.SecurityAlgorithmRegistry;
+import com.jsnx.edsp.plan.XmlRequestTypeSupport;
 import com.jsnx.edsp.transform.FieldTransformSupport;
 import jakarta.annotation.PostConstruct;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -1408,6 +1409,9 @@ public class InterfaceService {
         steps.add(new ExecutionStep("请求契约校验", "通过", "已装载保存的标准请求", 1));
         long mappingStarted = System.nanoTime();
         Map<String, Object> upstreamRequest = applyMappings(request.request(), effectiveMappings, "REQUEST");
+        if ("E2E".equals(testMode)) {
+            upstreamRequest = XmlRequestTypeSupport.coerce(upstreamRequest, detail.upstreamRequestExample());
+        }
         long mappingDurationMs = elapsedMs(mappingStarted);
         steps.add(new ExecutionStep("请求字段映射", "通过",
                 "按当前页面映射快照生成上游请求字段 " + upstreamRequest.size() + " 个",
@@ -2489,11 +2493,15 @@ public class InterfaceService {
         Map<String, Object> result = mapper.convertValue(plan, new TypeReference<>() {});
         Map<String, Object> connection = new LinkedHashMap<>(providerConnection(plan.summary()));
         List<Map<String, Object>> snapshots = jdbc.queryForList("""
-                SELECT JSON_EXTRACT(plan_json,'$.upstreamRequestHeaders') request_headers
+                SELECT JSON_EXTRACT(plan_json,'$.upstreamRequestHeaders') request_headers,
+                       JSON_EXTRACT(plan_json,'$.upstreamRequestExample') request_example
                 FROM release_plan_snapshot WHERE interface_id=? AND release_version=?
                 """, interfaceId, plan.version());
         if (!snapshots.isEmpty() && snapshots.get(0).get("request_headers") != null) {
             connection.put("requestHeaders", readRequestHeaders(snapshots.get(0).get("request_headers")));
+        }
+        if (!snapshots.isEmpty() && snapshots.get(0).get("request_example") != null) {
+            result.put("upstreamRequestExample", json.readMap(String.valueOf(snapshots.get(0).get("request_example"))));
         }
         result.put("providerConnection", connection);
         result.put("upstreamHttpMethod", publishedUpstreamMethod(plan.summary(), plan.version()));
@@ -2646,6 +2654,7 @@ public class InterfaceService {
         snapshot.put("interfaceCode", detail.summary().interfaceCode());
         snapshot.put("version", version);
         snapshot.put("requestMappings", detail.mappings().stream().filter(m -> "REQUEST".equals(m.direction())).toList());
+        snapshot.put("upstreamRequestExample", detail.upstreamRequestExample());
         snapshot.put("responseMappings", detail.mappings().stream().filter(m -> "RESPONSE".equals(m.direction())).toList());
         snapshot.put("summary", detail.summary());
         snapshot.put("upstreamHttpMethod", upstreamHttpMethod(detail.summary()));
