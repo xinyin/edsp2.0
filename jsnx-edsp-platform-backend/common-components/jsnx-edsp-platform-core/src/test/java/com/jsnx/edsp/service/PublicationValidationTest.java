@@ -118,6 +118,34 @@ class PublicationValidationTest {
     }
 
     @Test
+    void providerConnectionTimeoutIsReportedWithoutWhitelabelHtml() throws Exception {
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/internal/adapter/execute", exchange -> {
+            byte[] response = mapper.writeValueAsBytes(Map.of("success", false, "errorType", "TRANSPORT",
+                    "errorMessage", "连接上游超时（3000ms）；请检查网络连通性"));
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            when(jdbc.queryForList(contains("SELECT p.runtime_url FROM data_source"), eq(String.class), eq(1L)))
+                    .thenReturn(List.of("http://127.0.0.1:" + server.getAddress().getPort()));
+            when(jdbc.queryForList(contains("SELECT p.provider_code FROM"), eq(String.class), eq(1L)))
+                    .thenReturn(List.of("CSSJ"));
+            when(jdbc.queryForList(contains("SELECT source_code FROM"), eq(String.class), eq(1L)))
+                    .thenReturn(List.of("PRD_01"));
+            when(jdbc.queryForList(contains("p.access_mode,p.access_config"), eq(1L)))
+                    .thenReturn(List.of(Map.of("provider_code", "CSSJ", "access_mode", "HTTP", "access_config", "{}")));
+            assertThatThrownBy(() -> service.invokeThroughDataApplication(detail().summary(), REQUEST, "TIMEOUT-TRACE"))
+                    .hasMessageContaining("连接上游超时（3000ms）")
+                    .hasMessageNotContaining("Whitelabel")
+                    .hasMessageNotContaining("上游返回 HTTP 500");
+        } finally { server.stop(0); }
+    }
+
+    @Test
     void historicalTimestampWithoutConfigurationProofIsNotAccepted() {
         // The fixture has verifiedAt; a timestamp alone cannot prove which configuration was tested.
         when(jdbc.queryForList("SELECT verified_checksum FROM resource_api WHERE id=?", String.class, RESOURCE_ID))

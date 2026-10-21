@@ -1758,6 +1758,11 @@ public class InterfaceService {
 
     @SuppressWarnings("unchecked")
     private String describeUpstreamError(Map<String, Object> result) {
+        if (result.get("errorType") != null) {
+            String message = String.valueOf(result.getOrDefault("errorMessage", "处理应用调用失败"));
+            return "TRANSPORT".equals(result.get("errorType"))
+                    ? message : "资源提供商处理应用执行失败：" + message;
+        }
         int status = result.get("upstreamStatus") instanceof Number number ? number.intValue() : 500;
         Object rawBody = result.get("upstreamError");
         Map<String, Object> body = rawBody instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();

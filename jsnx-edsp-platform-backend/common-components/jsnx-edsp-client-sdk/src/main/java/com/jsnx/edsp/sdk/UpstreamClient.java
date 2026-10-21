@@ -6,6 +6,8 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.time.Duration;
+import java.net.SocketTimeoutException;
+import java.net.http.HttpTimeoutException;
 import java.util.Map;
 import java.util.List;
 import java.util.Locale;
@@ -93,7 +95,20 @@ public class UpstreamClient {
             catch (Exception ignored) { errorBody = Map.of("message", e.getResponseBodyAsString()); }
             throw new UpstreamCallException(e.getStatusCode().value(), errorBody, e);
         } catch (Exception e) {
+            for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+                if (cause instanceof HttpTimeoutException || cause instanceof SocketTimeoutException
+                        || cause.getMessage() != null && cause.getMessage().toLowerCase(Locale.ROOT).contains("timed out")) {
+                    throw new UpstreamTransportException("连接上游超时（" + timeoutMs
+                            + "ms）；请检查处理应用到供应商的网络连通性，或调整接口超时时间", e);
+                }
+            }
             throw new IllegalStateException("数据源应用调用上游失败：" + e.getMessage(), e);
+        }
+    }
+
+    public static final class UpstreamTransportException extends RuntimeException {
+        public UpstreamTransportException(String message, Throwable cause) {
+            super(message, cause);
         }
     }
 

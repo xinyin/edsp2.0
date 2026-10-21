@@ -62,6 +62,14 @@ public final class DraftAdapterExecutor {
             result.put("success", false);
             result.put("upstreamStatus", error.statusCode());
             result.put("upstreamError", error.responseBody());
+        } catch (UpstreamClient.UpstreamTransportException error) {
+            result.put("success", false);
+            result.put("errorType", "TRANSPORT");
+            result.put("errorMessage", error.getMessage());
+        } catch (IllegalStateException error) {
+            result.put("success", false);
+            result.put("errorType", "ADAPTER");
+            result.put("errorMessage", error.getMessage() == null ? "处理应用调用失败" : error.getMessage());
         }
         result.put("traceId", traceId);
         result.put("interfaceCode", text(payload.get("interfaceCode")));

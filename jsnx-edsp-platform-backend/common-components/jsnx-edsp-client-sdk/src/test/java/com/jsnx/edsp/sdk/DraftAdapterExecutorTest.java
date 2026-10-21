@@ -115,4 +115,24 @@ class DraftAdapterExecutorTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("资源提供商");
     }
+
+    @Test
+    void connectionTimeoutReturnsStructuredFailureInsteadOfHttp500Page() {
+        UpstreamClient upstream = new UpstreamClient(new ObjectMapper()) {
+            @Override
+            public Map<String, Object> execute(Map<String, Object> connection, String method, String url,
+                                               Map<String, Object> body, String traceId, int timeoutMs) {
+                throw new UpstreamTransportException("连接上游超时（3000ms）", new java.net.SocketTimeoutException());
+            }
+        };
+        Map<String, Object> result = DraftAdapterExecutor.executeForProvider("CSSJ", Map.of(
+                "providerCode", "CSSJ", "dataSourceCode", "PRD_01", "interfaceCode", "PRD_01_API_01",
+                "upstreamUrl", "https://reqres.in/api/collections/products/records?project_id=55411",
+                "upstreamHttpMethod", "POST", "requestBody", Map.of("data", Map.of("name", "Headphones")),
+                "timeoutMs", 3000
+        ), upstream);
+        assertThat(result).containsEntry("success", false).containsEntry("errorType", "TRANSPORT")
+                .containsEntry("errorMessage", "连接上游超时（3000ms）")
+                .containsEntry("interfaceCode", "PRD_01_API_01");
+    }
 }
