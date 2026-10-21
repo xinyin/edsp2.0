@@ -679,6 +679,14 @@ test('服务开发三阶段可以从上游接入切换到标准编排，发布�
   assert.equal(s.serviceDevelopmentStage.value, 'ORCHESTRATION')
   assert.equal(s.activeTab.value, 'request')
 })
+test('标准服务开发默认收起技术标识与内部路由，保留按需编辑入口', () => {
+  assert.match(appText, /class="service-configuration-details"/)
+  assert.match(appText, /<summary><span>接口信息<\/span>/)
+  assert.match(appText, /<div v-if="serviceDevelopmentStage==='UPSTREAM'" class="api-request-bar">/)
+  assert.match(appText, /<small v-if="activeMenu==='resource'">\{\{ apiItem\.interfaceCode \}\}<\/small>/)
+  assert.match(appText, /<div v-if="activeMenu==='resource'" class="api-context-meta">/)
+  assert.match(appText, /v-model="standardServiceForm\.servicePath" aria-label="内部服务路径"/)
+})
 test('主页面使用新的三阶段产品名称和运行管理名称', () => {
   assert.match(appText, /数据资源接入/)
   assert.match(appText, /标准服务开发/)

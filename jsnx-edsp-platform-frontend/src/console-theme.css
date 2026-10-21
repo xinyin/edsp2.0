@@ -804,6 +804,23 @@ button:focus-visible { outline: 2px solid #6ca8ec; outline-offset: 2px; }
 .service-resource-option strong { font-size: 13px; font-weight: 500; }
 .service-resource-option small { color: var(--muted); font-size: 12px; }
 .service-resource-lineage { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 16px; padding: 10px 12px; border: 1px solid var(--border); background: var(--workspace-chrome); color: var(--text-regular); font-size: 12px; overflow-wrap: anywhere; }
+.service-workbench .resource-api-item { grid-template-columns: minmax(0, 1fr); min-height: 42px; }
+.service-workbench .resource-api-item strong { line-height: 1.4; white-space: normal; overflow-wrap: anywhere; }
+.service-configuration-details { margin: 0 0 14px; border-bottom: 1px solid var(--border); }
+.service-configuration-details > summary { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 2px; color: var(--text-regular); font-size: 12px; cursor: pointer; list-style: none; }
+.service-configuration-details > summary::-webkit-details-marker { display: none; }
+.service-configuration-details > summary > svg { width: 14px; height: 14px; margin-left: auto; color: var(--muted); transition: transform .18s ease; }
+.service-configuration-details[open] > summary > svg { transform: rotate(90deg); }
+.service-configuration-content { padding: 12px 2px 16px; }
+.service-configuration-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; margin: 0 0 12px; }
+.service-configuration-facts > div { min-width: 0; }
+.service-configuration-facts dt { color: var(--muted); font-size: 12px; }
+.service-configuration-facts dd { margin: 4px 0 0; color: var(--text-regular); font-size: 13px; overflow-wrap: anywhere; }
+.service-configuration-facts code { font-size: 12px; overflow-wrap: anywhere; }
+.service-configuration-facts dd code + code, .service-configuration-facts dd > code:not(:first-child) { display: block; margin-top: 3px; color: var(--muted); }
+.service-route-fields { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.service-route-heading { display: flex; align-items: center; gap: 5px; margin-bottom: 10px; font-size: 12px; font-weight: 600; }
+@media (max-width: 760px) { .service-configuration-facts { grid-template-columns: minmax(0, 1fr); } }
 .internal-service-route { margin: 0 0 12px; }
 .internal-service-route summary { display: flex; align-items: center; gap: 6px; list-style-position: inside; }
 
