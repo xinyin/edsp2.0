@@ -1194,6 +1194,7 @@ public class InterfaceService {
 
     private void validateMappingConfiguration(FieldMapping mapping) {
         String type = valueOr(mapping.transformType(), "DIRECT").toUpperCase(Locale.ROOT);
+        if ("RESPONSE".equals(mapping.direction())) ResponsePolicySupport.targetPath(mapping.targetPath());
         if ("WHOLE_BODY".equals(type)) {
             if (!"RESPONSE".equals(mapping.direction()) || !"$".equals(mapping.sourcePath())) {
                 throw new IllegalArgumentException("完整报文规则仅用于响应映射，来源必须为 $");
@@ -1202,6 +1203,9 @@ public class InterfaceService {
             return;
         }
         Map<String, String> config = mapping.transformConfig() == null ? Map.of() : mapping.transformConfig();
+        if ("CONSTANT".equals(type) && valueOr(config.get("value"), "").isBlank()) {
+            throw new IllegalArgumentException("固定值不能为空：" + mapping.targetPath());
+        }
         if ("ENUM".equals(type) && config.isEmpty()) {
             throw new IllegalArgumentException("字段 " + mapping.sourcePath() + " 至少需要配置一条枚举转换规则");
         }
@@ -1455,16 +1459,18 @@ public class InterfaceService {
         ResponseCodeMapping code = "HTTP_SUCCESS".equals(responsePolicy.get("codeMode"))
                 ? new ResponseCodeMapping(null, "", String.valueOf(responsePolicy.get("successCode")), "HIT", false, false)
                 : executionCodes.stream().filter(c -> c.vendorCode().equals(vendorCode))
-                    .findFirst().orElse(new ResponseCodeMapping(null, vendorCode, "EXT-PLATFORM-ERROR", "ERROR", false, false));
+                    .findFirst().orElse(new ResponseCodeMapping(null, vendorCode, "EXT-VENDOR-ERROR", "ERROR", false, false));
         // MISS/ERROR responses carry no business data; required HIT mappings must not turn them into platform errors.
-        Map<String, Object> responseFields = "HIT".equals(code.resultStatus())
-                ? ResponsePolicySupport.fields(upstreamResponse,
+        Map<String, Object> responseFields = ResponsePolicySupport.fieldsForOutcome(upstreamResponse,
                     mapper.convertValue(effectiveMappings.stream().filter(m -> "RESPONSE".equals(m.direction())).toList(), new TypeReference<>() {}),
-                    responsePolicy, secretResolver) : Map.of();
+                    responsePolicy, code.resultStatus(), secretResolver);
+        code = new ResponseCodeMapping(code.id(), code.vendorCode(),
+                String.valueOf(responseFields.getOrDefault("code", code.standardCode())),
+                code.resultStatus(), code.retryable(), code.billable());
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("code", code.standardCode());
         response.put("message", "HIT".equals(code.resultStatus()) ? "查询成功"
-                : "MISS".equals(code.resultStatus()) ? "未查得企业信息" : "供应商返回异常");
+                : "MISS".equals(code.resultStatus()) ? "未查询到符合条件的数据" : "供应商返回异常");
         response.put("resultStatus", code.resultStatus());
         response.put("traceId", traceId);
         response.putAll(responseFields);

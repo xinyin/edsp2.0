@@ -42,7 +42,7 @@ function harness(overrides = {}, confirm = async () => true) {
       resourceValidationStatus: async () => ({ upstreamVerified: false }), ...overrides },
       { get: (target, name) => target[name] ?? (() => { throw new Error('Unexpected API call: ' + String(name)) }) })
   })
-  const state = vm.runInNewContext('(() => { ' + appJS + ' return { platformResponseContracts, contractEditorForm, contractEditorDialog, contractEditorSaving, platformContractFieldsDrawer, platformContractFields, selectedPlatformContractId, viewPlatformContract, editPlatformContract, savePlatformContract, platformManagementTab, openPlatformManagement, activeSidebarMenu, pageMeta, savedResponsePolicyBaseline, platformServiceDialog, platformServiceForm, serviceResourceOptions, serviceCreationResource, selectServiceResource, openPlatformServiceDialog, createPlatformService, validateUpstreamCapability, testResult, testError, testSucceeded, navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, activeMenu, activeTab, detail, canDeleteApi, deleteApiRestriction, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, allResourceApis, catalogProviders, filteredCatalogProviders, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, providerExpansion, sourceExpansion, isProviderExpanded, isSourceExpanded, sourceInterfaces, filteredProviderGroups, filteredSources, setAllSourcesExpanded, locateSelectedApi, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, apiForm, apiDialog, apiMetadataDialog, apiMetadataSaving, apiMetadataForm, openResourceApiMetadataEditor, saveResourceApiMetadata, mappingDirection, mappingIsPassThrough, mappingModeLabel, onResponseSourceChange, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
+  const state = vm.runInNewContext('(() => { ' + appJS + ' return { responseStructurePreview, platformResponseContracts, contractEditorForm, contractEditorDialog, contractEditorSaving, platformContractFieldsDrawer, platformContractFields, selectedPlatformContractId, viewPlatformContract, editPlatformContract, savePlatformContract, platformManagementTab, openPlatformManagement, activeSidebarMenu, pageMeta, savedResponsePolicyBaseline, platformServiceDialog, platformServiceForm, serviceResourceOptions, serviceCreationResource, selectServiceResource, openPlatformServiceDialog, createPlatformService, validateUpstreamCapability, testResult, testError, testSucceeded, navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, activeMenu, activeTab, detail, canDeleteApi, deleteApiRestriction, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, allResourceApis, catalogProviders, filteredCatalogProviders, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, providerExpansion, sourceExpansion, isProviderExpanded, isSourceExpanded, sourceInterfaces, filteredProviderGroups, filteredSources, setAllSourcesExpanded, locateSelectedApi, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, apiForm, apiDialog, apiMetadataDialog, apiMetadataSaving, apiMetadataForm, openResourceApiMetadataEditor, saveResourceApiMetadata, mappingDirection, mappingIsPassThrough, mappingModeLabel, onResponseSourceChange, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
   state.selectedSourceId.value = 1
   state.activeMenu.value = 'resource'
   state.selectedInterfaceId.value = 11
@@ -63,6 +63,48 @@ function harness(overrides = {}, confirm = async () => true) {
   state.savedStandardServiceBaseline.value = JSON.stringify(state.standardServiceForm.value)
   return { ...state, messages }
 }
+
+test('标准字段可取上游值或固定值，预览保留独立的业务结果状态', () => {
+  const s = harness()
+  s.detail.value.mappings = [
+    { ...mapping('RESPONSE'), sourcePath: 'result.code', targetPath: '$.code' },
+    { ...mapping('RESPONSE'), sourcePath: 'result.message', targetPath: '$.message' },
+    { ...mapping('RESPONSE'), sourcePath: 'absent', targetPath: '$.data.name' }
+  ]
+  s.detail.value.responseCodes = [{ vendorCode: 'V404', standardCode: 'BANK-MISS', resultStatus: 'MISS' }]
+  s.responseText.value = JSON.stringify({ result: { code: 'V404', message: '查无结果' } })
+  let preview = JSON.parse(s.responseStructurePreview.value)
+  assert.equal(preview.code, 'V404')
+  assert.equal(preview.message, '查无结果')
+  assert.equal(preview.resultStatus, 'MISS')
+  assert.deepEqual(preview.data, {})
+
+  const row = s.detail.value.mappings[0]
+  s.onResponseSourceChange(row, 'CONSTANT')
+  assert.equal(row.sourcePath, '$')
+  assert.equal(row.targetPath, '$.code')
+  row.transformConfig.value = 'FIXED-01'
+  preview = JSON.parse(s.responseStructurePreview.value)
+  assert.equal(preview.code, 'FIXED-01')
+  assert.equal(preview.resultStatus, 'MISS')
+  s.onResponseSourceChange(row, 'FIELD')
+  assert.equal(row.transformType, 'DIRECT')
+  assert.equal(row.targetPath, '$.code')
+  assert.equal(JSON.parse(s.responseStructurePreview.value).code, 'BANK-MISS')
+})
+
+test('标准字段预览拒绝对象赋值和运行字段覆盖，缺失的可选字段保留默认值', () => {
+  const s = harness()
+  s.detail.value.responsePolicy.codeMode = 'HTTP_SUCCESS'
+  s.responseText.value = '{"result":{"code":"OK"}}'
+  const row = { ...mapping('RESPONSE'), required: false, sourcePath: 'missing', targetPath: '$.code' }
+  s.detail.value.mappings = [row]
+  assert.equal(JSON.parse(s.responseStructurePreview.value).code, '0000')
+  s.detail.value.mappings[0].sourcePath = 'result'
+  assert.match(s.responseStructurePreview.value, /只能赋予文本、数字或布尔值/)
+  s.detail.value.mappings[0].targetPath = '$.traceId'
+  assert.match(s.responseStructurePreview.value, /不能覆盖平台运行字段/)
+})
 
 test('标准响应查看打开所选记录的字段抽屉，编辑响应式记录不影响原列表并可保存', async () => {
   const contract = { id: 7, contractCode: 'BANK_STANDARD', contractName: '行内标准响应', version: 1,

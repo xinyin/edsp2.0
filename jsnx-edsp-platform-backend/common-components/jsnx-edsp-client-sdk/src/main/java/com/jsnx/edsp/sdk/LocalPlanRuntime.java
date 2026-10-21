@@ -70,8 +70,9 @@ public final class LocalPlanRuntime {
         String standardCode = String.valueOf(code.getOrDefault("standardCode", "EXT-VENDOR-ERROR"));
         String resultStatus = String.valueOf(code.getOrDefault("resultStatus", "ERROR"));
         boolean billable = Boolean.parseBoolean(String.valueOf(code.getOrDefault("billable", false)));
-        Map<String, Object> responseFields = "HIT".equals(resultStatus)
-                ? ResponsePolicySupport.fields(response, plan.responseMappings(), plan.responsePolicy(), secrets) : Map.of();
+        Map<String, Object> responseFields = ResponsePolicySupport.fieldsForOutcome(response,
+                plan.responseMappings(), plan.responsePolicy(), resultStatus, secrets);
+        standardCode = String.valueOf(responseFields.getOrDefault("code", standardCode));
         Object mappedData = responseFields.get("data");
         Map<String, Object> standardData = mappedData instanceof Map<?, ?> map
                 ? mapper.convertValue(map, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {}) : Map.of();

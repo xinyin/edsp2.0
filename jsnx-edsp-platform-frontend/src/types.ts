@@ -110,7 +110,7 @@ export interface FieldMapping {
   direction: 'REQUEST' | 'RESPONSE'
   sourcePath: string
   targetPath: string
-  transformType: 'DIRECT' | 'ENUM' | 'DEFAULT' | 'DATE' | 'ENCRYPT' | 'SIGN' | 'WHOLE_BODY'
+  transformType: 'DIRECT' | 'ENUM' | 'DEFAULT' | 'DATE' | 'ENCRYPT' | 'SIGN' | 'WHOLE_BODY' | 'CONSTANT'
   transformConfig: Record<string, string>
   defaultValue?: string
   required: boolean

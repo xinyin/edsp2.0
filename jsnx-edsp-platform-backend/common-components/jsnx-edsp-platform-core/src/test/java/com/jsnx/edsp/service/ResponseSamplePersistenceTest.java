@@ -2,6 +2,7 @@ package com.jsnx.edsp.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jsnx.edsp.model.ApiModels.SaveMappingsRequest;
+import com.jsnx.edsp.model.ApiModels.FieldMapping;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.env.MockEnvironment;
@@ -19,6 +20,27 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.withSettings;
 
 class ResponseSamplePersistenceTest {
+    @Test
+    void savesUpstreamCodeAndFixedMessageAsOrdinaryResponseMappings() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class, withSettings().mockMaker("mock-maker-subclass"));
+        when(jdbc.queryForMap(contains("FOR UPDATE"), eq(42L)))
+                .thenReturn(Map.of("status", "DRAFT"));
+        ObjectMapper mapper = new ObjectMapper();
+        InterfaceService service = new InterfaceService(jdbc, new JsonSupport(mapper), mapper,
+                new PublishedPlanRegistry(), new MockEnvironment());
+        List<FieldMapping> mappings = List.of(
+                new FieldMapping(null, "RESPONSE", "$.result.code", "$.code", "DIRECT", Map.of(), null, true, 1),
+                new FieldMapping(null, "RESPONSE", "$", "$.message", "CONSTANT", Map.of("value", "处理完成"), null, false, 2));
+
+        service.saveMappings(42L, new SaveMappingsRequest(mappings, "/api/query", "POST", Map.of(),
+                Map.of("result", Map.of("code", "200"))));
+
+        verify(jdbc).update(contains("INSERT INTO field_mapping"), eq(42L), eq("RESPONSE"),
+                eq("$.result.code"), eq("$.code"), eq("DIRECT"), eq(null), eq(null), eq(true), eq(1));
+        verify(jdbc).update(contains("INSERT INTO field_mapping"), eq(42L), eq("RESPONSE"),
+                eq("$"), eq("$.message"), eq("CONSTANT"), eq("{\"value\":\"处理完成\"}"), eq(null), eq(false), eq(2));
+    }
+
     @Test
     void savesEditedResponseSampleOnlyOnTheStandardServiceDraft() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class, withSettings().mockMaker("mock-maker-subclass"));

@@ -583,16 +583,35 @@ const responseStructurePreview = computed(() => {
   try {
     const supplier = JSON.parse(responseText.value) as Record<string, unknown>
     if (!supplier || typeof supplier !== 'object' || Array.isArray(supplier)) return '请填写 JSON 对象样例'
-    const result: Record<string, unknown> = { code: detail.value.responsePolicy.successCode || '0000',
-      message: '查询成功', resultStatus: 'HIT', traceId: 'PREVIEW' }
+    const policy = detail.value.responsePolicy
+    const upstreamCode = readPreviewPath(supplier, detail.value.vendorCodePath)
+    const matched = detail.value.responseCodes.find(item => item.vendorCode === String(upstreamCode ?? ''))
+    const status = policy.codeMode === 'HTTP_SUCCESS' ? 'HIT' : matched?.resultStatus || 'ERROR'
+    const result: Record<string, unknown> = {
+      code: policy.codeMode === 'HTTP_SUCCESS' ? policy.successCode || '0000' : matched?.standardCode || 'EXT-VENDOR-ERROR',
+      message: status === 'HIT' ? '查询成功' : status === 'MISS' ? '未查询到符合条件的数据' : '供应商返回异常',
+      resultStatus: status, traceId: 'PREVIEW' }
     const rows = detail.value.mappings.filter(item => item.direction === 'RESPONSE')
-    if (!rows.length) result.data = supplier
+    if (!rows.length && status === 'HIT') result.data = supplier
     for (const row of rows) {
-      const source = row.transformType === 'WHOLE_BODY' ? supplier : readPreviewPath(supplier, row.sourcePath)
-      if (source === undefined || !row.targetPath.trim()) continue
+      if (!row.targetPath.trim()) continue
       const path = row.targetPath.startsWith('$.') ? row.targetPath.slice(2)
         : row.targetPath === 'data' || row.targetPath.startsWith('data.') ? row.targetPath : `data.${row.targetPath}`
       if (!/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/.test(path)) continue
+      if (['code', 'message', 'resultStatus', 'traceId', 'msg', 'response_code', 'resp_code', 'status'].includes(path.split('.')[0])
+        && !['code', 'message'].includes(path)) return `不能覆盖平台运行字段或将标准字段改为对象：${row.targetPath}`
+      if (status !== 'HIT' && !['code', 'message'].includes(path)) continue
+      let source = row.transformType === 'WHOLE_BODY' ? supplier : readPreviewPath(supplier, row.sourcePath)
+      if (source == null || String(source).trim() === '') source = row.defaultValue
+      if (row.transformType === 'CONSTANT') source = row.transformConfig?.value ?? source
+      if (row.transformType === 'ENUM' && source != null) source = row.transformConfig?.[String(source)] ?? row.defaultValue ?? source
+      if (row.required && (source == null || String(source).trim() === '')) return `必填映射字段缺失：${row.sourcePath}`
+      if (source == null) continue
+      if (['code', 'message'].includes(path)) {
+        if (typeof source === 'object') return `平台响应字段 $.${path} 只能赋予文本、数字或布尔值`
+        if (String(source).trim() === '') continue
+        source = String(source)
+      }
       writePreviewPath(result, path, source)
     }
     if (!('data' in result)) result.data = {}
@@ -2032,10 +2051,15 @@ function onResponseSourceChange(row: FieldMapping, value: string) {
     row.targetPath = row.targetPath?.trim() || '$.data'
     row.transformConfig = {}
     row.required = false
-  } else if (row.transformType === 'WHOLE_BODY') {
+  } else if (value === 'CONSTANT') {
+    row.transformType = 'CONSTANT'
+    row.sourcePath = '$'
+    row.transformConfig = { value: '' }
+    row.required = false
+  } else if (row.transformType === 'WHOLE_BODY' || row.transformType === 'CONSTANT') {
     row.transformType = 'DIRECT'
     row.sourcePath = ''
-    row.targetPath = ''
+    row.transformConfig = {}
   }
 }
 function deleteMapping(row: FieldMapping) {
@@ -3096,19 +3120,19 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                     <div><el-button :icon="DocumentChecked" @click="validateConfig">校验配置</el-button><el-button :icon="Plus" @click="startMappingConfiguration">{{ mappingIsPassThrough ? '新增映射' : '新增规则' }}</el-button></div>
                   </div>
                   <div class="mapping-sample-panel"><div class="mapping-sample-head"><div><DocumentCopy/><span><strong>{{ mappingDirection === 'REQUEST' ? '行内标准请求样例' : '上游原始响应样例' }}</strong><HelpTip title="报文与映射" :content="mappingDirection==='REQUEST' ? '填写行内标准请求 JSON，可从样例批量生成字段映射。嵌套对象和数组请按实际路径配置。' : '可编辑或导入上游响应 JSON 样例，再生成映射规则。修改仅保存到当前标准服务草稿。'"/></span></div><div><input v-if="mappingDirection === 'RESPONSE'" ref="responseFileInput" type="file" accept=".json,application/json" class="visually-hidden" aria-label="选择响应 JSON 文件" @change="importUpstreamResponse"/><el-button v-if="mappingDirection === 'RESPONSE'" :icon="Upload" @click="responseFileInput?.click()">导入 JSON</el-button><el-button type="primary" plain :icon="DocumentCopy" @click="generateMappingsFromSample">从样例生成映射</el-button></div></div><CopyableBlock :value="mappingDirection === 'REQUEST' ? requestText : responseText"><el-input v-if="mappingDirection === 'REQUEST'" v-model="requestText" type="textarea" :autosize="{minRows:5,maxRows:10}"/><el-input v-else v-model="responseText" type="textarea" :autosize="{minRows:5,maxRows:10}" aria-label="上游原始响应样例"/></CopyableBlock></div>
-                  <div class="mapping-summary"><div><strong>{{ mappingIsPassThrough ? '默认处理' : filteredMappings.length }}</strong><span>{{ mappingIsPassThrough ? '当前处理模式' : '映射规则' }}</span></div><div><strong>{{ filteredMappings.filter(item => item.required).length }}</strong><span>必填字段</span></div><HelpTip title="映射规则" content="请求无映射时按原字段透传；响应无映射时将完整供应商报文放入 data。响应目标路径以 $ 表示平台返回根节点，例如 $.payload.raw。"/></div>
+                  <div class="mapping-summary"><div><strong>{{ mappingIsPassThrough ? '默认处理' : filteredMappings.length }}</strong><span>{{ mappingIsPassThrough ? '当前处理模式' : '映射规则' }}</span></div><div><strong>{{ filteredMappings.filter(item => item.required).length }}</strong><span>必填字段</span></div><HelpTip title="映射规则" content="请求无映射时按原字段透传；响应无映射时将完整报文放入 data。以 $. 开头表示平台根节点。$.code、$.message 可取上游字段或固定值，未配置或可选来源为空时沿用平台默认值。结果状态和计量仍按统一返回码规则判定。"/></div>
                   <div class="mapping-board">
                     <div class="mapping-board-head"><span>#</span><span>{{ mappingDirection === 'REQUEST' ? '行内标准字段' : '供应商响应来源' }}</span><span>处理方式</span><span>{{ mappingDirection === 'REQUEST' ? '上游请求字段' : '写入平台响应' }}</span><span>属性</span></div>
                     <div v-if="mappingIsPassThrough" class="mapping-empty"><Connection/><strong>{{ mappingDirection === 'REQUEST' ? '请求按原字段透传' : '完整响应默认写入 data' }}</strong><el-button type="primary" :icon="Plus" @click="startMappingConfiguration">新增映射</el-button></div>
                     <div v-for="(row,index) in filteredMappings" :key="mappingRowKey(row)" class="mapping-row" :class="{'is-rule-open':activeMappingRuleRow===row}">
                       <span class="mapping-index">{{ String(index + 1).padStart(2, '0') }}</span>
-                      <div class="field-cell"><label>{{ mappingDirection === 'REQUEST' ? '行内标准字段' : '供应商响应来源' }}</label><el-select v-if="mappingDirection==='RESPONSE'" :model-value="row.transformType==='WHOLE_BODY' ? 'WHOLE_BODY' : 'FIELD'" aria-label="响应来源类型" @change="onResponseSourceChange(row,$event)"><el-option label="完整供应商报文" value="WHOLE_BODY"/><el-option label="指定字段 / 对象" value="FIELD"/></el-select><el-input v-if="row.transformType!=='WHOLE_BODY'" v-model="row.sourcePath" :placeholder="mappingDirection==='RESPONSE' ? '$.support.url' : '来源字段路径'" aria-label="来源字段路径" /></div>
-                      <div class="transform-cell"><label class="mapping-rule-label">处理方式</label><span v-if="row.transformType==='WHOLE_BODY'" class="whole-body-method">原样复制</span><el-select v-else v-model="row.transformType" aria-label="转换规则" :teleported="false" :persistent="true" placement="bottom-start" popper-class="mapping-rule-dropdown" @visible-change="onMappingRuleVisibleChange(row, $event)" @change="onTransformTypeChange(row)"><el-option-group label="基础转换"><el-option label="直接映射" value="DIRECT"/><el-option label="枚举转换" value="ENUM"/><el-option label="默认值" value="DEFAULT"/><el-option label="日期格式化" value="DATE"/></el-option-group><el-option-group label="安全处理"><el-option label="加密处理" value="ENCRYPT"/><el-option label="签名计算" value="SIGN"/></el-option-group></el-select><span class="connector-arrow" aria-hidden="true">→</span></div>
-                      <div class="field-cell"><label>{{ mappingDirection === 'REQUEST' ? '上游请求字段' : '平台响应目标路径' }}</label><el-input v-model="row.targetPath" :placeholder="mappingDirection==='RESPONSE' ? '$.payload.supplierResult' : '目标字段路径'" aria-label="目标字段路径" /><div v-if="row.transformType === 'ENUM'" class="enum-summary" :class="{ready:Object.keys(row.transformConfig ?? {}).length}"><div><span>枚举规则</span><strong>{{ enumSummary(row) }}</strong></div><el-button size="small" plain @click="openEnumDrawer(row)">{{ Object.keys(row.transformConfig ?? {}).length ? '修改配置' : '立即配置' }}</el-button></div><div v-else-if="row.transformType === 'ENCRYPT' || row.transformType === 'SIGN'" class="algorithm-summary" :class="{ready:algorithmConfigured(row)}"><div><span>{{ row.transformType === 'ENCRYPT' ? '加密算法' : '签名算法' }}</span><strong>{{ algorithmName(row) }}</strong></div><el-button size="small" plain @click="openAlgorithmDrawer(row)">{{ algorithmConfigured(row) ? '修改配置' : '立即配置' }}</el-button></div><el-input v-else-if="row.transformType !== 'WHOLE_BODY'" class="enum-input" v-model="row.defaultValue" placeholder="默认值（可选）" /></div>
+                      <div class="field-cell"><label>{{ mappingDirection === 'REQUEST' ? '行内标准字段' : '供应商响应来源' }}</label><el-select v-if="mappingDirection==='RESPONSE'" :model-value="['WHOLE_BODY','CONSTANT'].includes(row.transformType) ? row.transformType : 'FIELD'" aria-label="响应来源类型" @change="onResponseSourceChange(row,$event)"><el-option label="完整供应商报文" value="WHOLE_BODY"/><el-option label="指定字段 / 对象" value="FIELD"/><el-option label="固定值" value="CONSTANT"/></el-select><el-input v-if="row.transformType==='CONSTANT'" v-model="row.transformConfig.value" placeholder="填写固定值" aria-label="响应固定值"/><el-input v-else-if="row.transformType!=='WHOLE_BODY'" v-model="row.sourcePath" :placeholder="mappingDirection==='RESPONSE' ? '$.support.url' : '来源字段路径'" aria-label="来源字段路径" /></div>
+                      <div class="transform-cell"><label class="mapping-rule-label">处理方式</label><span v-if="row.transformType==='WHOLE_BODY' || row.transformType==='CONSTANT'" class="whole-body-method">{{ row.transformType==='CONSTANT' ? '固定赋值' : '原样复制' }}</span><el-select v-else v-model="row.transformType" aria-label="转换规则" :teleported="false" :persistent="true" placement="bottom-start" popper-class="mapping-rule-dropdown" @visible-change="onMappingRuleVisibleChange(row, $event)" @change="onTransformTypeChange(row)"><el-option-group label="基础转换"><el-option label="直接映射" value="DIRECT"/><el-option label="枚举转换" value="ENUM"/><el-option label="默认值" value="DEFAULT"/><el-option label="日期格式化" value="DATE"/></el-option-group><el-option-group label="安全处理"><el-option label="加密处理" value="ENCRYPT"/><el-option label="签名计算" value="SIGN"/></el-option-group></el-select><span class="connector-arrow" aria-hidden="true">→</span></div>
+                      <div class="field-cell"><label>{{ mappingDirection === 'REQUEST' ? '上游请求字段' : '平台响应目标路径' }}</label><el-input v-model="row.targetPath" :placeholder="mappingDirection==='RESPONSE' ? '$.data、$.code 或 $.message' : '目标字段路径'" aria-label="目标字段路径" /><div v-if="row.transformType === 'ENUM'" class="enum-summary" :class="{ready:Object.keys(row.transformConfig ?? {}).length}"><div><span>枚举规则</span><strong>{{ enumSummary(row) }}</strong></div><el-button size="small" plain @click="openEnumDrawer(row)">{{ Object.keys(row.transformConfig ?? {}).length ? '修改配置' : '立即配置' }}</el-button></div><div v-else-if="row.transformType === 'ENCRYPT' || row.transformType === 'SIGN'" class="algorithm-summary" :class="{ready:algorithmConfigured(row)}"><div><span>{{ row.transformType === 'ENCRYPT' ? '加密算法' : '签名算法' }}</span><strong>{{ algorithmName(row) }}</strong></div><el-button size="small" plain @click="openAlgorithmDrawer(row)">{{ algorithmConfigured(row) ? '修改配置' : '立即配置' }}</el-button></div><el-input v-else-if="!['WHOLE_BODY','CONSTANT'].includes(row.transformType)" class="enum-input" v-model="row.defaultValue" placeholder="默认值（可选）" /></div>
                       <div class="mapping-actions"><el-switch v-model="row.required" inline-prompt active-text="必" inactive-text="选" aria-label="必填字段" /><el-button :icon="Delete" text type="danger" aria-label="删除映射" @click="deleteMapping(row)" /></div>
                     </div>
                   </div>
-                  <div v-if="mappingDirection==='RESPONSE'" class="response-preview-panel"><div class="section-toolbar"><strong>平台响应结构预览</strong><HelpTip title="结构预览" content="展示原样复制和直接映射的目标层级。枚举、日期、安全算法及真实返回码以链路测试结果为准。"/></div><CopyableBlock :value="responseStructurePreview"><pre>{{ responseStructurePreview }}</pre></CopyableBlock></div>
+                  <div v-if="mappingDirection==='RESPONSE'" class="response-preview-panel"><div class="section-toolbar"><strong>平台响应结构预览</strong><HelpTip title="结构预览" content="根据响应样例和当前规则预览，支持直接取值、固定值、枚举和返回码判定。日期及安全算法的实际结果请执行链路测试查看。"/></div><CopyableBlock :value="responseStructurePreview"><pre>{{ responseStructurePreview }}</pre></CopyableBlock></div>
                   <div v-if="validation" class="validation-result" :class="validation.valid ? 'valid' : 'invalid'"><el-icon><CircleCheck /></el-icon><div><strong>{{ validation.valid ? '配置校验通过' : '配置校验失败' }}</strong><span v-for="item in [...validation.errors, ...validation.warnings]" :key="item">{{ item }}</span></div></div>
                 </el-tab-pane>
                 <el-tab-pane v-if="serviceDevelopmentStage==='ORCHESTRATION'" name="codes" label="结果码映射">

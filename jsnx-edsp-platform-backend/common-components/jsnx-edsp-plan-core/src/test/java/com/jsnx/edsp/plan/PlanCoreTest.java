@@ -85,7 +85,8 @@ class PlanCoreTest {
         Map<String, Object> result = ResponsePolicySupport.fields(upstream, rules,
                 Map.of("dataMode", "FIELD_MAPPING"), null);
         assertEquals(Map.of("payload", Map.of("supplierResult", upstream)), result);
-        assertThrows(IllegalArgumentException.class, () -> ResponsePolicySupport.targetPath("$.code"));
+        assertEquals("code", ResponsePolicySupport.targetPath("$.code"));
+        assertThrows(IllegalArgumentException.class, () -> ResponsePolicySupport.targetPath("$.traceId"));
         assertThrows(IllegalArgumentException.class, () -> ResponsePolicySupport.validateTargets(List.of(
                 rules.get(0), Map.of("sourcePath", "page", "targetPath", "$.payload.supplierResult.page"))));
     }
@@ -97,6 +98,53 @@ class PlanCoreTest {
                 List.of(Map.of("sourcePath", "data.company", "targetPath", "data.name", "transformType", "DIRECT")),
                 ResponsePolicySupport.normalize(Map.of("dataMode", "FIELD_MAPPING"), true), null);
         assertEquals(Map.of("name", "Acme"), data);
+    }
+
+    @Test
+    void standardEnvelopeAllowsScalarAssignmentAndStillProtectsRuntimeFields() {
+        assertEquals("message", ResponsePolicySupport.targetPath("$.message"));
+        assertEquals("data.code", ResponsePolicySupport.targetPath("code"));
+        for (String path : List.of("$.traceId", "$.resultStatus", "$.code.child", "$.message.child")) {
+            assertThrows(IllegalArgumentException.class, () -> ResponsePolicySupport.targetPath(path));
+        }
+        Map<String, Object> rule = Map.of("sourcePath", "result", "targetPath", "$.code", "transformType", "DIRECT");
+        assertThrows(IllegalArgumentException.class, () -> ResponsePolicySupport.fields(
+                Map.of("result", Map.of("code", "ok")), List.of(rule), Map.of(), null));
+        assertThrows(IllegalArgumentException.class, () -> ResponsePolicySupport.fields(
+                Map.of("result", List.of("ok")), List.of(rule), Map.of(), null));
+        assertEquals(Map.of("code", "200"), ResponsePolicySupport.fields(
+                Map.of("result", 200), List.of(rule), Map.of(), null));
+        assertEquals(Map.of(), ResponsePolicySupport.fields(Map.of(), List.of(rule), Map.of(), null));
+        assertThrows(IllegalArgumentException.class, () -> ResponsePolicySupport.validateTargets(List.of(
+                Map.of("sourcePath", "$", "targetPath", "$.message", "transformType", "WHOLE_BODY"))));
+        assertThrows(IllegalArgumentException.class, () -> ResponsePolicySupport.validateTargets(List.of(rule, rule)));
+    }
+
+    @Test
+    void missAndErrorApplyEnvelopeRulesWithoutEvaluatingRequiredBusinessMappings() {
+        List<Map<String, Object>> rules = List.of(
+                Map.of("sourcePath", "status", "targetPath", "$.code", "transformType", "DIRECT"),
+                Map.of("sourcePath", "$", "targetPath", "$.message", "transformType", "CONSTANT",
+                        "transformConfig", Map.of("value", "固定说明")),
+                Map.of("sourcePath", "absent", "targetPath", "$.data.name", "transformType", "DIRECT", "required", true));
+        for (String status : List.of("MISS", "ERROR")) {
+            assertEquals(Map.of("code", "404", "message", "固定说明"), ResponsePolicySupport.fieldsForOutcome(
+                    Map.of("status", 404), rules, Map.of(), status, null));
+        }
+        assertThrows(IllegalArgumentException.class, () -> ResponsePolicySupport.fieldsForOutcome(
+                Map.of("status", 200), rules, Map.of(), "HIT", null));
+    }
+
+    @Test
+    void wholeBodyMappingCanBeCombinedWithEnvelopeAssignments() {
+        Map<String, Object> upstream = Map.of("result", Map.of("code", "200", "message", "success"),
+                "data", List.of(Map.of("id", 1)));
+        List<Map<String, Object>> rules = List.of(
+                Map.of("sourcePath", "$", "targetPath", "$.data", "transformType", "WHOLE_BODY"),
+                Map.of("sourcePath", "$.result.code", "targetPath", "$.code", "transformType", "DIRECT"),
+                Map.of("sourcePath", "$.result.message", "targetPath", "$.message", "transformType", "DIRECT"));
+        assertEquals(Map.of("data", upstream, "code", "200", "message", "success"),
+                ResponsePolicySupport.fieldsForOutcome(upstream, rules, Map.of("dataMode", "FIELD_MAPPING"), "HIT", null));
     }
 
     @Test

@@ -53,18 +53,14 @@ public class CapabilityController {
         Object vendorCodeValue = FieldTransformSupport.readPath(response, plan.vendorCodePath());
         String vendorCode = vendorCodeValue == null ? "" : String.valueOf(vendorCodeValue);
         boolean httpSuccess = "HTTP_SUCCESS".equals(plan.responsePolicy().get("codeMode"));
-        String standardCode = httpSuccess ? String.valueOf(plan.responsePolicy().get("successCode")) : plan.responseCodes().stream()
-                .filter(code -> vendorCode.equals(String.valueOf(code.get("vendorCode"))))
-                .map(code -> String.valueOf(code.getOrDefault("standardCode", "EXT-VENDOR-ERROR")))
-                .findFirst().orElse("EXT-VENDOR-ERROR");
-        String resultStatus = httpSuccess ? "HIT" : plan.responseCodes().stream()
-                .filter(code -> standardCode.equals(String.valueOf(code.get("standardCode"))))
-                .map(code -> String.valueOf(code.getOrDefault("resultStatus", "ERROR"))).findFirst().orElse("ERROR");
-        boolean billable = !httpSuccess && plan.responseCodes().stream()
-                .filter(code -> standardCode.equals(String.valueOf(code.get("standardCode"))))
-                .map(code -> Boolean.parseBoolean(String.valueOf(code.getOrDefault("billable", false))))
-                .findFirst().orElse(false);
-        Map<String, Object> fields = ResponsePolicySupport.fields(response, plan.responseMappings(), plan.responsePolicy(), secrets);
+        Map<String, Object> code = httpSuccess ? Map.of("standardCode", plan.responsePolicy().get("successCode"),
+                "resultStatus", "HIT", "billable", false) : plan.responseCodes().stream()
+                .filter(item -> vendorCode.equals(String.valueOf(item.get("vendorCode")))).findFirst().orElse(Map.of());
+        String resultStatus = String.valueOf(code.getOrDefault("resultStatus", "ERROR"));
+        boolean billable = Boolean.parseBoolean(String.valueOf(code.getOrDefault("billable", false)));
+        Map<String, Object> fields = ResponsePolicySupport.fieldsForOutcome(response, plan.responseMappings(),
+                plan.responsePolicy(), resultStatus, secrets);
+        String standardCode = String.valueOf(fields.getOrDefault("code", code.getOrDefault("standardCode", "EXT-VENDOR-ERROR")));
         Object data = fields.get("data");
         Map<String, Object> result = data instanceof Map<?, ?> value ? mapper.convertValue(value, Map.class) : Map.of();
         return new CompleteResponse(plan.interfaceCode(), plan.version(), standardCode, resultStatus, billable, result, fields);
