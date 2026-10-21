@@ -2844,7 +2844,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
       </el-header>
 
       <el-main class="main-content">
-        <section class="page-heading" :class="{'compact-page-heading': activeMenu === 'releases' || activeMenu === 'authorization'}"><div><h1>{{ pageMeta[0] }}<HelpTip :title="pageMeta[0]" :content="pageMeta[1]"/></h1></div><div class="heading-actions"><el-button :icon="Refresh" @click="refreshCurrentWorkspace">刷新</el-button><el-button v-if="activeMenu === 'resource'" @click="navigate('providers')">资源方管理</el-button><el-button v-if="activeMenu === 'resource'" type="primary" :icon="Plus" @click="openSourceWizard">接入数据源</el-button><el-button v-if="activeMenu === 'authorization'" :icon="Files" @click="openBatchAuthorization">批量授权</el-button><el-button v-if="activeMenu === 'authorization'" type="primary" :icon="Plus" @click="openAuthDialog">新增授权</el-button><el-button v-if="activeMenu === 'billing'" type="primary" :icon="Plus" @click="openBillingDialog()">配置计费</el-button></div></section>
+        <section class="page-heading" :class="{'compact-page-heading': activeMenu === 'releases' || activeMenu === 'authorization'}"><div><h1>{{ pageMeta[0] }}<HelpTip :title="pageMeta[0]" :content="pageMeta[1]"/></h1></div><div class="heading-actions"><el-button :icon="Refresh" @click="refreshCurrentWorkspace">刷新</el-button><el-button v-if="activeMenu === 'resource'" type="primary" :icon="Plus" @click="openSourceWizard">接入数据源</el-button><el-button v-if="activeMenu === 'authorization'" :icon="Files" @click="openBatchAuthorization">批量授权</el-button><el-button v-if="activeMenu === 'authorization'" type="primary" :icon="Plus" @click="openAuthDialog">新增授权</el-button><el-button v-if="activeMenu === 'billing'" type="primary" :icon="Plus" @click="openBillingDialog()">配置计费</el-button></div></section>
 
         <template v-if="activeMenu === 'overview'">
           <section class="cockpit-command">
@@ -3010,11 +3010,11 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
           <section class="plain-panel table-panel"><div class="panel-heading"><div><strong>接口发布审批</strong><span>只有审批通过才会写入发布记录并激活 PublishedPlan</span></div><el-button :icon="Refresh" @click="refreshApprovals">刷新</el-button></div><el-table :data="approvals" border><el-table-column prop="interfaceName" label="接口" min-width="220"/><el-table-column prop="interfaceCode" label="接口编码" width="180"/><el-table-column label="申请版本" width="100"><template #default="{row}">V{{ row.releaseVersion }}</template></el-table-column><el-table-column prop="applicant" label="申请人" width="120"/><el-table-column prop="approvalNode" label="当前节点" width="120"/><el-table-column prop="submittedAt" label="提交时间" width="180"/><el-table-column label="状态" width="110"><template #default="{row}"><el-tag :type="row.status==='APPROVED'?'success':row.status==='REJECTED'?'danger':'warning'">{{ row.status==='PENDING'?'待审批':row.status==='APPROVED'?'已通过':'已驳回' }}</el-tag></template></el-table-column><el-table-column label="操作" width="100"><template #default="{row}"><el-button v-if="row.status==='PENDING'" text type="primary" @click="openApproval(row)">处理</el-button></template></el-table-column></el-table></section>
         </template>
         <template v-else-if="activeMenu === 'resource' || activeMenu === 'service-development'">
-          <section class="workbench resource-workbench" :class="{ 'source-switching': sourceSwitching, 'catalog-collapsed':resourceCatalogCollapsed, 'service-workbench':activeMenu==='service-development' }">
+          <section class="workbench resource-workbench" :class="{ 'source-switching': sourceSwitching, 'catalog-collapsed':resourceCatalogCollapsed, 'service-workbench':activeMenu==='service-development', 'resource-access-workbench':activeMenu==='resource' }">
             <aside class="resource-tree-panel" :class="{collapsed:resourceCatalogCollapsed}">
               <button v-if="resourceCatalogCollapsed" class="api-catalog-rail" type="button" title="展开 API 资源目录" aria-label="展开 API 资源目录" @click="resourceCatalogCollapsed=false"><Expand/><span>API</span></button>
               <template v-else>
-              <div class="panel-title"><div><span>{{ activeMenu==='resource' ? '资源 API 目录' : '平台服务目录' }}</span><small v-if="activeMenu==='resource'">{{ filteredProviderGroups.length }} 个资源提供商 · {{ sources.length }} 个数据源 · {{ workspaceInterfaceRows.length }} 个资源 API</small></div><div class="catalog-heading-actions"><el-button v-if="activeMenu==='resource'" :icon="Plus" text aria-label="新增数据源" @click="openSourceWizard"/><el-button :icon="Fold" text title="收起 API 目录" aria-label="收起 API 目录" @click="resourceCatalogCollapsed=true"/></div></div>
+              <div class="panel-title"><div><span>{{ activeMenu==='resource' ? '资源 API 目录' : '平台服务目录' }}</span></div><div class="catalog-heading-actions"><el-button :icon="Fold" text title="收起 API 目录" aria-label="收起 API 目录" @click="resourceCatalogCollapsed=true"/></div></div>
               <el-button v-if="activeMenu==='service-development'" class="create-standard-service" type="primary" plain :icon="Plus" @click="openPlatformServiceDialog">新增标准服务</el-button>
               <el-input v-model="sourceSearch" :prefix-icon="Search" placeholder="搜索提供商、数据源、API 或路径" clearable aria-label="搜索资源目录" />
               <div class="resource-tree-tools"><button :disabled="!!sourceSearch.trim()" @click="setAllSourcesExpanded(true)">展开全部</button><button :disabled="!!sourceSearch.trim()" @click="setAllSourcesExpanded(false)">收起全部</button><button :disabled="!selectedInterfaceId" @click="locateSelectedApi">定位当前</button></div>
@@ -3049,15 +3049,14 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
             <div class="editor-panel" v-if="detail && selectedSource" :class="{ 'is-loading': detailLoading || sourceSwitching }" aria-live="polite">
               <header class="context-bar api-context-header">
                 <div class="context-main">
-                  <div class="api-breadcrumb">{{ selectedSource.providerName }}<span>/</span>{{ selectedSource.sourceName }}<span>/</span>{{ serviceDevelopmentStage === 'UPSTREAM' ? '资源接口' : '标准服务' }}</div>
+                  <div class="api-breadcrumb">{{ selectedSource.providerName }}<span>/</span>{{ selectedSource.sourceName }}<template v-if="activeMenu!=='resource'"><span>/</span>标准服务</template></div>
                   <div class="context-title"><span v-if="activeMenu==='resource'" class="method">{{ detail.summary.httpMethod }}</span><h2>{{ detail.summary.interfaceName }}</h2><el-tag v-if="activeMenu==='resource'" :type="detail.summary.upstreamStatus==='READY'?'success':'info'" size="small">{{ detail.summary.upstreamStatus==='READY'?'已接入':'接入草稿' }}</el-tag><el-tag v-else :type="detail.summary.status === 'OFFLINE' ? 'danger' : detail.summary.status === 'PUBLISHED' ? 'success' : 'info'" size="small">{{ detail.summary.status === 'OFFLINE' ? '线上已下线' : detail.summary.status === 'PUBLISHED' ? '已发布' : '开发中' }}</el-tag></div>
-                  <div v-if="activeMenu==='resource'" class="api-context-meta"><code>{{ detail.summary.interfaceCode }}</code><span>供应商原始接口</span></div>
+                  <div v-if="activeMenu==='resource'" class="api-context-meta"><code>{{ detail.summary.interfaceCode }}</code></div>
                 </div>
                 <div class="api-context-actions">
                   <el-button v-if="activeMenu==='resource'" :icon="Edit" @click="openResourceApiMetadataEditor">编辑 API</el-button>
                   <el-button v-if="activeMenu==='resource'" :icon="Setting" @click="openSourceSettingsEditor">编辑数据源</el-button>
 
-                  <el-button v-if="activeMenu==='resource'" :icon="Plus" @click="openApiDialogForSource(selectedSource.id)">新增资源 API</el-button>
                   <el-button v-if="activeMenu!=='resource'" :icon="Promotion" @click="openVersionHistory(detail.summary.publishedVersion ?? undefined)">版本档案</el-button>
                   <el-tooltip v-if="activeMenu!=='resource'" :disabled="canDeleteApi" :content="deleteApiRestriction" placement="bottom"><span><el-button :icon="Delete" type="danger" plain :disabled="!canDeleteApi || detailLoading || sourceSwitching" :loading="deletingApi" @click="deleteCurrentInterface">归档服务</el-button></span></el-tooltip>
                 </div>
@@ -3066,11 +3065,6 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                 <button v-for="(step,index) in upstreamSections" :key="step.title" type="button" :class="{active:upstreamSection===index}" :aria-current="upstreamSection===index?'page':undefined" @click="upstreamSection=index">{{ step.title }}</button>
               </nav>
               <nav v-if="serviceDevelopmentStage==='ORCHESTRATION'" class="developer-tabs" aria-label="标准服务配置"><button v-for="step in orchestrationGuideSteps" :key="step.key" :class="{active:activeTab===step.key,changed:activeTab===step.key && hasUnsavedChanges}" :aria-current="activeTab===step.key ? 'page' : undefined" :disabled="guideBusy || testRunning || connectionSaving" @click="openGuideStep(step.key)">{{ step.title }}</button></nav>
-              <div v-if="serviceDevelopmentStage==='UPSTREAM'" class="api-request-bar">
-                <span class="request-method">{{ serviceDevelopmentStage==='UPSTREAM' ? detail.summary.httpMethod : 'XML' }}</span>
-                <code>{{ serviceDevelopmentStage==='UPSTREAM' ? (connectionForm.configScope==='INHERIT' ? connectionForm.upstreamPath || '待填写接口路径' : '使用独立地址') : 'ESB 队列 · service_id：' + detail.summary.interfaceCode }}</code>
-                <el-button v-if="serviceDevelopmentStage==='UPSTREAM' && upstreamSection!==2" :loading="testRunning" :disabled="connectionSaving || !previewUpstreamUrl" @click="validateUpstreamCapability">测试接口</el-button>
-              </div>
               <div v-if="guideError" class="api-guide-error compact" role="alert">{{ guideError }}</div>
               <el-tabs v-model="activeTab" class="editor-tabs">
                 <el-tab-pane v-if="serviceDevelopmentStage==='UPSTREAM'" name="overview" label="上游能力配置">
@@ -3119,10 +3113,10 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                       </div>
                     </section>
                     <section v-show="upstreamSection===2" class="upstream-validation-panel" :class="{'has-error':!!testError && !currentUpstreamVerified}">
-                      <div class="upstream-validation-copy"><div><h3>原始接口测试<HelpTip title="测试范围" content="通过提供商处理应用发送已保存的原始请求，展示供应商原始响应，不执行标准服务的字段转换、签名或加解密。测试结果不限制标准服务开发。"/></h3></div></div>
-                      <el-button class="upstream-validation-action" type="primary" :icon="Promotion" :loading="testRunning" :disabled="testRunning || connectionSaving" @click="validateUpstreamCapability">测试资源接口</el-button>
+                      <div class="upstream-validation-copy"><div><h3>测试结果<HelpTip title="测试范围" content="通过提供商处理应用发送已保存的原始请求，展示供应商原始响应，不执行标准服务的字段转换、签名或加解密。测试结果不限制标准服务开发。"/></h3></div></div>
                       <div class="upstream-validation-result success" v-if="currentUpstreamVerified"><span class="status-dot"></span><strong>当前连接验证通过</strong><small>已收到上游原始响应</small></div>
                       <div class="upstream-validation-result error" v-else-if="testError" role="alert"><span class="status-dot offline"></span><div><strong>验证失败</strong><small>{{ testError }}</small></div></div>
+                      <div v-else class="upstream-validation-idle">尚未执行测试</div>
                     </section>
                     <section v-if="upstreamSection===2" class="resource-test-detail">
                       <details class="address-disclosure test-route-disclosure"><summary>查看调用路径</summary><div class="address-disclosure-body"><span>处理应用</span><code>{{ selectedSource.applicationName || '未配置应用' }} · {{ selectedSource.runtimeUrl || '尚未配置地址' }}</code></div><div class="address-disclosure-body"><span>供应商接口</span><code>{{ previewUpstreamUrl || '尚未配置地址' }}</code></div></details>
@@ -3131,11 +3125,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                         <div class="code-pane readonly"><div class="code-title"><span>供应商原始响应</span></div><CopyableBlock :value="testResult ? formatJson(testResult.upstreamResponse) : testError || '等待执行测试'"><pre>{{ testResult ? formatJson(testResult.upstreamResponse) : testError || '等待执行测试' }}</pre></CopyableBlock></div>
                       </div>
                     </section>
-                    <div v-if="upstreamSection===2" class="upstream-handoff">
-                      <h3>标准服务</h3>
-                      <div><span>接入状态</span><strong>{{ upstreamSaveRequired ? '有待保存的配置' : '已保存，可创建标准服务' }}</strong></div>
-                      <p v-if="!selectedSource.runtimeUrl" class="route-notice">资源提供商尚未配置处理应用。<el-button text type="primary" @click="goToProviderManagement()">前往资源方管理</el-button></p>
-                    </div>
+                    <p v-if="upstreamSection===2 && !selectedSource.runtimeUrl" class="route-notice">资源提供商尚未配置处理应用。<el-button text type="primary" @click="goToProviderManagement()">前往资源方管理</el-button></p>
                   </div>
                 </el-tab-pane>
                 <el-tab-pane v-if="serviceDevelopmentStage==='ORCHESTRATION'" name="request" label="请求转换">
@@ -3248,7 +3238,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                 </el-tab-pane>
               </el-tabs>
               <footer class="resource-action-bar">
-                <div><span class="resource-action-dot" :class="resourceEditorState.key"></span><div class="api-save-state"><strong>{{ resourceEditorState.label }}</strong><small>{{ resourceEditorState.hint }}</small></div></div>
+                <div><span class="resource-action-dot" :class="resourceEditorState.key"></span><div class="api-save-state"><strong>{{ resourceEditorState.label }}</strong><small v-if="activeMenu!=='resource'">{{ resourceEditorState.hint }}</small></div></div>
                 <div class="api-footer-actions">
                   <template v-if="serviceDevelopmentStage==='UPSTREAM'">
                     <el-button :loading="connectionSaving" :disabled="testRunning || detailLoading" @click="saveConnectionConfig">保存接入配置</el-button>

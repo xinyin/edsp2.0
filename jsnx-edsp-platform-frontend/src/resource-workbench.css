@@ -267,7 +267,6 @@
 .upstream-validation-icon svg { width: 19px; }
 .upstream-validation-panel h3 { margin: 0; color: #263f55; font-size: 14px; }
 .upstream-validation-panel p { margin: 5px 0 0; color: #66798b; font-size: 11px; line-height: 1.55; overflow-wrap: anywhere; }
-.upstream-validation-action { justify-self: end; white-space: nowrap; }
 .upstream-validation-result { grid-column: 1 / -1; min-width: 0; display: grid; grid-template-columns: 9px minmax(0,1fr); column-gap: 8px; align-items: start; padding: 10px 12px; border: 1px solid #ecd3cf; border-radius: 5px; background: #fff; }
 .upstream-validation-result .status-dot { grid-row: 1 / span 2; }
 .upstream-validation-result strong, .upstream-validation-result small { display: block; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
@@ -302,7 +301,6 @@
   .service-stage-bar > button { border-bottom: 1px solid #e2e7ec; }
   .service-stage-bar > button:last-child { border-bottom: 0; }
   .upstream-validation-panel { grid-template-columns: minmax(0,1fr); align-items: start; }
-  .upstream-validation-action { justify-self: start; }
   .upstream-validation-result, .upstream-validation-result.success { grid-column: 1; }
   .upstream-contract-grid, .standard-contract-strip, .vendor-code-path-panel { grid-template-columns: minmax(0,1fr); }
 }

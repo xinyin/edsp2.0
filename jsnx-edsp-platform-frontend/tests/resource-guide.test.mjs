@@ -682,10 +682,18 @@ test('服务开发三阶段可以从上游接入切换到标准编排，发布�
 test('标准服务开发默认收起技术标识与内部路由，保留按需编辑入口', () => {
   assert.match(appText, /class="service-configuration-details"/)
   assert.match(appText, /<summary><span>接口信息<\/span>/)
-  assert.match(appText, /<div v-if="serviceDevelopmentStage==='UPSTREAM'" class="api-request-bar">/)
   assert.match(appText, /<small v-if="activeMenu==='resource'">\{\{ apiItem\.interfaceCode \}\}<\/small>/)
   assert.match(appText, /<div v-if="activeMenu==='resource'" class="api-context-meta">/)
   assert.match(appText, /v-model="standardServiceForm\.servicePath" aria-label="内部服务路径"/)
+})
+test('数据资源接入保留配置、报文和测试能力，但创建与测试操作不重复展示', () => {
+  assert.match(appText, /'resource-access-workbench':activeMenu==='resource'/)
+  assert.match(appText, /const upstreamSections = \[[\s\S]*?连接配置[\s\S]*?接口报文[\s\S]*?接入测试/)
+  assert.match(appText, /<button v-if="activeMenu==='resource'" class="resource-add-api"/)
+  assert.match(appText, /<el-button :loading="testRunning" :disabled="connectionSaving \|\| !previewUpstreamUrl" @click="validateUpstreamCapability">测试接口<\/el-button>/)
+  assert.doesNotMatch(appText, /class="api-request-bar"/)
+  assert.doesNotMatch(appText, /class="upstream-validation-action"/)
+  assert.doesNotMatch(appText, /class="upstream-handoff"/)
 })
 test('主页面使用新的三阶段产品名称和运行管理名称', () => {
   assert.match(appText, /数据资源接入/)
