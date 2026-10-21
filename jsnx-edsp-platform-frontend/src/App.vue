@@ -19,7 +19,7 @@ import type {
   DataSourceSummary, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult,
   MonitorAlert, MonitorPoint, MonitorSummary, PlatformResponseCode, ProviderAccount, ProviderSummary, ReleaseApproval, TestResult,
   ResourceApiDetail, ResourceApiSummary, ResourceDirectoryRow, ResourceDocument, UsageRecord, UsageReportRow, ValidationResult,
-  DataApplicationProvisionResult, DataApplicationProvisionSettings, SecurityAlgorithmDescriptor, SecurityPolicy
+  DataApplicationProvisionResult, DataApplicationProvisionSettings, SecurityAlgorithmDescriptor, SecurityPolicy, PlatformResponseContract, PlatformResponseField
 } from './types'
 
 const loggedIn = ref(false)
@@ -188,13 +188,18 @@ const platformResponseCodes = ref<PlatformResponseCode[]>([])
 type PlatformManagementTab = 'contract' | 'codes' | 'security' | 'policies'
 const platformManagementTab = ref<PlatformManagementTab>('contract')
 const platformCodeSearch = ref('')
-const platformContractFields = [
-  { key: 'code', type: 'String', required: true, description: '平台统一结果码，由返回码字典决定' },
-  { key: 'message', type: 'String', required: true, description: '平台统一提示语' },
-  { key: 'resultStatus', type: 'Enum', required: true, description: 'HIT / MISS / ERROR' },
-  { key: 'traceId', type: 'String', required: true, description: '全链路追踪号' },
-  { key: 'data', type: 'Object', required: true, description: '标准化业务数据或完整供应商报文' }
-]
+const platformResponseContracts = ref<PlatformResponseContract[]>([])
+const selectedPlatformContractId = ref(0)
+const contractEditorDialog = ref(false)
+const contractEditorOriginalId = ref(0)
+const contractEditorSaving = ref(false)
+const contractEditorForm = ref<PlatformResponseContract>({
+  contractCode: '', contractName: '', version: 1, description: '', enabled: true, defaultContract: false, fields: []
+})
+const selectedPlatformContract = computed(() => platformResponseContracts.value.find(item => item.id === selectedPlatformContractId.value)
+  ?? platformResponseContracts.value.find(item => item.defaultContract)
+  ?? platformResponseContracts.value[0])
+const platformContractFields = computed(() => selectedPlatformContract.value?.fields ?? [])
 const filteredPlatformResponseCodes = computed(() => {
   const keyword = platformCodeSearch.value.trim().toLowerCase()
   if (!keyword) return platformResponseCodes.value
@@ -464,7 +469,7 @@ const pageMeta = computed(() => ({
   monitor: ['运行监控', '监控 Gateway、资源提供商处理应用和上游服务的全链路耗时'],
   logs: ['链路追踪', '统一检索全行 API 调用，定位失败节点并查看节点级输入输出'],
   providers: ['资源方管理', '维护资源提供方资料、平台账号、角色与数据权限'],
-  'platform-management': ['平台管理', '维护平台级响应契约、返回码和安全能力目录'],
+  'platform-management': ['平台管理', '维护平台级标准响应、返回码和安全能力目录'],
   approvals: ['变更审批', '统一处理服务发布申请，审批通过后才会激活发布计划'],
   releases: ['服务发布', '集中查看版本档案、上线状态、下线和归档操作']
 }[activeMenu.value] ?? ['外部数据平台', '统一管理']))
@@ -840,6 +845,8 @@ async function loadAll() {
     securityAlgorithms.value = algorithmData
     try { platformResponseCodes.value = await api.platformResponseCodes() }
     catch { platformResponseCodes.value = [] }
+    try { await refreshPlatformContracts() }
+    catch { platformResponseContracts.value = [] }
     demo.value = isDemoMode()
     if (!selectedSourceId.value && sourceData.length) selectedSourceId.value = sourceData[0].id
     if (!selectedProviderId.value && providerData.length) { selectedProviderId.value = providerData[0].id; await loadProviderAccounts() }
@@ -983,14 +990,14 @@ async function syncResourceContract() {
   if (!detail.value || !await confirmDiscardUnsaved()) return
   const id = detail.value.summary.id
   try {
-    await ElMessageBox.confirm('更新草稿的上游地址、超时及请求/响应契约。已有映射保留，未单独修改的透传样例随之更新；线上版本不变，更新后需重新验证。', '同步资源契约', { confirmButtonText: '同步到草稿', cancelButtonText: '取消', type: 'warning' })
+    await ElMessageBox.confirm('更新草稿的上游地址、超时及请求/响应结构。已有映射保留，未单独修改的透传样例随之更新；线上版本不变，更新后需重新验证。', '同步资源接口定义', { confirmButtonText: '同步到草稿', cancelButtonText: '取消', type: 'warning' })
   } catch { return }
   try {
     guideBusy.value = true
     await api.syncResourceContract(id)
     detailCache.delete(id)
     if (selectedInterfaceId.value === id) await loadDetail()
-    ElMessage.success('资源契约已同步，请核对映射；可按需执行服务编排测试')
+    ElMessage.success('资源接口定义已同步，请核对映射；可按需执行服务编排测试')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '同步失败')
   } finally { guideBusy.value = false }
@@ -1142,7 +1149,7 @@ async function navigate(menu: string) {
   if (menu === 'logs') void searchCallLogs()
   if (menu === 'providers' && selectedProviderId.value) await loadProviderAccounts()
   if (menu === 'platform-management') {
-    const [, algorithms] = await Promise.all([refreshPlatformCodes(), loadSecurityAlgorithms()])
+    const [, , algorithms] = await Promise.all([refreshPlatformCodes(), refreshPlatformContracts(), loadSecurityAlgorithms()])
     securityAlgorithms.value = algorithms
   }
   if (menu === 'approvals') void refreshApprovals()
@@ -1166,6 +1173,7 @@ async function refreshCurrentWorkspace() {
     else if (activeMenu.value === 'releases') await loadReleaseManagement()
     else if (activeMenu.value === 'platform-management') {
       await refreshPlatformCodes()
+      await refreshPlatformContracts()
       securityAlgorithms.value = await loadSecurityAlgorithms()
     }
     else await loadAll()
@@ -1789,7 +1797,7 @@ async function createInterface() {
   activeMenu.value = 'resource'
   serviceDevelopmentStage.value = 'UPSTREAM'
   activeTab.value = 'overview'
-  ElMessage.success(`资源 API 草稿 ${created.resourceApiCode} 已创建，请完善接口契约并保存`)
+  ElMessage.success(`资源 API 草稿 ${created.resourceApiCode} 已创建，请完善接口定义并保存`)
   try { await loadAll() }
   catch { ElMessage.warning('草稿已创建，列表刷新失败，请点击页面刷新按钮') }
 }
@@ -1926,7 +1934,7 @@ async function createPlatformService() {
     activeTab.value = 'request'
     testMode.value = 'PLATFORM'
     await loadInterfaces(false)
-    ElMessage.success(`平台标准服务 ${created.interfaceCode} 已创建，已继承资源接口契约`)
+    ElMessage.success(`平台标准服务 ${created.interfaceCode} 已创建，已继承资源接口定义`)
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '平台标准服务创建失败')
   } finally { platformServiceCreating.value = false }
@@ -2089,6 +2097,13 @@ function selectPlatformCode(row: InterfaceDetail['responseCodes'][number], code:
 async function refreshPlatformCodes() {
   platformResponseCodes.value = await api.platformResponseCodes()
 }
+async function refreshPlatformContracts() {
+  platformResponseContracts.value = await api.platformResponseContracts()
+  if (!selectedPlatformContractId.value || !platformResponseContracts.value.some(item => item.id === selectedPlatformContractId.value)) {
+    selectedPlatformContractId.value = platformResponseContracts.value.find(item => item.defaultContract)?.id
+      ?? platformResponseContracts.value[0]?.id ?? 0
+  }
+}
 function editPlatformCode(item?: PlatformResponseCode) {
   codeEditorOriginal.value = item?.code ?? ''
   codeEditorForm.value = item ? { ...item } : { code: '', name: '', resultStatus: 'HIT', description: '', enabled: true }
@@ -2109,6 +2124,58 @@ async function savePlatformCode() {
     ElMessage.success('平台返回码已保存')
   } catch (error) { ElMessage.error(error instanceof Error ? error.message : '保存失败') }
   finally { codeEditorSaving.value = false }
+}
+function editPlatformContract(item?: PlatformResponseContract) {
+  contractEditorOriginalId.value = item?.id ?? 0
+  contractEditorForm.value = item ? structuredClone(item) : {
+    contractCode: '', contractName: '', version: 1, description: '', enabled: true, defaultContract: false,
+    fields: [{ key: '', label: '', type: 'STRING', required: false, description: '' }]
+  }
+  contractEditorDialog.value = true
+}
+function addContractField() {
+  contractEditorForm.value.fields.push({ key: '', label: '', type: 'STRING', required: false, description: '' })
+}
+function removeContractField(index: number) {
+  if (contractEditorForm.value.fields.length <= 1) {
+    ElMessage.warning('标准响应至少需要保留一个字段')
+    return
+  }
+  contractEditorForm.value.fields.splice(index, 1)
+}
+async function savePlatformContract() {
+  const form = structuredClone(contractEditorForm.value)
+  form.contractCode = form.contractCode.trim()
+  form.contractName = form.contractName.trim()
+  form.description = form.description.trim()
+  form.fields = form.fields.map(field => ({ ...field, key: field.key.trim(), label: field.label.trim(), type: field.type.trim().toUpperCase(), description: field.description.trim() }))
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(form.contractCode) || !form.contractName || form.version < 1 || !form.fields.length
+    || form.fields.some(field => !/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(field.key) || !field.label || !field.type)) {
+    ElMessage.warning('请填写合法的标准响应编码、名称和字段')
+    return
+  }
+  contractEditorSaving.value = true
+  try {
+    const saved = contractEditorOriginalId.value
+      ? await api.updatePlatformResponseContract(contractEditorOriginalId.value, form)
+      : await api.createPlatformResponseContract(form)
+    await refreshPlatformContracts()
+    selectedPlatformContractId.value = saved.id ?? selectedPlatformContractId.value
+    contractEditorDialog.value = false
+    ElMessage.success('标准响应已保存')
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '标准响应保存失败') }
+  finally { contractEditorSaving.value = false }
+}
+async function deletePlatformContract(item: PlatformResponseContract) {
+  if (!item.id) return
+  try {
+    await ElMessageBox.confirm(`确定删除标准响应“${item.contractName}”？默认项不能删除。`, '删除标准响应', { type: 'warning' })
+    await api.deletePlatformResponseContract(item.id)
+    await refreshPlatformContracts()
+    ElMessage.success('标准响应已删除')
+  } catch (error) {
+    if (error instanceof Error && error.message !== 'cancel') ElMessage.error(error.message)
+  }
 }
 async function deletePlatformCode(item: PlatformResponseCode) {
   try {
@@ -2796,17 +2863,19 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
         <template v-else-if="activeMenu === 'platform-management'">
           <section class="platform-management">
             <div class="platform-management-nav" role="tablist" aria-label="平台配置分类">
-              <button type="button" :class="{active:platformManagementTab==='contract'}" @click="platformManagementTab='contract'"><DocumentChecked/><span><strong>响应契约</strong><small>平台统一返回结构</small></span></button>
+              <button type="button" :class="{active:platformManagementTab==='contract'}" @click="platformManagementTab='contract'"><DocumentChecked/><span><strong>标准响应</strong><small>平台统一返回结构</small></span></button>
               <button type="button" :class="{active:platformManagementTab==='codes'}" @click="platformManagementTab='codes'"><Tickets/><span><strong>返回码字典</strong><small>{{ platformResponseCodes.length }} 个平台返回码</small></span></button>
               <button type="button" :class="{active:platformManagementTab==='security'}" @click="platformManagementTab='security'"><Lock/><span><strong>安全能力</strong><small>{{ securityAlgorithms.length }} 个算法能力</small></span></button>
               <button type="button" :class="{active:platformManagementTab==='policies'}" @click="platformManagementTab='policies'"><Setting/><span><strong>默认策略</strong><small>接口可单独覆盖</small></span></button>
             </div>
 
             <section v-if="platformManagementTab==='contract'" class="platform-management-panel plain-panel">
-              <header class="platform-panel-header"><div><span class="platform-eyebrow">PLATFORM CONTRACT</span><h2>平台标准响应契约</h2><p>统一约束对外服务的返回结构，接口开发只负责填充业务数据。</p></div><el-tag type="success" effect="plain">V1 · 生效中</el-tag></header>
-              <div class="platform-contract-banner"><div><strong>标准响应 V1</strong><span>适用于当前所有已发布服务</span></div><code>application/json · ESB 返回时转换为 XML</code></div>
-              <el-table :data="platformContractFields" size="small" class="platform-contract-table"><el-table-column prop="key" label="字段" width="180"><template #default="{row}"><code>{{ row.key }}</code></template></el-table-column><el-table-column prop="type" label="类型" width="130"/><el-table-column label="必填" width="90"><template #default="{row}"><el-tag size="small" type="success" effect="plain">{{ row.required ? '是' : '否' }}</el-tag></template></el-table-column><el-table-column prop="description" label="说明" min-width="300"/></el-table>
-              <div class="platform-contract-note"><CircleCheck/><span>字段名属于平台协议保留项，暂不允许单个接口改名；供应商报文和业务字段通过响应标准化映射写入 <code>data</code> 或指定目标节点。</span></div>
+              <header class="platform-panel-header"><div><span class="platform-eyebrow">PLATFORM RESPONSE</span><h2>平台标准响应</h2><p>集中维护平台对外返回结构；标准服务开发只选择和引用。</p></div><el-button type="primary" :icon="Plus" @click="editPlatformContract()">新增标准响应</el-button></header>
+              <div class="platform-contract-banner"><div><strong>{{ selectedPlatformContract?.contractName || '暂无标准响应' }}</strong><span>{{ selectedPlatformContract ? `V${selectedPlatformContract.version} · ${selectedPlatformContract.defaultContract ? '默认使用' : '可选配置'}` : '请先新增标准响应' }}</span></div><code>JSON 对外结构 · ESB 返回时转换为 XML</code></div>
+              <el-table :data="platformResponseContracts" size="small" class="platform-contract-list" empty-text="暂无标准响应"><el-table-column prop="contractCode" label="编码" width="170"><template #default="{row}"><code>{{ row.contractCode }}</code></template></el-table-column><el-table-column prop="contractName" label="名称" min-width="170"/><el-table-column label="版本" width="80"><template #default="{row}">V{{ row.version }}</template></el-table-column><el-table-column label="状态" width="120"><template #default="{row}"><el-tag size="small" :type="row.defaultContract?'success':'info'">{{ row.defaultContract ? '默认使用' : row.enabled ? '可用' : '停用' }}</el-tag></template></el-table-column><el-table-column prop="description" label="说明" min-width="220" show-overflow-tooltip/><el-table-column label="操作" width="170" fixed="right"><template #default="{row}"><el-button text type="primary" @click="selectedPlatformContractId=row.id || 0">查看</el-button><el-button text type="primary" @click="editPlatformContract(row)">编辑</el-button><el-button text type="danger" :disabled="row.defaultContract" @click="deletePlatformContract(row)">删除</el-button></template></el-table-column></el-table>
+              <div v-if="selectedPlatformContract" class="platform-fields-heading"><strong>字段定义</strong><span>{{ selectedPlatformContract.contractName }} · 共 {{ platformContractFields.length }} 个字段</span></div>
+              <el-table v-if="selectedPlatformContract" :data="platformContractFields" size="small" class="platform-contract-table"><el-table-column prop="key" label="字段" width="180"><template #default="{row}"><code>{{ row.key }}</code></template></el-table-column><el-table-column prop="label" label="显示名称" width="150"/><el-table-column prop="type" label="类型" width="120"/><el-table-column label="必填" width="90"><template #default="{row}"><el-tag size="small" :type="row.required?'success':'info'" effect="plain">{{ row.required ? '是' : '否' }}</el-tag></template></el-table-column><el-table-column prop="description" label="说明" min-width="300"/></el-table>
+              <div class="platform-contract-note"><CircleCheck/><span>供应商报文和业务字段通过标准化映射写入 <code>data</code> 或指定目标节点；修改默认标准响应前请确认对外接口文档和 ESB XML 映射保持兼容。</span></div>
             </section>
 
             <section v-else-if="platformManagementTab==='codes'" class="platform-management-panel plain-panel">
@@ -3014,8 +3083,8 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                   <section class="service-origin-strip">
                     <span>来源资源 API</span>
                     <div><strong>{{ detail.summary.resourceApiName || '历史服务资源' }}</strong><code>{{ detail.summary.resourceApiCode || '-' }}</code></div>
-                    <el-tag v-if="resourceContractChanged" type="warning" effect="plain">资源契约已变更</el-tag><HelpTip title="资源契约同步" content="资源接口保存的请求、响应报文是标准服务的开发基准。同步仅更新当前草稿，已发布版本不变；同步后请核对字段映射。"/>
-                    <el-button v-if="detail.summary.resourceApiId" :type="resourceContractChanged ? 'warning' : 'primary'" plain :disabled="guideBusy || testRunning" @click="syncResourceContract">同步资源契约</el-button>
+                    <el-tag v-if="resourceContractChanged" type="warning" effect="plain">资源接口定义已变更</el-tag><HelpTip title="同步资源接口定义" content="资源接口保存的请求、响应报文是标准服务的开发基准。同步仅更新当前草稿，已发布版本不变；同步后请核对字段映射。"/>
+                    <el-button v-if="detail.summary.resourceApiId" :type="resourceContractChanged ? 'warning' : 'primary'" plain :disabled="guideBusy || testRunning" @click="syncResourceContract">同步资源接口定义</el-button>
                   </section>
                   <details class="advanced-settings internal-service-route"><summary>内部转发配置<HelpTip title="内部转发配置" content="ESB Adapter 根据服务编码查询此路径，将解析后的请求经 Gateway 转发至提供商应用。行内调用系统使用 ESB 队列，无需填写此 HTTP 路径。"/></summary><div class="form-grid"><el-form-item label="内部 HTTP 方法"><el-select v-model="standardServiceForm.httpMethod" aria-label="内部 HTTP 方法"><el-option v-for="method in ['POST','GET','PUT','PATCH']" :key="method" :label="method" :value="method"/></el-select></el-form-item><el-form-item label="内部服务路径"><el-input v-model="standardServiceForm.servicePath" aria-label="内部服务路径"/></el-form-item></div></details>
                   <div class="mapping-toolbar refined">
@@ -3064,10 +3133,10 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                     </button>
                   </div>
                   <div class="test-context-bar"><span>{{ activeTestMode.label }}<HelpTip :title="activeTestMode.label" :content="activeTestMode.description"/></span><code>{{ detail.summary.servicePath }}</code></div>
-                  <el-alert v-if="resourceContractChanged && testMode==='PLATFORM'" type="warning" :closable="false" show-icon title="来源资源契约已变更。如需采用新入参，请先回到请求转换，点击“同步资源契约”并核对映射。" />
+                    <el-alert v-if="resourceContractChanged && testMode==='PLATFORM'" type="warning" :closable="false" show-icon title="来源资源接口定义已变更。如需采用新入参，请先回到请求转换，点击“同步资源接口定义”并核对映射。" />
                   <div class="test-grid">
                     <div class="code-pane"><div class="code-title"><span>{{ testMode === 'UPSTREAM' ? '上游请求报文' : testMode === 'E2E' ? '行内 XML 入队报文' : '行内标准请求' }}</span><small>{{ testMode === 'UPSTREAM' ? '资源提供商处理应用发送' : testMode === 'E2E' ? 'ESB Adapter 消费并解析' : '用于验证请求转换' }}</small></div><CopyableBlock :value="testMode === 'UPSTREAM' ? upstreamRequestText : testMode === 'PLATFORM' ? requestText : esbXmlPreview"><el-input v-if="testMode==='UPSTREAM'" v-model="upstreamRequestText" type="textarea" :autosize="{ minRows: 10, maxRows: 16 }"/><el-input v-else-if="testMode==='PLATFORM'" v-model="requestText" type="textarea" :autosize="{ minRows: 10, maxRows: 16 }"/><pre v-else class="esb-xml-preview">{{ esbXmlPreview }}</pre></CopyableBlock></div>
-                    <div v-if="testMode==='PLATFORM'" class="code-pane readonly"><div class="code-title"><span>{{ testResult ? '上游实际响应' : '上游响应契约参考' }}</span><HelpTip title="编排测试范围" content="真实访问上游接口，验证报文转换和安全处理，不经过 ESB 和 Gateway。"/></div><CopyableBlock :value="testResult ? formatJson(testResult.upstreamResponse) : responseText"><pre>{{ testResult ? formatJson(testResult.upstreamResponse) : responseText }}</pre></CopyableBlock></div>
+                    <div v-if="testMode==='PLATFORM'" class="code-pane readonly"><div class="code-title"><span>{{ testResult ? '上游实际响应' : '上游响应结构参考' }}</span><HelpTip title="编排测试范围" content="真实访问上游接口，验证报文转换和安全处理，不经过 ESB 和 Gateway。"/></div><CopyableBlock :value="testResult ? formatJson(testResult.upstreamResponse) : responseText"><pre>{{ testResult ? formatJson(testResult.upstreamResponse) : responseText }}</pre></CopyableBlock></div>
                     <div v-else-if="testMode==='E2E'" class="code-pane readonly"><div class="code-title"><span>{{ esbXmlResponsePreview ? '写回 ESB 的 XML 响应' : '解析后的标准请求' }}</span><small>{{ esbXmlResponsePreview ? 'ESB Adapter 已完成响应封装' : 'ESB Adapter 输出给 Gateway' }}</small></div><CopyableBlock :value="esbXmlResponsePreview || formatJson(standardRequestPreview)"><pre>{{ esbXmlResponsePreview || formatJson(standardRequestPreview) }}</pre></CopyableBlock></div>
                     <div v-else class="connection-target"><span>上游调用目标</span><strong>{{ detail.summary.upstreamUrl }}</strong><div><p><b>请求方式</b>{{ detail.summary.httpMethod }}</p><p><b>请求超时</b>{{ detail.timeoutMs }} ms</p><p><b>处理应用</b>{{ selectedSource.applicationName }}</p></div></div>
                   </div>
@@ -3207,7 +3276,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
   <el-dialog v-model="sourceSettingsDialog" title="编辑数据源" width="680px" :close-on-click-modal="false"><el-alert v-if="sourceSettingsError" :title="sourceSettingsError" type="error" :closable="false" show-icon/><el-form label-position="top" style="margin-top:18px"><div class="form-grid"><el-form-item label="资源提供商" required><el-select v-model="sourceSettingsForm.providerId" filterable><el-option v-for="item in providers" :key="item.id" :label="item.providerName" :value="item.id"/></el-select></el-form-item><el-form-item label="数据源名称" required><el-input v-model="sourceSettingsForm.sourceName" maxlength="100"/></el-form-item><el-form-item label="数据源编码"><el-input v-model="sourceSettingsForm.sourceCode" disabled/><HelpTip title="数据源编码" content="数据源唯一标识，创建后不可修改。配置应用路由统一在资源方管理中维护。"/></el-form-item><el-form-item label="协议类型" required><el-select v-model="sourceSettingsForm.protocolType"><el-option label="HTTP JSON" value="HTTP_JSON"/><el-option label="WebService" value="SOAP"/><el-option label="本地数据集" value="LOCAL_SQL"/></el-select></el-form-item></div><el-form-item v-if="sourceSettingsForm.protocolType!=='LOCAL_SQL'" label="数据源基础地址" required><el-input v-model="sourceSettingsForm.endpoint" placeholder="https://provider.example.com"/><HelpTip title="基础地址继承" content="选择继承数据源的资源接口使用此供应商地址。已发布服务继续使用发布快照，重新发布后才应用新配置。"/></el-form-item><el-form-item label="默认请求超时"><el-input-number v-model="sourceSettingsForm.defaultTimeoutMs" :min="100" :max="120000" :step="500" controls-position="right"/><span class="form-unit">毫秒（ms）</span></el-form-item><div class="dialog-context"><span>变更生效范围</span><HelpTip title="变更生效范围" content="目录归属和草稿配置立即生效；继承配置的接口建议重新测试。已发布服务保持原发布快照，重新发布后切换。"/></div></el-form><template #footer><el-button :disabled="sourceSettingsSaving" @click="sourceSettingsDialog=false">取消</el-button><el-button type="primary" :loading="sourceSettingsSaving" @click="saveSourceSettings">保存修改</el-button></template></el-dialog>
   <el-dialog v-model="sourceRuntimeDialog" v-loading="sourceRuntimeStatusLoading" title="资源提供商应用路由配置" width="680px" class="runtime-provision-dialog" :close-on-click-modal="!sourceRuntimeSaving"><div class="dialog-context"><span>{{ selectedProvider?.providerName }}</span><HelpTip title="配置应用路由" content="同一资源提供商下的数据源和接口共用独立处理应用。接入测试、编排测试及正式调用均经该应用访问资源提供商。"/></div><el-form label-position="top" style="margin-top:18px"><el-form-item required><template #label>处理应用标识<HelpTip title="处理应用标识" content="用于 Java 模块名、Spring 应用名和 Nacos Data ID，须与实际部署的应用一致。"/></template><el-input v-model="sourceRuntimeForm.applicationName" placeholder="jsnx-edsp-data-provider-example"/></el-form-item><div class="form-grid"><el-form-item required><template #label>应用访问地址<HelpTip title="应用访问地址" content="Gateway 和管理服务访问处理应用的基础地址，非供应商接口地址。单实例填写协议、主机和端口；采用 VIP 时填写 VIP 地址。"/></template><el-input v-model="sourceRuntimeForm.runtimeUrl" placeholder="http://127.0.0.1:8201"/></el-form-item><el-form-item required><template #label>应用监听端口<HelpTip title="应用监听端口" content="写入 Nacos 的 server.port，决定 Java 应用实际监听端口。直接访问时应与应用访问地址端口一致；有 VIP 转发时可以不同。"/></template><el-input-number v-model="sourceRuntimeForm.serverPort" :min="1" :max="65535" :step="1" controls-position="right"/></el-form-item></div></el-form><div class="provision-destination"><span>Java 工程生成目录</span><code>{{ provisionSettings?.outputRoot || '由 Admin 服务端配置决定' }}</code><HelpTip title="工程生成与部署" content="此操作保存路由、生成 Java 工程并同步 Nacos，不自动部署。生成代码仍需纳入 Git、打包并发布运行。"/></div><section v-if="sourceRuntimeResult" class="provision-result"><header><strong>{{ sourceRuntimeStatusLoaded ? '已保存的执行信息' : '本次执行结果' }}</strong><span>工程与配置中心状态</span></header><div class="provision-step"><i :class="sourceRuntimeResult.routeSave.status.toLowerCase()"></i><div><strong>路由持久化</strong><small>{{ sourceRuntimeResult.routeSave.message }}</small></div><b>{{ provisionStatusLabel(sourceRuntimeResult.routeSave.status) }}</b></div><div class="provision-step"><i :class="sourceRuntimeResult.generation.status.toLowerCase()"></i><div><strong>Java 工程</strong><small>{{ sourceRuntimeResult.generation.message }}</small><small v-if="sourceRuntimeResult.generation.packageName">{{ sourceRuntimeResult.generation.packageName }} · {{ sourceRuntimeResult.generation.generatedFiles.length }} 个生成文件</small><code v-if="sourceRuntimeResult.generation.outputDirectory">{{ sourceRuntimeResult.generation.outputDirectory }}</code></div><b>{{ provisionStatusLabel(sourceRuntimeResult.generation.status) }}</b></div><div class="provision-step"><i :class="sourceRuntimeResult.nacos.status.toLowerCase()"></i><div><strong>Nacos 配置</strong><small>{{ sourceRuntimeResult.nacos.dataId || '-' }} · Group {{ sourceRuntimeResult.nacos.group }} · Namespace {{ sourceRuntimeResult.nacos.namespace || 'public' }}</small><small>{{ sourceRuntimeResult.nacos.message }}</small></div><b>{{ provisionStatusLabel(sourceRuntimeResult.nacos.status) }}</b></div><div class="provision-step"><i :class="sourceRuntimeResult.routeRefresh.status.toLowerCase()"></i><div><strong>Gateway 路由刷新</strong><small>{{ sourceRuntimeResult.routeRefresh.message }}</small></div><b>{{ provisionStatusLabel(sourceRuntimeResult.routeRefresh.status) }}</b></div></section><template #footer><el-button v-if="sourceRuntimeResult?.generation.outputDirectory" @click="copyGeneratedPath">复制生成目录</el-button><el-button @click="sourceRuntimeDialog=false">{{ sourceRuntimeResult ? '关闭' : '取消' }}</el-button><el-button type="primary" :loading="sourceRuntimeSaving" @click="saveSourceRuntime">{{ hasProvisionedRuntime() ? '重新生成并同步' : '保存、生成并同步' }}</el-button></template></el-dialog>
   <el-dialog v-model="apiDialog" title="新增资源 API" width="660px">
-    <el-form label-position="top"><div class="form-grid"><el-form-item label="所属数据源"><el-select v-model="apiForm.dataSourceId"><el-option v-for="item in sources" :key="item.id" :label="`${item.sourceName} · 默认 ${item.defaultTimeoutMs ?? 3000}ms`" :value="item.id"/></el-select></el-form-item><el-form-item label="上游 HTTP 方法"><el-select v-model="apiForm.httpMethod"><el-option label="POST" value="POST"/><el-option label="GET" value="GET"/></el-select></el-form-item><el-form-item label="资源 API 名称" required><el-input v-model="apiForm.interfaceName"/></el-form-item><el-form-item label="资源 API 编码" required><el-input v-model="apiForm.interfaceCode"/><small class="form-hint">用于唯一标识资源提供商的原始接口</small></el-form-item></div><section class="api-policy-section"><header><strong>上游连接策略</strong><span>资源 API 只描述供应商原始契约，不在此定义平台服务路径</span></header><el-segmented v-model="apiForm.configScope" :options="[{label:'继承数据源',value:'INHERIT'},{label:'单接口覆盖',value:'OVERRIDE'}]"/><div class="source-default-facts"><span>基础地址<b>{{ selectedApiSource?.endpointUrl || '未配置' }}</b></span><span>默认超时<b>{{ selectedApiSource?.defaultTimeoutMs ?? 3000 }} ms</b></span><span>服务封装<b>保存后单独创建</b></span></div><el-form-item v-if="apiForm.configScope==='INHERIT'" label="供应商接口相对路径" required><el-input v-model="apiForm.upstreamPath" placeholder="/vendor/api/query"/></el-form-item><el-form-item v-else label="接口独立完整地址" required><el-input v-model="apiForm.upstreamUrl" placeholder="https://provider.example.com/vendor/api/query"/></el-form-item><div class="timeout-policy"><div class="timeout-policy-choice"><label>超时策略</label><div class="timeout-choice-group" role="radiogroup" aria-label="超时策略"><button type="button" role="radio" :aria-checked="apiForm.timeoutMode==='INHERIT'" :class="{selected:apiForm.timeoutMode==='INHERIT'}" @click="apiForm.timeoutMode='INHERIT'"><span class="timeout-choice-radio"/><span><strong>继承数据源默认</strong><small>使用当前数据源的 {{ selectedApiSource?.defaultTimeoutMs ?? 3000 }} ms</small></span></button><button type="button" role="radio" :aria-checked="apiForm.timeoutMode==='OVERRIDE'" :class="{selected:apiForm.timeoutMode==='OVERRIDE'}" @click="apiForm.timeoutMode='OVERRIDE'"><span class="timeout-choice-radio"/><span><strong>当前接口覆盖</strong><small>仅修改此资源 API</small></span></button></div></div><div class="timeout-policy-value"><label>接口超时（毫秒）</label><el-input-number v-model="apiForm.timeoutMs" :disabled="apiForm.timeoutMode==='INHERIT'" :min="100" :max="120000" :step="500"/><small>{{ apiForm.timeoutMode==='INHERIT' ? '当前生效值：' + (selectedApiSource?.defaultTimeoutMs ?? 3000) + ' ms' : '设置后仅对此接口生效' }}</small></div></div></section></el-form>
+    <el-form label-position="top"><div class="form-grid"><el-form-item label="所属数据源"><el-select v-model="apiForm.dataSourceId"><el-option v-for="item in sources" :key="item.id" :label="`${item.sourceName} · 默认 ${item.defaultTimeoutMs ?? 3000}ms`" :value="item.id"/></el-select></el-form-item><el-form-item label="上游 HTTP 方法"><el-select v-model="apiForm.httpMethod"><el-option label="POST" value="POST"/><el-option label="GET" value="GET"/></el-select></el-form-item><el-form-item label="资源 API 名称" required><el-input v-model="apiForm.interfaceName"/></el-form-item><el-form-item label="资源 API 编码" required><el-input v-model="apiForm.interfaceCode"/><small class="form-hint">用于唯一标识资源提供商的原始接口</small></el-form-item></div><section class="api-policy-section"><header><strong>上游连接策略</strong><span>资源 API 只描述供应商原始接口定义，不在此定义平台服务路径</span></header><el-segmented v-model="apiForm.configScope" :options="[{label:'继承数据源',value:'INHERIT'},{label:'单接口覆盖',value:'OVERRIDE'}]"/><div class="source-default-facts"><span>基础地址<b>{{ selectedApiSource?.endpointUrl || '未配置' }}</b></span><span>默认超时<b>{{ selectedApiSource?.defaultTimeoutMs ?? 3000 }} ms</b></span><span>服务封装<b>保存后单独创建</b></span></div><el-form-item v-if="apiForm.configScope==='INHERIT'" label="供应商接口相对路径" required><el-input v-model="apiForm.upstreamPath" placeholder="/vendor/api/query"/></el-form-item><el-form-item v-else label="接口独立完整地址" required><el-input v-model="apiForm.upstreamUrl" placeholder="https://provider.example.com/vendor/api/query"/></el-form-item><div class="timeout-policy"><div class="timeout-policy-choice"><label>超时策略</label><div class="timeout-choice-group" role="radiogroup" aria-label="超时策略"><button type="button" role="radio" :aria-checked="apiForm.timeoutMode==='INHERIT'" :class="{selected:apiForm.timeoutMode==='INHERIT'}" @click="apiForm.timeoutMode='INHERIT'"><span class="timeout-choice-radio"/><span><strong>继承数据源默认</strong><small>使用当前数据源的 {{ selectedApiSource?.defaultTimeoutMs ?? 3000 }} ms</small></span></button><button type="button" role="radio" :aria-checked="apiForm.timeoutMode==='OVERRIDE'" :class="{selected:apiForm.timeoutMode==='OVERRIDE'}" @click="apiForm.timeoutMode='OVERRIDE'"><span class="timeout-choice-radio"/><span><strong>当前接口覆盖</strong><small>仅修改此资源 API</small></span></button></div></div><div class="timeout-policy-value"><label>接口超时（毫秒）</label><el-input-number v-model="apiForm.timeoutMs" :disabled="apiForm.timeoutMode==='INHERIT'" :min="100" :max="120000" :step="500"/><small>{{ apiForm.timeoutMode==='INHERIT' ? '当前生效值：' + (selectedApiSource?.defaultTimeoutMs ?? 3000) + ' ms' : '设置后仅对此接口生效' }}</small></div></div></section></el-form>
     <template #footer><el-button @click="apiDialog=false">取消</el-button><el-button type="primary" :loading="apiCreating" @click="createInterface">创建资源草稿</el-button></template>
   </el-dialog>
   <el-dialog v-model="apiMetadataDialog" title="编辑资源 API" width="560px">
@@ -3217,6 +3286,14 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
       <el-form-item label="上游 HTTP 方法" required><el-select v-model="apiMetadataForm.httpMethod" style="width:100%"><el-option v-for="method in ['GET','POST','PUT','DELETE','PATCH']" :key="method" :label="method" :value="method"/></el-select></el-form-item>
     </el-form>
     <template #footer><el-button @click="apiMetadataDialog=false">取消</el-button><el-button type="primary" :loading="apiMetadataSaving" @click="saveResourceApiMetadata">保存修改</el-button></template>
+  </el-dialog>
+  <el-dialog v-model="contractEditorDialog" :title="contractEditorOriginalId ? '编辑标准响应' : '新增标准响应'" width="min(920px,94vw)" append-to-body>
+    <el-form label-position="top">
+      <div class="form-grid"><el-form-item label="标准响应编码" required><el-input v-model="contractEditorForm.contractCode" maxlength="64" placeholder="例如 EDSP_STANDARD"/></el-form-item><el-form-item label="标准响应名称" required><el-input v-model="contractEditorForm.contractName" maxlength="128" placeholder="例如 平台标准响应 V1"/></el-form-item><el-form-item label="版本号" required><el-input-number v-model="contractEditorForm.version" :min="1" :max="999"/></el-form-item><el-form-item label="默认使用"><el-switch v-model="contractEditorForm.defaultContract" active-text="是" inactive-text="否"/></el-form-item></div>
+      <el-form-item label="说明"><el-input v-model="contractEditorForm.description" maxlength="500" placeholder="说明该标准响应的适用范围"/></el-form-item>
+      <div class="contract-fields-editor"><header><div><strong>字段定义</strong><small>字段编码用于平台响应结构；接口业务字段请在标准服务开发中配置。</small></div><el-button type="primary" plain :icon="Plus" @click="addContractField">新增字段</el-button></header><div v-for="(field,index) in contractEditorForm.fields" :key="index" class="contract-field-editor-row"><span class="contract-field-index">{{ String(index + 1).padStart(2, '0') }}</span><el-input v-model="field.key" placeholder="字段编码"/><el-input v-model="field.label" placeholder="显示名称"/><el-select v-model="field.type" placeholder="类型"><el-option label="字符串" value="STRING"/><el-option label="数字" value="NUMBER"/><el-option label="枚举" value="ENUM"/><el-option label="对象" value="OBJECT"/><el-option label="数组" value="ARRAY"/><el-option label="布尔" value="BOOLEAN"/></el-select><el-switch v-model="field.required" inline-prompt active-text="必" inactive-text="选"/><el-input v-model="field.description" placeholder="字段说明"/><el-button text type="danger" :icon="Delete" aria-label="删除字段" @click="removeContractField(index)"/></div></div>
+    </el-form>
+    <template #footer><el-button @click="contractEditorDialog=false">取消</el-button><el-button type="primary" :loading="contractEditorSaving" @click="savePlatformContract">保存标准响应</el-button></template>
   </el-dialog>
   <el-dialog v-model="codeEditorDialog" :title="codeEditorOriginal ? '修改平台返回码' : '新增平台返回码'" width="min(520px,94vw)" append-to-body>
     <el-form label-position="top"><div class="form-grid"><el-form-item label="返回码" required><el-input v-model="codeEditorForm.code" maxlength="64"/></el-form-item><el-form-item label="名称" required><el-input v-model="codeEditorForm.name" maxlength="128"/></el-form-item><el-form-item label="结果状态"><el-select v-model="codeEditorForm.resultStatus"><el-option label="命中" value="HIT"/><el-option label="未命中" value="MISS"/><el-option label="异常" value="ERROR"/></el-select></el-form-item><el-form-item label="启用"><el-switch v-model="codeEditorForm.enabled"/></el-form-item></div><el-form-item label="说明"><CopyableBlock :value="codeEditorForm.description"><el-input v-model="codeEditorForm.description" maxlength="500" type="textarea" :rows="2"/></CopyableBlock></el-form-item></el-form>

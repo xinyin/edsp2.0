@@ -166,6 +166,25 @@ export interface PlatformResponseCode {
   enabled: boolean
 }
 
+export interface PlatformResponseField {
+  key: string
+  label: string
+  type: string
+  required: boolean
+  description: string
+}
+
+export interface PlatformResponseContract {
+  id?: number
+  contractCode: string
+  contractName: string
+  version: number
+  description: string
+  enabled: boolean
+  defaultContract: boolean
+  fields: PlatformResponseField[]
+}
+
 export interface ResponsePolicy {
   dataMode: 'FIELD_MAPPING' | 'WHOLE_BODY'
   codeMode: 'VENDOR_CODE' | 'HTTP_SUCCESS'

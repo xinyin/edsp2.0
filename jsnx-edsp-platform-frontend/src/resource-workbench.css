@@ -333,6 +333,16 @@
 .platform-contract-banner span { margin-top: 4px; color: #718696; font-size: 10px; }
 .platform-contract-banner code { color: #527487; font: 10px Menlo, Monaco, monospace; }
 .platform-contract-table code, .platform-code-table code { color: #2f6f8f; font: 11px Menlo, Monaco, monospace; }
+.platform-fields-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 18px 0 9px; color: #2b4d62; font-size: 12px; }
+.platform-fields-heading span { color: #81919e; font-size: 10px; }
+.contract-fields-editor { margin-top: 12px; border: 1px solid #dce5eb; background: #fbfcfd; }
+.contract-fields-editor > header { min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 12px; border-bottom: 1px solid #e4ebef; }
+.contract-fields-editor > header strong, .contract-fields-editor > header small { display: block; }
+.contract-fields-editor > header strong { color: #2e4f63; font-size: 13px; }
+.contract-fields-editor > header small { margin-top: 3px; color: #81919e; font-size: 10px; }
+.contract-field-editor-row { display: grid; grid-template-columns: 34px minmax(110px,1fr) minmax(110px,1fr) 108px 55px minmax(150px,1.35fr) 32px; align-items: center; gap: 7px; padding: 9px 10px; border-top: 1px solid #e7edf0; }
+.contract-field-index { color: #8c9aa4; font: 10px Menlo, Monaco, monospace; text-align: center; }
+.contract-field-editor-row .el-input, .contract-field-editor-row .el-select { min-width: 0; }
 .platform-contract-note { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding: 11px 13px; border: 1px solid #dbe7ed; background: #f8fbfc; color: #637b89; font-size: 11px; line-height: 1.55; }
 .platform-contract-note > svg { width: 15px; flex: 0 0 auto; color: #418269; }
 .platform-contract-note code { color: #36758d; font: 10px Menlo, Monaco, monospace; }
@@ -349,6 +359,8 @@
   .platform-management-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .platform-panel-header, .platform-contract-banner { align-items: flex-start; flex-direction: column; }
   .platform-policy-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .contract-field-editor-row { grid-template-columns: 30px repeat(2, minmax(0,1fr)) 100px 50px 32px; }
+  .contract-field-editor-row .el-input:last-of-type { grid-column: 2 / -1; }
 }
 @media (max-width: 560px) {
   .platform-management-panel { padding: 16px; }
@@ -356,4 +368,9 @@
   .platform-policy-grid { grid-template-columns: minmax(0, 1fr); }
   .platform-toolbar { align-items: stretch; flex-direction: column; }
   .platform-toolbar .el-input { max-width: none; }
+  .contract-fields-editor > header { align-items: flex-start; flex-direction: column; }
+  .contract-field-editor-row { grid-template-columns: 24px minmax(0,1fr) 32px; }
+  .contract-field-editor-row .el-input, .contract-field-editor-row .el-select { grid-column: 2 / -1; }
+  .contract-field-editor-row .el-switch { grid-column: 2; justify-self: start; }
+  .contract-field-editor-row .el-button { grid-column: 3; grid-row: 1; }
 }

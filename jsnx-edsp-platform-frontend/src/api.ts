@@ -1,5 +1,5 @@
 import * as mock from './mock'
-import type { AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary, DataApplicationProvisionResult, DataApplicationProvisionSettings, DataSourceSummary, EsbDiagnosticResult, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult, MonitorAlert, MonitorPoint, MonitorSummary, PlatformResponseCode, ProviderAccount, ProviderSummary, ReleaseApproval, ResourceApiDetail, ResourceApiSummary, ResourceDirectoryPage, ResourceDocument, SecurityAlgorithmDescriptor, SecurityPolicy, TestResult, UsageRecord, UsageReportRow, ValidationResult, VendorDataSourceDefinition } from './types'
+import type { AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary, DataApplicationProvisionResult, DataApplicationProvisionSettings, DataSourceSummary, EsbDiagnosticResult, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult, MonitorAlert, MonitorPoint, MonitorSummary, PlatformResponseCode, PlatformResponseContract, ProviderAccount, ProviderSummary, ReleaseApproval, ResourceApiDetail, ResourceApiSummary, ResourceDirectoryPage, ResourceDocument, SecurityAlgorithmDescriptor, SecurityPolicy, TestResult, UsageRecord, UsageReportRow, ValidationResult, VendorDataSourceDefinition } from './types'
 
 const demoMode = import.meta.env.VITE_DEMO_MODE === 'mock'
 export const isDemoMode = () => demoMode
@@ -168,6 +168,26 @@ export const api = {
     method: 'PUT', headers: { 'X-Edsp-Operator-Token': operatorToken }, body: JSON.stringify(body)
   }),
   deletePlatformResponseCode: (code: string) => request<{ deleted: boolean }>(`/api/platform-response-codes/${encodeURIComponent(code)}`, {
+    method: 'DELETE', headers: { 'X-Edsp-Operator-Token': operatorToken }
+  }),
+  platformResponseContracts: () => request<PlatformResponseContract[]>('/api/platform-response-contracts', undefined, () => [{
+    id: 1, contractCode: 'EDSP_STANDARD', contractName: '平台标准响应 V1', version: 1,
+    description: '平台统一对外响应结构', enabled: true, defaultContract: true,
+    fields: [
+      { key: 'code', label: '平台返回码', type: 'STRING', required: true, description: '平台统一结果码' },
+      { key: 'message', label: '平台提示语', type: 'STRING', required: true, description: '平台统一提示语' },
+      { key: 'resultStatus', label: '结果状态', type: 'ENUM', required: true, description: 'HIT / MISS / ERROR' },
+      { key: 'traceId', label: '全局流水号', type: 'STRING', required: true, description: '全链路追踪号' },
+      { key: 'data', label: '业务数据', type: 'OBJECT', required: true, description: '标准化数据或完整供应商报文' }
+    ]
+  }]),
+  createPlatformResponseContract: (body: PlatformResponseContract) => request<PlatformResponseContract>('/api/platform-response-contracts', {
+    method: 'POST', headers: { 'X-Edsp-Operator-Token': operatorToken }, body: JSON.stringify(body)
+  }),
+  updatePlatformResponseContract: (id: number, body: PlatformResponseContract) => request<PlatformResponseContract>(`/api/platform-response-contracts/${id}`, {
+    method: 'PUT', headers: { 'X-Edsp-Operator-Token': operatorToken }, body: JSON.stringify(body)
+  }),
+  deletePlatformResponseContract: (id: number) => request<{ deleted: boolean }>(`/api/platform-response-contracts/${id}`, {
     method: 'DELETE', headers: { 'X-Edsp-Operator-Token': operatorToken }
   }),
   securityPolicy: (id: number) => request<SecurityPolicy>(`/api/interfaces/${id}/security-policy`, undefined, () => ({
