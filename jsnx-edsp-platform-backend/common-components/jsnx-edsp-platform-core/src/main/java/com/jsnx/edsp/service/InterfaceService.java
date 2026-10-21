@@ -411,6 +411,29 @@ public class InterfaceService {
     }
 
     @Transactional
+    public void deleteProvider(long providerId) {
+        Integer exists = jdbc.queryForObject("SELECT COUNT(*) FROM data_provider WHERE id=?", Integer.class, providerId);
+        if (exists == null || exists == 0) throw new IllegalArgumentException("资源提供商不存在或已删除");
+
+        List<String> dependencies = new ArrayList<>();
+        addProviderDependency(dependencies, "数据源", "data_source", providerId);
+        addProviderDependency(dependencies, "资源提供商账号", "provider_account", providerId);
+        addProviderDependency(dependencies, "接口文档", "resource_document", providerId);
+        if (!dependencies.isEmpty()) {
+            throw new IllegalStateException("当前资源提供商仍有关联的" + String.join("、", dependencies)
+                    + "，请先处理关联数据后再删除。平台不会级联删除这些业务数据。");
+        }
+
+        int deleted = jdbc.update("DELETE FROM data_provider WHERE id=?", providerId);
+        if (deleted == 0) throw new IllegalArgumentException("资源提供商不存在或已删除");
+    }
+
+    private void addProviderDependency(List<String> dependencies, String label, String table, long providerId) {
+        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM " + table + " WHERE provider_id=?", Integer.class, providerId);
+        if (count != null && count > 0) dependencies.add(label + "（" + count + "）");
+    }
+
+    @Transactional
     public ProviderSummary saveProviderRuntime(long providerId, SaveProviderRuntimeRequest request) {
         String runtimeUrl = normalizeRuntimeUrl(request.runtimeUrl(), true);
         int updated = jdbc.update("""

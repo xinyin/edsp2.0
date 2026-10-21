@@ -38,6 +38,23 @@ class ApiDeletionEndpointTest {
     }
 
     @Test
+    void providerCanBeDeletedWhenBackendAllowsIt() throws Exception {
+        mvc.perform(delete("/api/providers/17"))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+        verify(service).deleteProvider(17L);
+    }
+
+    @Test
+    void providerDeletionReportsAssociatedData() throws Exception {
+        doThrow(new IllegalStateException("当前资源提供商仍有关联的数据源（2），请先处理关联数据后再删除。平台不会级联删除这些业务数据。"))
+                .when(service).deleteProvider(17L);
+        mvc.perform(delete("/api/providers/17"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("message").value(containsString("数据源（2）")));
+    }
+
+    @Test
     void deletionGuardReturnsAnActionableMessage() throws Exception {
         doThrow(new IllegalStateException("仅支持删除从未发布的草稿 API"))
                 .when(service).deleteInterface(42L);

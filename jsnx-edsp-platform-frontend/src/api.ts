@@ -85,6 +85,7 @@ export const api = {
   providers: () => request<ProviderSummary[]>('/api/providers', undefined, () => [{ id: 1, providerCode: 'QXB', providerName: '企信资源提供商', contactName: '张经理', accessDate: '2026-01-01', messageEncoding: 'UTF-8', chargeRequired: true, encryptionRequired: true, loginRequired: true, status: 'ACTIVE' }]),
   createProvider: (body: Omit<ProviderSummary, 'id'>) => request<ProviderSummary>('/api/providers', { method: 'POST', body: JSON.stringify(body) }),
   updateProvider: (id: number, body: Omit<ProviderSummary, 'id'>) => request<ProviderSummary>(`/api/providers/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteProvider: (id: number) => request<void>(`/api/providers/${id}`, { method: 'DELETE' }),
   providerAccounts: (providerId: number) => request<ProviderAccount[]>(`/api/providers/${providerId}/accounts`),
   createProviderAccount: (providerId: number, body: Omit<ProviderAccount, 'id'|'providerId'|'providerName'>) => request<ProviderAccount>(`/api/providers/${providerId}/accounts`, { method: 'POST', body: JSON.stringify(body) }),
   updateProviderAccount: (id: number, body: Omit<ProviderAccount, 'id'|'providerId'|'providerName'>) => request<ProviderAccount>(`/api/provider-accounts/${id}`, { method: 'PUT', body: JSON.stringify(body) }),

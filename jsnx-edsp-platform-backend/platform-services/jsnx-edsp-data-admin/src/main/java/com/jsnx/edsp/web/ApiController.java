@@ -60,6 +60,12 @@ public class ApiController {
         return service.updateProvider(id, request);
     }
 
+    @DeleteMapping("/providers/{id}")
+    public ResponseEntity<Void> deleteProvider(@PathVariable long id) {
+        service.deleteProvider(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/providers/{id}/accounts")
     public List<ProviderAccount> providerAccounts(@PathVariable long id) { return service.providerAccounts(id); }
 
