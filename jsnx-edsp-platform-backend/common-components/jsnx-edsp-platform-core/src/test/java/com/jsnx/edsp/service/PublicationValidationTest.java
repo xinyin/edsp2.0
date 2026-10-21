@@ -206,6 +206,23 @@ class PublicationValidationTest {
     }
 
     @Test
+    void responseTraceExplainsMissingAndUnmappedSupplierCodes() {
+        doReturn(Map.of("page", 1)).when(service)
+                .invokeThroughDataApplication(any(), anyMap(), anyString());
+        TestResult missing = service.test(SERVICE_ID, new TestRequest(REQUEST, null, true, List.of(), "PLATFORM"));
+        assertThat(missing.traceNodes()).filteredOn(node -> node.key().equals("RESPONSE_MAPPING"))
+                .first().extracting(TraceNode::detail).asString()
+                .contains("未从上游响应读取到业务返回码", "result.code", "HTTP 成功判定");
+
+        doReturn(Map.of("result", Map.of("code", "7777"))).when(service)
+                .invokeThroughDataApplication(any(), anyMap(), anyString());
+        TestResult unmapped = service.test(SERVICE_ID, new TestRequest(REQUEST, null, true, List.of(), "PLATFORM"));
+        assertThat(unmapped.traceNodes()).filteredOn(node -> node.key().equals("RESPONSE_MAPPING"))
+                .first().extracting(TraceNode::detail).asString()
+                .contains("7777", "未配置结果码映射");
+    }
+
+    @Test
     void transportFailureCannotProduceReleaseProofAndIsTraced() {
         doThrow(new IllegalStateException("上游返回 HTTP 400")).when(service)
                 .invokeThroughDataApplication(any(), anyMap(), anyString());

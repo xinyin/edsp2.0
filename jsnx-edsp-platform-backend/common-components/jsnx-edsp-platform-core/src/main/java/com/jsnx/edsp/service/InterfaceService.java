@@ -1456,10 +1456,25 @@ public class InterfaceService {
         String vendorCode = vendorCodeValue == null ? "" : String.valueOf(vendorCodeValue);
         List<ResponseCodeMapping> executionCodes = publishedPlan == null ? detail.responseCodes() : publishedPlan.responseCodes();
         Map<String, Object> responsePolicy = publishedPlan == null ? detail.responsePolicy() : publishedPlan.responsePolicy();
-        ResponseCodeMapping code = "HTTP_SUCCESS".equals(responsePolicy.get("codeMode"))
+        boolean httpSuccessMode = "HTTP_SUCCESS".equals(responsePolicy.get("codeMode"));
+        ResponseCodeMapping matchedCode = executionCodes.stream()
+                .filter(c -> c.vendorCode().equals(vendorCode)).findFirst().orElse(null);
+        ResponseCodeMapping code = httpSuccessMode
                 ? new ResponseCodeMapping(null, "", String.valueOf(responsePolicy.get("successCode")), "HIT", false, false)
-                : executionCodes.stream().filter(c -> c.vendorCode().equals(vendorCode))
-                    .findFirst().orElse(new ResponseCodeMapping(null, vendorCode, "EXT-VENDOR-ERROR", "ERROR", false, false));
+                : matchedCode == null
+                    ? new ResponseCodeMapping(null, vendorCode, "EXT-VENDOR-ERROR", "ERROR", false, false)
+                    : matchedCode;
+        String responseMappingDetail = "完成供应商响应封装";
+        if (!httpSuccessMode && vendorCode.isBlank()) {
+            responseMappingDetail = "未从上游响应读取到业务返回码（字段路径：" + vendorCodePath
+                    + "）。请核对返回码字段路径；无业务返回码的接口可选择 HTTP 成功判定。";
+        } else if (!httpSuccessMode && matchedCode == null) {
+            responseMappingDetail = "上游业务返回码 " + vendorCode + " 未配置结果码映射（字段路径："
+                    + vendorCodePath + "）。请补充该码值的结果映射。";
+        } else if (!httpSuccessMode && "ERROR".equals(code.resultStatus())) {
+            responseMappingDetail = "上游业务返回码 " + vendorCode + " 被映射为异常状态（平台码："
+                    + code.standardCode() + "）。请核对供应商响应与结果码映射。";
+        }
         // MISS/ERROR responses carry no business data; required HIT mappings must not turn them into platform errors.
         Map<String, Object> responseFields = ResponsePolicySupport.fieldsForOutcome(upstreamResponse,
                     mapper.convertValue(effectiveMappings.stream().filter(m -> "RESPONSE".equals(m.direction())).toList(), new TypeReference<>() {}),
@@ -1479,7 +1494,7 @@ public class InterfaceService {
         long standardizeDurationMs = elapsedMs(standardizeStarted);
         steps.add(new ExecutionStep("字段标准化", "通过", "生成统一标准响应", standardizeDurationMs));
         traceNodes.add(new TraceNode("RESPONSE_MAPPING", "响应标准化", "PLATFORM", "ERROR".equals(code.resultStatus()) ? "ERROR" : "SUCCESS",
-                "完成供应商响应封装", standardizeDurationMs,
+                responseMappingDetail, standardizeDurationMs,
                 Map.of("vendorResponse", upstreamResponse, "responseMappingCount", effectiveMappings.stream()
                         .filter(mapping -> "RESPONSE".equals(mapping.direction())).count()), response));
         long totalDurationMs = Math.max(1, (System.nanoTime() - started) / 1_000_000);

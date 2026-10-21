@@ -683,7 +683,7 @@ body { background: var(--canvas); }
 .data-channel.done > span { opacity: 1; animation: data-flow 1.5s linear infinite; }
 .data-channel.done > b { opacity: 1; animation: data-flow 1.5s .75s linear infinite; }
 .trace-error { border-color: #a45d63; color: #88464d; background: #fcf5f5; }
-.trace-error span { color: #88464d; font-size: 12px; overflow-wrap: anywhere; }
+.trace-error span { color: #88464d; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .trace-inspector { border-color: var(--border); }
 .trace-inspector > header { flex-wrap: wrap; gap: 10px; background: var(--workspace-chrome); }
 .trace-inspector > header > div:first-child { display: flex; flex-wrap: wrap; gap: 8px; }

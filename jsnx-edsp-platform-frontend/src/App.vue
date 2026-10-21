@@ -13,6 +13,7 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, ApiRequestError, isDemoMode } from './api'
+import { describeTraceFailure } from './trace-diagnostics'
 import { buildResourceGuide, guideAdvice, isHttpEndpoint, isSuccessfulE2E, requestDeadlineMs } from './resource-guide'
 import type {
   AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary,
@@ -1316,11 +1317,11 @@ async function submitReleaseFromManagement() {
   try {
     const check = await api.validate(releaseDetail.value.summary.id)
     if (!check.valid) throw new Error(check.errors.join('；') || '发布前校验未通过')
-    await ElMessageBox.confirm(`确认直接上线 ${releaseDetail.value.summary.interfaceCode} V${releaseDetail.value.summary.currentVersion}？上线后即可配置调用授权。`, '确认服务上线', { type: 'warning', confirmButtonText: '确认上线', cancelButtonText: '取消' })
+    await ElMessageBox.confirm(`确认发布 ${releaseDetail.value.summary.interfaceCode} V${releaseDetail.value.summary.currentVersion}？发布后可配置调用授权。`, '确认发布服务', { type: 'warning', confirmButtonText: '确认发布', cancelButtonText: '取消' })
     await api.directPublish(releaseDetail.value.summary.id, releaseNoteManagement.value)
-    ElMessage.success(`V${releaseDetail.value.summary.currentVersion} 已上线，可配置 API 访问授权`)
+    ElMessage.success(`V${releaseDetail.value.summary.currentVersion} 已发布并生效，可配置 API 访问授权`)
     await Promise.all([loadReleaseManagement(releaseDetail.value.summary.id), loadAll()])
-  } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '服务上线失败') }
+  } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '服务发布失败') }
 }
 async function offlineRelease() {
   if (!releaseDetail.value) return
@@ -2329,17 +2330,16 @@ async function runTest() {
         }, { timeoutMs: requestDeadlineMs(previewTimeoutMs.value), signal: controller.signal })
     if (testingInterfaceId !== selectedInterfaceId.value) return
     testResult.value = result
-    selectedTraceKey.value = result.traceNodes[0]?.key ?? (testMode.value === 'E2E' ? 'ESB_QUEUE' : 'DOWNSTREAM')
+    const failure = describeTraceFailure(result.traceNodes, result.standardResponse,
+      detail.value.vendorCodePath, detail.value.responseCodes)
+    selectedTraceKey.value = failure?.node?.key ?? result.traceNodes[0]?.key ?? (testMode.value === 'E2E' ? 'ESB_QUEUE' : 'DOWNSTREAM')
     const remainingTraceDuration = minimumTraceDurationMs - (Date.now() - traceStartedAt)
     if (remainingTraceDuration > 0) {
       await new Promise(resolve => setTimeout(resolve, remainingTraceDuration))
     }
     if (testingInterfaceId !== selectedInterfaceId.value) return
     chainPhase.value = activeTraceDefinitions.value.length
-    if (result.traceNodes.some(node => ['ERROR', 'FAILED', 'FAILURE'].includes(node.status))
-      || result.standardResponse.resultStatus === 'ERROR') {
-      throw new Error('链路返回异常，请点击异常节点核对入参与出参，修正配置后重新测试。')
-    }
+    if (failure) throw new Error(failure.reason)
     if (testingMode === 'UPSTREAM' && testingInterfaceId === detail.value.summary.id) {
       lastUpstreamValidation.value = { interfaceId: testingInterfaceId, connectionFingerprint: upstreamValidationFingerprint.value }
     }
@@ -2371,11 +2371,12 @@ async function runTest() {
     if (apiError?.payload.code === 'TEST_EXECUTION_FAILED') {
       const nodes = Array.isArray(apiError.payload.traceNodes) ? apiError.payload.traceNodes as TestResult['traceNodes'] : []
       testResult.value = { upstreamRequest: {}, upstreamResponse: {}, standardResponse: {}, steps: [], traceNodes: nodes }
-      const failedNode = nodes.find(node => ['ERROR', 'FAILED', 'FAILURE'].includes(node.status))
-      selectedTraceKey.value = failedNode?.key ?? nodes[0]?.key ?? ''
+      const failure = describeTraceFailure(nodes, {}, detail.value?.vendorCodePath,
+        detail.value?.responseCodes)
+      selectedTraceKey.value = failure?.node?.key ?? nodes[0]?.key ?? ''
       chainPhase.value = Math.max(0, activeTraceDefinitions.value.findIndex(node => node.key === selectedTraceKey.value))
       const traceId = typeof apiError.payload.traceId === 'string' ? apiError.payload.traceId : ''
-      testError.value = `${apiError.message}${traceId ? `（Trace ID：${traceId}）` : ''}`
+      testError.value = `${failure?.reason ?? apiError.message}${traceId ? `（Trace ID：${traceId}）` : ''}`
     } else {
       testError.value = error instanceof SyntaxError ? 'JSON 格式不正确' : error instanceof Error ? error.message : '测试执行失败'
     }
@@ -2554,11 +2555,11 @@ async function publishConfig() {
   if (!detail.value || !hasUnpublishedChanges.value || detail.value.summary.status === 'PENDING_APPROVAL') return false
   await validateConfig()
   if (!validation.value?.valid) return false
-  await ElMessageBox.confirm(`确认上线 ${detail.value.summary.interfaceCode} V${detail.value.summary.currentVersion}？`, '确认服务上线', { confirmButtonText: '确认上线', cancelButtonText: '返回检查', type: 'warning' })
+  await ElMessageBox.confirm(`确认发布 ${detail.value.summary.interfaceCode} V${detail.value.summary.currentVersion}？`, '确认发布服务', { confirmButtonText: '确认发布', cancelButtonText: '取消', type: 'warning' })
   const published = await api.directPublish(selectedInterfaceId.value, releaseNote.value)
   detail.value.summary = published
-  ElMessage.success(`V${published.publishedVersion} 已上线，可配置 API 访问授权`)
-  try { await loadAll() } catch { ElMessage.warning('服务已上线，页面刷新失败，请稍后刷新') }
+  ElMessage.success(`V${published.publishedVersion} 已发布并生效，可配置 API 访问授权`)
+  try { await loadAll() } catch { ElMessage.warning('服务已发布，页面刷新失败，请稍后刷新') }
   return true
 }
 function openApproval(row: ReleaseApproval) { selectedApproval.value = row; approvalComment.value = ''; approvalDialog.value = true }
@@ -2670,7 +2671,7 @@ async function openCallTrace(row: UsageRecord) {
     const detail = await api.callTrace(traceId)
     if (!detail?.summary) throw new Error('链路详情缺少调用摘要')
     callTrace.value = detail
-    selectedLogNodeKey.value = detail.nodes?.[0]?.key ?? ''
+    selectedLogNodeKey.value = describeTraceFailure(detail.nodes ?? [])?.node?.key ?? detail.nodes?.[0]?.key ?? ''
   } catch (error) {
     callTraceError.value = error instanceof Error ? error.message : '链路详情加载失败'
     ElMessage.error(`链路详情加载失败：${callTraceError.value}`)
@@ -2977,7 +2978,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                 <div class="release-command-title"><span class="release-command-icon"><Promotion/></span><div><small aria-hidden="true" class="decorative-eyebrow"></small><h2>{{ releaseDetail.summary.interfaceName }}</h2><p><code>{{ releaseDetail.summary.interfaceCode }}</code><i></i>{{ releaseDetail.summary.servicePath }}</p></div></div>
                 <div class="release-state"><span>当前草稿<strong>V{{ releaseDetail.summary.currentVersion }}</strong></span><b></b><span>{{ releaseDetail.summary.status==='OFFLINE' ? '最近上线' : '线上生效' }}<strong>{{ releaseDetail.summary.publishedVersion == null ? '-' : 'V'+releaseDetail.summary.publishedVersion }}</strong></span><el-tag effect="plain" :type="releaseDetail.summary.status==='OFFLINE'?'danger':releaseDetail.summary.status==='PENDING_APPROVAL'?'warning':releaseDetail.summary.publishedVersion!=null?'success':'info'">{{ releaseDetail.summary.status==='OFFLINE'?'已下线':releaseDetail.summary.status==='PENDING_APPROVAL'?'审批中':releaseDetail.summary.publishedVersion!=null?'运行中':'未上线' }}</el-tag><el-tag v-if="releaseHasAuthorization" effect="plain" type="success">已有授权</el-tag></div>
                 <div class="release-command-actions">
-                  <el-button v-if="releaseDetail.summary.status!=='PENDING_APPROVAL' && releaseDetail.summary.currentVersion!==releaseDetail.summary.publishedVersion" type="primary" :icon="Promotion" @click="submitReleaseFromManagement">{{ releaseDetail.summary.status==='OFFLINE' ? `上线草稿 V${releaseDetail.summary.currentVersion}` : '直接上线' }}</el-button>
+                  <el-button v-if="releaseDetail.summary.status!=='PENDING_APPROVAL' && releaseDetail.summary.currentVersion!==releaseDetail.summary.publishedVersion" type="primary" :icon="Promotion" @click="submitReleaseFromManagement">发布 V{{ releaseDetail.summary.currentVersion }}</el-button>
                   <el-button v-if="releaseDetail.summary.publishedVersion!=null" plain :icon="DocumentCopy" @click="openPublishedDetail(releaseDetail.summary.id)">查看接口详情</el-button>
                   <el-button v-if="releaseDetail.summary.publishedVersion!=null && releaseDetail.summary.status==='PUBLISHED'" type="primary" plain :icon="Key" @click="authForm.interfaceId=releaseDetail.summary.id; navigate('authorization')">配置访问授权</el-button>
                   <el-button v-if="releaseDetail.summary.status==='OFFLINE' && releaseDetail.summary.publishedVersion!=null" type="primary" :icon="Promotion" @click="onlineRelease">恢复线上 V{{ releaseDetail.summary.publishedVersion }}</el-button>
@@ -2985,8 +2986,8 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                   <el-button v-if="(releaseDetail.summary.status==='OFFLINE' && releaseDetail.summary.publishedVersion!=null) || (releaseDetail.summary.status==='DRAFT' && releaseDetail.summary.publishedVersion==null)" type="danger" plain :icon="Delete" @click="archiveRelease">归档删除</el-button>
                 </div>
               </section>
-              <div v-if="!sources.find(source=>source.id===releaseDetail?.summary.dataSourceId)?.runtimeUrl" class="release-routing-warning" role="status"><div><strong>上线前需配置应用路由</strong><span>当前资源提供商尚未配置 Gateway 可访问的处理应用地址，补充后即可继续上线。</span></div><el-button @click="editReleaseRuntime">前往资源方管理</el-button></div>
-              <section v-if="releaseDetail.summary.currentVersion!==releaseDetail.summary.publishedVersion && releaseDetail.summary.status!=='PENDING_APPROVAL'" class="release-submit-panel plain-panel"><div><strong>待上线版本 V{{ releaseDetail.summary.currentVersion }}</strong><span v-if="releaseDetail.summary.status==='OFFLINE'">线上已下线，可上线当前草稿或恢复原线上版本。</span></div><CopyableBlock :value="releaseNoteManagement"><el-input v-model="releaseNoteManagement" type="textarea" :rows="2" placeholder="填写本次变更内容"/></CopyableBlock></section>
+              <div v-if="!sources.find(source=>source.id===releaseDetail?.summary.dataSourceId)?.runtimeUrl" class="release-routing-warning" role="status"><div><strong>发布前需配置应用路由</strong><span>当前资源提供商尚未配置 Gateway 可访问的处理应用地址，完成配置后可继续发布。</span></div><el-button @click="editReleaseRuntime">前往资源方管理</el-button></div>
+              <section v-if="releaseDetail.summary.currentVersion!==releaseDetail.summary.publishedVersion && releaseDetail.summary.status!=='PENDING_APPROVAL'" class="release-submit-panel plain-panel"><div><strong>待发布版本 V{{ releaseDetail.summary.currentVersion }}</strong><span v-if="releaseDetail.summary.status==='OFFLINE'">当前服务已下线，可发布草稿版本或恢复最近的已发布版本。</span></div><CopyableBlock :value="releaseNoteManagement"><el-input v-model="releaseNoteManagement" type="textarea" :rows="2" placeholder="填写本次变更内容"/></CopyableBlock></section>
               <section id="interface-version-history" class="version-history-panel plain-panel">
                 <header><div><h3>接口版本历史</h3></div><el-tag type="info">{{ releaseVersions.length }} 个版本</el-tag></header>
                 <el-alert v-if="releaseVersions.some(item => !item.historyComplete)" title="检测到旧版本记录不完整" type="warning" :closable="false" description="接口主表保留了已发布版本号，但旧审批单、发布记录或执行计划快照缺失；版本仍保留并阻止未经下线的删除。"/>
@@ -3209,7 +3210,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                         <i v-if="index < activeTraceDefinitions.length - 1" class="data-channel" :class="{active:channelActive(index),done:testSucceeded||chainPhase>index}"><span></span><b></b></i>
                       </template>
                     </div>
-                    <div v-if="testError" class="trace-error"><Warning/><div><strong>链路执行失败</strong><span>{{ testError }}</span></div></div>
+                    <div v-if="testError" class="trace-error" role="alert"><Warning/><div><strong>{{ selectedTraceNode && ['ERROR','FAILED','FAILURE'].includes(selectedTraceNode.status) ? `异常节点：${selectedTraceNode.name}` : '链路执行失败' }}</strong><span>{{ testError }}</span></div></div>
                     <div v-if="selectedTraceNode" class="trace-inspector">
                       <header><div><span>{{ selectedTraceNode.category }}</span><strong>{{ selectedTraceNode.name }}</strong><small>{{ selectedTraceNode.detail }}</small></div><div><b>{{ traceStatusLabel(selectedTraceNode.status) }}</b><strong>{{ selectedTraceNode.durationMs }} ms</strong></div></header>
                       <div class="trace-inspector-grid"><section><div><span>节点输入</span><small>进入该节点的实际数据</small></div><CopyableBlock :value="formatJson(selectedTraceNode.input)"><pre>{{ formatJson(selectedTraceNode.input) }}</pre></CopyableBlock></section><section><div><span>节点输出</span><small>该节点处理后的实际数据</small></div><CopyableBlock :value="formatJson(selectedTraceNode.output)"><pre>{{ formatJson(selectedTraceNode.output) }}</pre></CopyableBlock></section></div>
@@ -3224,7 +3225,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                     </div>
                     <div class="release-form">
                       <label>发布说明</label><CopyableBlock :value="releaseNote"><el-input v-model="releaseNote" type="textarea" :rows="4" placeholder="例如：新增企业查询接口，完成请求 / 响应映射与配置校验" :disabled="detail?.summary.status==='PENDING_APPROVAL'"/></CopyableBlock>
-                      <div class="release-note">保存草稿 → 配置校验 → 上线 → 调用系统授权。链路测试可在上线前后按需执行，不构成发布条件。已发布的服务需先下线，才能归档；版本、授权和调用日志仍会保留。</div>
+                      <div class="release-note">保存草稿 → 配置校验 → 发布 → 调用系统授权。链路测试可按需执行，不构成发布条件。已发布的服务需先下线，才能归档；版本、授权和调用日志仍会保留。</div>
                       <div class="release-actions"><el-button :icon="DocumentChecked" :disabled="guideBusy" @click="validateConfig">发布前校验</el-button></div>
                       <div v-if="validation" class="validation-result" :class="validation?.valid ? 'valid' : 'invalid'"><el-icon><component :is="validation?.valid ? CircleCheck : Warning"/></el-icon><div><strong>{{ validation?.valid ? '已保存草稿校验通过' : '配置校验未通过，请修正后重试' }}</strong><span v-for="item in [...(validation?.errors ?? []),...(validation?.warnings ?? [])]" :key="item">{{ item }}</span></div></div>
                       <div v-if="detail?.summary.status==='PENDING_APPROVAL'" class="api-release-followup"><strong>已提交，等待审批 · 尚未上线</strong><p>当前草稿 V{{ detail?.summary.currentVersion }} 已进入审批队列{{ publishResult ? '，审批单 ' + publishResult?.id : '' }}。请在审批中心查看处理结果；通过后再为调用系统授权。</p><el-button type="primary" @click="navigate('approvals')">前往审批中心</el-button><el-button :disabled="loading" @click="loadAll">刷新审批状态</el-button></div>

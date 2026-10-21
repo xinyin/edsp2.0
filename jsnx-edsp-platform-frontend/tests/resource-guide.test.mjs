@@ -9,6 +9,9 @@ import { ref, computed, nextTick, watch } from 'vue'
 const guideSource = readFileSync(new URL('../src/resource-guide.ts', import.meta.url), 'utf8')
 const guideJS = ts.transpileModule(guideSource, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 } }).outputText
 const guide = await import('data:text/javascript;base64,' + Buffer.from(guideJS).toString('base64'))
+const diagnosticsSource = readFileSync(new URL('../src/trace-diagnostics.ts', import.meta.url), 'utf8')
+const diagnosticsJS = ts.transpileModule(diagnosticsSource, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 } }).outputText
+const { describeTraceFailure } = await import('data:text/javascript;base64,' + Buffer.from(diagnosticsJS).toString('base64'))
 const appText = readFileSync(new URL('../src/App.vue', import.meta.url), 'utf8')
 const htmlText = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
 const apiText = readFileSync(new URL('../src/api.ts', import.meta.url), 'utf8')
@@ -19,7 +22,7 @@ const sourceFile = ts.createSourceFile('App.ts', script, ts.ScriptTarget.Latest,
 const imports = sourceFile.statements.filter(ts.isImportDeclaration)
 let standalone = script
 for (const declaration of [...imports].reverse()) standalone = standalone.slice(0, declaration.getStart()) + standalone.slice(declaration.end)
-const appJS = ts.transpileModule(standalone, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText
+const appJS = ts.transpileModule(standalone + '\nglobalThis.__selectedTraceKey = selectedTraceKey;', { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText
 
 const mapping = direction => ({ direction, sourcePath: 'name', targetPath: 'name', transformType: 'DIRECT', transformConfig: {}, defaultValue: '', required: true, sortOrder: 1 })
 const codes = [{ vendorCode: '0000', standardCode: 'EXT-SUCCESS', resultStatus: 'HIT', billable: true, retryable: false }]
@@ -32,7 +35,7 @@ function harness(overrides = {}, confirm = async () => true) {
   for (const entry of imports) {
     for (const element of entry.importClause?.namedBindings?.elements ?? []) deps[element.name.text] = {}
   }
-  Object.assign(deps, guide, { ref, computed, nextTick, watch, useDisplayPreference: (_key, initial = false) => ref(initial), URL, AbortController, structuredClone,
+  Object.assign(deps, guide, { ref, computed, nextTick, watch, describeTraceFailure, useDisplayPreference: (_key, initial = false) => ref(initial), URL, AbortController, structuredClone,
     setInterval: () => 1, clearInterval: () => {}, setTimeout: callback => { callback(); return 1 },
     document: { querySelector: () => null }, navigator: {},
     DOMParser: class { parseFromString(xml) { return { getElementsByTagName: tag => {
@@ -47,6 +50,7 @@ function harness(overrides = {}, confirm = async () => true) {
       { get: (target, name) => target[name] ?? (() => { throw new Error('Unexpected API call: ' + String(name)) }) })
   })
   const state = vm.runInNewContext('(() => { ' + appJS + ' return { responseStructurePreview, platformResponseContracts, contractEditorForm, contractEditorDialog, contractEditorSaving, platformContractFieldsDrawer, platformContractFields, selectedPlatformContractId, viewPlatformContract, editPlatformContract, savePlatformContract, platformManagementTab, openPlatformManagement, activeSidebarMenu, pageMeta, savedResponsePolicyBaseline, platformServiceDialog, platformServiceForm, serviceResourceOptions, serviceCreationResource, selectServiceResource, openPlatformServiceDialog, createPlatformService, validateUpstreamCapability, testResult, testError, testSucceeded, navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, activeMenu, activeTab, detail, canDeleteApi, deleteApiRestriction, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, allResourceApis, catalogProviders, filteredCatalogProviders, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, providerExpansion, sourceExpansion, isProviderExpanded, isSourceExpanded, sourceInterfaces, filteredProviderGroups, filteredSources, setAllSourcesExpanded, locateSelectedApi, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, apiForm, apiDialog, apiMetadataDialog, apiMetadataSaving, apiMetadataForm, openResourceApiMetadataEditor, saveResourceApiMetadata, mappingDirection, mappingIsPassThrough, mappingModeLabel, onResponseSourceChange, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
+  state.selectedTraceKey = deps.__selectedTraceKey
   state.selectedSourceId.value = 1
   state.activeMenu.value = 'resource'
   state.selectedInterfaceId.value = 11
@@ -445,6 +449,35 @@ test('只有完整链路且关键节点成功才可记为 E2E 通过', () => {
   assert.equal(guide.isSuccessfulE2E({ ...result(), traceNodes: [] }, 'E2E'), false)
   assert.equal(guide.isSuccessfulE2E({ ...result(), standardResponse: { resultStatus: 'ERROR' } }, 'E2E'), false)
 })
+
+test('异常节点明确区分缺少业务码、未配置码值和供应商错误码', () => {
+  const node = { key: 'RESPONSE_MAPPING', name: '响应标准化', status: 'ERROR',
+    detail: '完成供应商响应封装', input: { vendorResponse: { page: 1 } }, output: {}, durationMs: 1 }
+  const missing = describeTraceFailure([node], { code: 'EXT-VENDOR-ERROR', resultStatus: 'ERROR' }, 'result.code', codes)
+  assert.match(missing.reason, /未从上游响应读取到业务返回码.*result\.code/)
+  node.input.vendorResponse = { result: { code: '7777' } }
+  const unmapped = describeTraceFailure([node], { resultStatus: 'ERROR' }, 'result.code', codes)
+  assert.match(unmapped.reason, /7777 未配置结果码映射/)
+  node.input.vendorResponse = { result: { code: '0000' } }
+  assert.match(describeTraceFailure([node], { resultStatus: 'ERROR' }, 'result.code', codes).reason, /被配置为异常状态/)
+})
+
+test('发布入口使用正式用语且不再出现口语化上线文案', () => {
+  assert.doesNotMatch(appText + guideSource, /直接上线|一键上线|上线草稿/)
+  assert.match(appText, /确认发布服务/)
+  assert.match(appText, /发布 V\{\{ releaseDetail\.summary\.currentVersion \}\}/)
+})
+
+test('全链路失败自动定位异常节点并显示具体原因', async () => {
+  const failedNode = { key: 'RESPONSE_MAPPING', name: '响应标准化', status: 'ERROR',
+    detail: '完成供应商响应封装', input: { vendorResponse: { page: 1 } }, output: {}, durationMs: 1 }
+  const s = harness({ esbDiagnostic: async () => ({ upstreamRequest: {}, upstreamResponse: { page: 1 },
+    standardResponse: { code: 'EXT-VENDOR-ERROR', resultStatus: 'ERROR' }, nodes: [failedNode] }) })
+  s.activeTab.value = 'test'; s.testMode.value = 'E2E'
+  assert.equal(await s.runTest(), false)
+  assert.equal(s.selectedTraceKey.value, 'RESPONSE_MAPPING')
+  assert.match(s.testError.value, /未从上游响应读取到业务返回码/)
+})
 test('浏览器联调截止时间包含上游超时和平台处理余量', () => {
   assert.equal(guide.requestDeadlineMs(3000), 10000)
   assert.equal(guide.requestDeadlineMs(15000), 20000)
@@ -758,7 +791,7 @@ test('已下线接口仍可编辑保存，并可选择上线新草稿或恢复�
   assert.equal(s.detail.value.summary.status, 'OFFLINE')
   assert.equal(s.detail.value.summary.currentVersion, 3)
   assert.equal(s.resourceEditorState.value.label, '线上已下线')
-  assert.match(appText, /上线草稿 V\$\{releaseDetail\.summary\.currentVersion\}/)
+  assert.match(appText, /发布 V\{\{ releaseDetail\.summary\.currentVersion \}\}/)
   assert.match(appText, /恢复线上 V\{\{ releaseDetail\.summary\.publishedVersion \}\}/)
 })
 test('服务归档规则与后端一致：未发布草稿和已下线版本可归档', () => {
