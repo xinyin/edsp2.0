@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
+import org.springframework.cloud.gateway.filter.NettyWriteResponseFilter;
 import org.springframework.core.Ordered;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
@@ -68,5 +69,9 @@ public class PlatformResponseContractFilter implements GlobalFilter, Ordered {
                 || contentType.getSubtype().contains("+json"));
     }
 
-    @Override public int getOrder() { return Ordered.LOWEST_PRECEDENCE - 200; }
+    /**
+     * Install the decorator before Gateway's Netty response writer. A decorator
+     * added after that filter cannot observe the downstream response body.
+     */
+    @Override public int getOrder() { return NettyWriteResponseFilter.WRITE_RESPONSE_FILTER_ORDER - 1; }
 }
