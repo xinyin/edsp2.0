@@ -726,6 +726,16 @@ test('页面首屏不重复展示契约、发布流程和主操作', () => {
   assert.equal((appText.match(/@click="openBatchAuthorization"/g) ?? []).length, 1)
   assert.equal((appText.match(/@click="openBillingDialog\(\)"/g) ?? []).length, 1)
 })
+test('全局概览优先展示业务指标，不呈现环境、实例和数据源运维卡片', () => {
+  const overview = appText.split('<template v-if="activeMenu === \'overview\'">')[1]?.split('</template>')[0] ?? ''
+  assert.match(overview, /累计调用量/)
+  assert.match(overview, /调用成功率/)
+  assert.match(overview, /累计异常调用/)
+  assert.match(overview, /已发布 API/)
+  assert.match(overview, /有效服务授权/)
+  assert.doesNotMatch(overview, /运行环境|运行实例|数据源登记状态|数据源实例/)
+  assert.match(appText, /v-if="activeMenu !== 'overview'" type="info" effect="plain">TEST 环境/)
+})
 test('生效配置和日志检索在窄工作区使用自适应布局', () => {
   assert.match(consoleThemeText, /\.api-preview-panel dl \{[^}]*minmax\(280px,\.38fr\)/)
   assert.match(consoleThemeText, /@container \(max-width: 740px\)[\s\S]*?\.api-preview-panel dl \{ grid-template-columns: minmax\(0,1fr\); \}/)

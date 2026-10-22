@@ -506,7 +506,7 @@ const standardRequestPreview = computed(() => {
 })
 
 const pageMeta = computed(() => ({
-  overview: ['全局概览', '统一掌握服务运行、调用质量、资源健康与经营计量'],
+  overview: ['全局概览', '查看平台调用表现与服务使用情况'],
   discovery: ['资源目录', '查看平台已接入的数据资源'],
   documents: ['文档管理', '管理资源提供商接口文档'],
   reports: ['报表中心', '查看与下载调用统计报表'],
@@ -739,8 +739,6 @@ const logSelectedNode = computed(() => callTrace.value?.nodes.find(node => node.
 const failedCallCount = computed(() => callLogs.value.filter(item => item.requestStatus !== 'SUCCESS' || item.resultStatus === 'ERROR').length)
 const overviewSuccessRate = computed(() => monitorSummary.value.totalCalls > 0 ? monitorSummary.value.successRate : 100)
 const overviewMaxCalls = computed(() => Math.max(1, ...monitorPoints.value.map(item => item.calls)))
-const overviewHealthySources = computed(() => sources.value.filter(item => !['INACTIVE', 'OFFLINE', 'DISABLED'].includes(item.status)).length)
-const overviewTotalInstances = computed(() => sources.value.reduce((sum, item) => sum + item.instanceCount, 0))
 const overviewResultTotal = computed(() => Math.max(1, billingSummary.value.hitCalls + billingSummary.value.missCalls + billingSummary.value.errorCalls))
 const overviewResultMix = computed(() => [
   { key: 'hit', label: '成功命中', value: billingSummary.value.hitCalls, color: '#718d7e' },
@@ -2943,7 +2941,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
     <el-container>
       <el-header class="topbar">
         <div class="crumbs"><span>外部数据平台</span><b>/</b><template v-if="activeMenu === 'platform-management'"><span>平台管理</span><b>/</b></template><span>{{ pageMeta[0] }}</span></div>
-        <div class="top-actions"><el-tag v-if="demo" type="warning" effect="plain">演示数据模式</el-tag><el-tag type="info" effect="plain">TEST 环境</el-tag><el-dropdown><div class="user"><span>{{ user?.displayName }}</span><b>管</b></div><template #dropdown><el-dropdown-menu><el-dropdown-item @click="logout"><el-icon><SwitchButton /></el-icon>退出登录</el-dropdown-item></el-dropdown-menu></template></el-dropdown></div>
+        <div class="top-actions"><el-tag v-if="demo" type="warning" effect="plain">演示数据模式</el-tag><el-tag v-if="activeMenu !== 'overview'" type="info" effect="plain">TEST 环境</el-tag><el-dropdown><div class="user"><span>{{ user?.displayName }}</span><b>管</b></div><template #dropdown><el-dropdown-menu><el-dropdown-item @click="logout"><el-icon><SwitchButton /></el-icon>退出登录</el-dropdown-item></el-dropdown-menu></template></el-dropdown></div>
       </el-header>
 
       <el-main class="main-content">
@@ -2952,17 +2950,15 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
         <template v-if="activeMenu === 'overview'">
           <section class="cockpit-command">
             <div class="cockpit-runtime"><span class="live-beacon">运营概况</span><div><strong>服务与调用概览</strong><p>{{ dashboard.dataSourceCount }} 个数据源 · {{ dashboard.publishedCount }} 个已发布 API · {{ clients.length }} 个调用系统</p></div></div>
-            <div class="cockpit-context"><span>运行环境<b>TEST</b></span><span>数据源实例<b>{{ overviewTotalInstances }}</b></span><span>当前告警<b :class="{ danger: monitorSummary.activeAlerts > 0 }">{{ monitorSummary.activeAlerts }}</b></span></div>
             <div class="cockpit-actions"><button @click="navigate('logs')"><Search/><span><strong>链路追踪</strong><small>检索 Trace ID</small></span><ArrowRight/></button><button @click="navigate('monitor')"><Monitor/><span><strong>运行监控</strong><small>查看节点耗时</small></span><ArrowRight/></button></div>
           </section>
 
           <section class="cockpit-kpis">
-            <div class="cockpit-kpi primary"><span>今日调用量</span><strong>{{ monitorSummary.totalCalls.toLocaleString() }}</strong><small>全平台 API 请求</small><DataAnalysis/></div>
-            <div class="cockpit-kpi"><span>调用成功率</span><strong>{{ overviewSuccessRate.toFixed(1) }}<em>%</em></strong><small :class="overviewSuccessRate >= 99 ? 'positive' : 'negative'">{{ overviewSuccessRate >= 99 ? '运行质量稳定' : '需关注失败调用' }}</small><CircleCheck/></div>
-            <div class="cockpit-kpi"><span>平均响应耗时</span><strong>{{ monitorSummary.avgDurationMs }}<em> ms</em></strong><small>P95 {{ monitorSummary.p95DurationMs }} ms</small><Connection/></div>
+            <div class="cockpit-kpi primary"><span>累计调用量</span><strong>{{ monitorSummary.totalCalls.toLocaleString() }}</strong><small>全平台 API 请求</small><DataAnalysis/></div>
+            <div class="cockpit-kpi"><span>调用成功率</span><strong>{{ overviewSuccessRate.toFixed(1) }}<em>%</em></strong><small :class="overviewSuccessRate >= 99 ? 'positive' : 'negative'">{{ overviewSuccessRate >= 99 ? '调用正常' : '存在异常调用' }}</small><CircleCheck/></div>
+            <div class="cockpit-kpi"><span>累计异常调用</span><strong>{{ monitorSummary.errorCalls.toLocaleString() }}</strong><small>全平台失败请求</small><Warning/></div>
             <div class="cockpit-kpi"><span>已发布 API</span><strong>{{ dashboard.publishedCount }}</strong><small>共 {{ dashboard.interfaceCount }} 个接口</small><Files/></div>
             <div class="cockpit-kpi"><span>有效服务授权</span><strong>{{ validAuthorizations.length }}</strong><small>{{ clients.length }} 个调用系统</small><Key/></div>
-            <div class="cockpit-kpi"><span>本期计费金额</span><strong>{{ money(billingSummary.totalAmount) }}</strong><small>{{ billingSummary.billableCalls }} 次可计费调用</small><Wallet/></div>
           </section>
 
           <section class="cockpit-analytics">
@@ -2977,7 +2973,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                 <div v-if="activeTrendPoint" class="chart-tooltip" :style="{ left: `${((activeTrendIndex ?? 0) + .5) / Math.max(1, monitorPoints.length) * 100}%`, transform: activeTrendIndex === 0 ? 'translateX(0)' : activeTrendIndex === monitorPoints.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)' }"><header><strong>{{ activeTrendPoint.timeLabel }}</strong><span>{{ activeTrendPoint.calls }} 次调用</span></header><div><span>成功<b>{{ activeTrendPoint.successCalls }}</b></span><span>异常<b class="error">{{ activeTrendPoint.errorCalls }}</b></span><span>平均耗时<b>{{ activeTrendPoint.avgDurationMs }} ms</b></span><span>上游耗时<b>{{ activeTrendPoint.avgUpstreamDurationMs }} ms</b></span></div></div>
                 <div v-if="!monitorPoints.length" class="chart-empty">暂无趋势数据</div>
               </div>
-              <footer><span>峰值调用<b>{{ overviewMaxCalls }}</b></span><span>平均响应<b>{{ monitorSummary.avgDurationMs }} ms</b></span><span>上游平均耗时<b>{{ monitorSummary.avgUpstreamDurationMs }} ms</b></span></footer>
+              <footer><span>峰值调用<b>{{ overviewMaxCalls }}</b></span><span>平均响应<b>{{ monitorSummary.avgDurationMs }} ms</b></span><span>API 数量<b>{{ dashboard.interfaceCount }}</b></span></footer>
             </div>
             <div class="cockpit-panel result-panel">
               <header><div><span aria-hidden="true" class="decorative-eyebrow"></span><strong>调用结果分布</strong></div><b>{{ billingSummary.totalCalls }} 次</b></header>
@@ -2986,10 +2982,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
             </div>
           </section>
 
-          <section class="cockpit-alerts" :class="{ clear: monitorSummary.activeAlerts === 0 }"><span><Warning v-if="monitorSummary.activeAlerts"/><CircleCheck v-else/></span><div><strong>{{ monitorSummary.activeAlerts ? `${monitorSummary.activeAlerts} 项运行告警待处理` : '当前无活动告警' }}</strong><small>{{ monitorSummary.activeAlerts ? monitorAlerts[0]?.detail || '请进入运行监控查看告警详情' : 'Gateway、资源提供商处理应用和上游服务链路均处于正常状态' }}</small></div><button @click="navigate('monitor')">告警中心<ArrowRight/></button></section>
-
           <section class="cockpit-operations">
-            <div class="cockpit-panel source-health-panel"><header><div><span aria-hidden="true" class="decorative-eyebrow"></span><strong>数据源登记状态</strong></div><b>{{ sources.length }} 个数据源</b></header><div class="source-health-list"><div v-for="source in sources.slice(0,5)" :key="source.id"><span :class="source.status.toLowerCase()"><i></i></span><div><strong>{{ source.sourceName }}</strong><small>{{ source.applicationName }}</small></div><b>{{ source.runtimeUrl ? '已配访问地址' : '待配访问地址' }}</b><em>V{{ source.configVersion }}</em></div></div><button class="panel-link" @click="navigate('resource')">管理数据源与 API<ArrowRight/></button></div>
             <div class="cockpit-panel ranking-panel"><header><div><span aria-hidden="true" class="decorative-eyebrow"></span><strong>API 调用排行</strong></div><span>最近 {{ usageRecords.length }} 笔</span></header><div class="ranking-list"><div v-for="(item,index) in overviewTopInterfaces" :key="item.code"><b>{{ String(index + 1).padStart(2, '0') }}</b><div><strong>{{ item.name }}</strong><small>{{ item.code }}</small></div><span>{{ item.calls }} 次</span><em>{{ item.avgDuration }} ms</em><i :class="{warning:item.successRate<99}">{{ item.successRate }}%</i></div><div v-if="!overviewTopInterfaces.length" class="panel-empty">暂无 API 调用数据</div></div></div>
             <div class="cockpit-panel failure-panel"><header><div><span aria-hidden="true" class="decorative-eyebrow"></span><strong>近期异常调用</strong></div><button @click="navigate('logs')">全部</button></header><div class="failure-list"><button v-for="item in overviewRecentFailures" :key="item.id" @click="navigate('logs')"><span>ERROR</span><div><strong>{{ item.interfaceName }}</strong><small>{{ item.nodeName || item.standardCode }}</small></div><time>{{ formatDateTime(item.calledAt) }}</time><ArrowRight/></button><div v-if="!overviewRecentFailures.length" class="panel-empty success"><CircleCheck/><span>暂无异常调用</span></div></div></div>
           </section>
