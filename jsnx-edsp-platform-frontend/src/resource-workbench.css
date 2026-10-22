@@ -325,20 +325,12 @@
 .platform-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .platform-toolbar .el-input { max-width: 360px; }
 .platform-code-table { width: 100%; }
-.platform-policy-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-.platform-policy-grid article { min-width: 0; min-height: 118px; padding: 15px; border: 1px solid #dce5eb; background: #fbfcfd; }
-.platform-policy-grid span, .platform-policy-grid strong, .platform-policy-grid small { display: block; }
-.platform-policy-grid span { color: #7b8d9a; font-size: 10px; }
-.platform-policy-grid strong { margin-top: 10px; color: #2a4f66; font-size: 14px; }
-.platform-policy-grid small { margin-top: 8px; color: #82919c; font-size: 10px; line-height: 1.5; }
 @media (max-width: 900px) {
-  .platform-policy-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .contract-field-editor-row { grid-template-columns: 30px repeat(2, minmax(0,1fr)) 100px 50px 32px; }
   .contract-field-editor-row .el-input:last-of-type { grid-column: 2 / -1; }
 }
 @media (max-width: 560px) {
   .platform-management-panel { padding: 16px; }
-  .platform-policy-grid { grid-template-columns: minmax(0, 1fr); }
   .platform-toolbar { align-items: stretch; flex-direction: column; }
   .platform-toolbar .el-input { max-width: none; }
   .contract-fields-editor > header { align-items: flex-start; flex-direction: column; }

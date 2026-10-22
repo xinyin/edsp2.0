@@ -17,6 +17,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -85,14 +86,20 @@ public class PlatformOperationAudit implements HandlerInterceptor {
     @RestController
     @RequestMapping("/api/operation-audit")
     public static class QueryController {
+        private static final Set<String> ACTIONS = Set.of("POST", "PUT", "PATCH", "DELETE");
+        private static final Set<String> OUTCOMES = Set.of("SUCCESS", "FAILURE");
         private final JdbcTemplate jdbc;
         public QueryController(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
         @GetMapping
-        public List<Map<String, Object>> list(HttpServletRequest request,
+        public AuditPage list(HttpServletRequest request,
                 @RequestParam LocalDate from, @RequestParam LocalDate to,
                 @RequestParam(defaultValue = "1") int page,
-                @RequestParam(defaultValue = "50") int size) {
+                @RequestParam(defaultValue = "50") int size,
+                @RequestParam(required = false) String action,
+                @RequestParam(required = false) String operator,
+                @RequestParam(required = false) String targetType,
+                @RequestParam(required = false) String outcome) {
             var session = request.getSession(false);
             if (session == null || session.getAttribute(ChainTestToolController.SESSION_TOKEN) == null)
                 throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "请先登录");
@@ -101,12 +108,34 @@ public class PlatformOperationAudit implements HandlerInterceptor {
             if (to.isBefore(from) || ChronoUnit.DAYS.between(from, to) > 366 || page < 1 || size < 1 || size > 200
                     || (long) (page - 1) * size > Integer.MAX_VALUE)
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "审计查询范围或分页参数不合法");
-            return jdbc.queryForList("""
+            if ((action != null && !ACTIONS.contains(action))
+                    || (outcome != null && !OUTCOMES.contains(outcome))
+                    || (operator != null && operator.length() > 64)
+                    || (targetType != null && !targetType.matches("[a-z0-9-]{1,64}")))
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "审计筛选参数不合法");
+            StringBuilder where = new StringBuilder(" WHERE occurred_at>=? AND occurred_at<?");
+            List<Object> arguments = new ArrayList<>();
+            arguments.add(from.atStartOfDay());
+            arguments.add(to.plusDays(1).atStartOfDay());
+            if (action != null) { where.append(" AND action=?"); arguments.add(action); }
+            if (operator != null && !operator.isBlank()) {
+                where.append(" AND operator_name LIKE ? ESCAPE '!'");
+                arguments.add(operator.trim().replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%");
+            }
+            if (targetType != null) { where.append(" AND target_type=?"); arguments.add(targetType); }
+            if (outcome != null) { where.append(" AND outcome=?"); arguments.add(outcome); }
+            Long total = jdbc.queryForObject("SELECT COUNT(*) FROM platform_operation_audit" + where, Long.class, arguments.toArray());
+            List<Object> pageArguments = new ArrayList<>(arguments);
+            pageArguments.add(size);
+            pageArguments.add((page - 1) * size);
+            var rows = jdbc.queryForList("""
                     SELECT id,operator_name operatorName,action,target_path targetPath,target_type targetType,
                            outcome,http_status httpStatus,trace_id traceId,client_ip clientIp,occurred_at occurredAt
-                    FROM platform_operation_audit WHERE occurred_at>=? AND occurred_at<?
-                    ORDER BY occurred_at DESC,id DESC LIMIT ? OFFSET ?
-                    """, from.atStartOfDay(), to.plusDays(1).atStartOfDay(), size, (page - 1) * size);
+                    FROM platform_operation_audit
+                    """ + where + " ORDER BY occurred_at DESC,id DESC LIMIT ? OFFSET ?", pageArguments.toArray());
+            return new AuditPage(rows, total == null ? 0 : total, page, size);
         }
     }
+
+    public record AuditPage(List<Map<String, Object>> rows, long total, int page, int size) {}
 }

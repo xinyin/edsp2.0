@@ -12,6 +12,7 @@ export interface ResourceDirectoryPage { rows: ResourceDirectoryRow[]; total: nu
 export interface UsageReportRow { level: number; path: string[]; label: string; callCount?: number; successCount?: number; failureCount?: number; billableCount?: number; amount?: number; averageDurationMs?: number; upstreamDurationMs?: number; children?: UsageReportRow[] }
 export interface UsageReportResult { dimensions: string[]; metrics: string[]; rows: UsageReportRow[] }
 export interface OperationAuditRecord { id: number; operatorName: string; action: string; targetPath: string; targetType: string; outcome: string; httpStatus: number; traceId?: string; clientIp?: string; occurredAt: string }
+export interface OperationAuditPage { rows: OperationAuditRecord[]; total: number; page: number; size: number }
 
 export interface LoginResult { token: string; displayName: string; role: string; institution: string }
 export type ProviderAccessMode = 'HTTP' | 'DATABASE' | 'PLATFORM_SERVICE' | 'KAFKA'

@@ -123,9 +123,15 @@ const reportTree = computed(() => {
   return roots
 })
 const auditRange = ref<[string, string]>([localDate(-30), localDate()])
+const auditFilters = ref({ action: '', operator: '', targetType: '', outcome: '' })
 const auditRows = ref<OperationAuditRecord[]>([])
 const auditPage = ref(1)
+const auditSize = ref(50)
+const auditTotal = ref(0)
 const auditLoading = ref(false)
+let auditQuerySequence = 0
+const selectedAuditRecord = ref<OperationAuditRecord | null>(null)
+const auditDetailDrawer = ref(false)
 const securityAlgorithms = ref<SecurityAlgorithmDescriptor[]>([])
 const securityAlgorithmLoadError = ref('')
 const algorithmDrawer = ref(false)
@@ -225,7 +231,7 @@ const savedUpstreamRequestBaseline = ref('{}')
 const savedUpstreamResponseBaseline = ref('{}')
 const savedResponseCodesBaseline = ref('')
 const platformResponseCodes = ref<PlatformResponseCode[]>([])
-type PlatformManagementTab = 'contract' | 'codes' | 'security' | 'policies' | 'audit'
+type PlatformManagementTab = 'contract' | 'codes' | 'security' | 'audit'
 const platformManagementTab = ref<PlatformManagementTab>('contract')
 const platformCodeSearch = ref('')
 const platformResponseContracts = ref<PlatformResponseContract[]>([])
@@ -532,8 +538,7 @@ const pageMeta = computed(() => ({
     contract: ['标准响应', '维护平台统一返回结构，点击查看可浏览字段定义。'],
     codes: ['返回码字典', '维护平台返回码和结果状态，供标准服务引用。'],
     security: ['安全能力', '查看平台已注册的签名和加密算法。密钥和接口启用范围在标准服务开发中配置。'],
-    policies: ['默认策略', '新接口采用以下初始策略，不会覆盖已有配置。接口级调整请进入标准服务开发。'],
-    audit: ['操作审计', '查询平台管理配置的变更记录']
+    audit: ['操作审计', '检索平台配置与业务操作记录']
   })[platformManagementTab.value],
   approvals: ['变更审批', '统一处理服务发布申请，审批通过后才会激活发布计划'],
   releases: ['服务发布', '集中查看版本档案、上线状态、下线和归档操作']
@@ -2923,11 +2928,25 @@ async function downloadUsageReport() {
 }
 async function loadOperationAudit() {
   if (!auditRange.value?.length) return
+  const sequence = ++auditQuerySequence
   auditLoading.value = true
-  auditRows.value = []
-  try { auditRows.value = await api.operationAudit(auditRange.value[0], auditRange.value[1], auditPage.value) }
-  catch (error) { ElMessage.error(error instanceof Error ? error.message : '操作审计加载失败') }
-  finally { auditLoading.value = false }
+  try {
+    const page = await api.operationAudit({ from: auditRange.value[0], to: auditRange.value[1], page: auditPage.value, size: auditSize.value,
+      action: auditFilters.value.action || undefined, operator: auditFilters.value.operator.trim() || undefined,
+      targetType: auditFilters.value.targetType || undefined, outcome: auditFilters.value.outcome || undefined })
+    if (sequence !== auditQuerySequence) return
+    if (!Array.isArray(page.rows)) throw new Error('管理服务版本过旧，请更新 Admin 服务后重试')
+    auditRows.value = page.rows
+    auditTotal.value = page.total
+  }
+  catch (error) { if (sequence === auditQuerySequence) { auditRows.value = []; auditTotal.value = 0; ElMessage.error(error instanceof Error ? error.message : '操作审计加载失败') } }
+  finally { if (sequence === auditQuerySequence) auditLoading.value = false }
+}
+function searchOperationAudit() { auditPage.value = 1; void loadOperationAudit() }
+function resetOperationAudit() {
+  auditRange.value = [localDate(-30), localDate()]
+  auditFilters.value = { action: '', operator: '', targetType: '', outcome: '' }
+  searchOperationAudit()
 }
 const auditActionLabels: Record<string, string> = { POST: '新增', PUT: '修改', PATCH: '修改', DELETE: '删除' }
 const auditOperationLabels: Record<string, string> = {
@@ -2998,7 +3017,6 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
           <el-menu-item aria-label="标准响应" index="platform-management-contract" @click="openPlatformManagement('contract')"><el-icon><DocumentChecked /></el-icon><template #title>标准响应</template></el-menu-item>
           <el-menu-item aria-label="返回码字典" index="platform-management-codes" @click="openPlatformManagement('codes')"><el-icon><Tickets /></el-icon><template #title>返回码字典</template></el-menu-item>
           <el-menu-item aria-label="安全能力" index="platform-management-security" @click="openPlatformManagement('security')"><el-icon><Lock /></el-icon><template #title>安全能力</template></el-menu-item>
-          <el-menu-item aria-label="默认策略" index="platform-management-policies" @click="openPlatformManagement('policies')"><el-icon><Setting /></el-icon><template #title>默认策略</template></el-menu-item>
           <el-menu-item aria-label="操作审计" index="platform-management-audit" @click="openPlatformManagement('audit')"><el-icon><Tickets /></el-icon><template #title>操作审计</template></el-menu-item>
         </template>
         <button v-if="!sidebarCollapsed" class="menu-section-label" type="button" @click="menuGroups.operations=!menuGroups.operations"><span>运行管理</span><ArrowRight :class="{expanded:menuGroups.operations}"/></button>
@@ -3124,13 +3142,36 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
             </section>
 
             <section v-else-if="platformManagementTab==='audit'" class="platform-management-panel plain-panel">
-              <div class="report-toolbar"><el-date-picker v-model="auditRange" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期"/><el-button type="primary" :loading="auditLoading" @click="auditPage=1; loadOperationAudit()">查询</el-button></div>
-              <el-table :data="auditRows" v-loading="auditLoading" size="small" empty-text="当前条件下暂无操作记录"><el-table-column prop="occurredAt" label="操作时间" width="190"><template #default="{row}">{{ formatDateTime(row.occurredAt) }}</template></el-table-column><el-table-column prop="operatorName" label="操作账号" width="130"/><el-table-column label="动作" width="110"><template #default="{row}">{{ auditActionLabel(row) }}</template></el-table-column><el-table-column label="对象类型" width="150"><template #default="{row}">{{ auditTargetLabels[row.targetType] || row.targetType }}</template></el-table-column><el-table-column prop="targetPath" label="对象路径" min-width="280" show-overflow-tooltip/><el-table-column label="结果" width="110"><template #default="{row}"><el-tag size="small" :type="row.outcome==='SUCCESS'?'success':'danger'">{{ row.outcome==='SUCCESS'?'成功':'失败' }}</el-tag></template></el-table-column><el-table-column prop="traceId" label="追踪号" min-width="160" show-overflow-tooltip/></el-table>
-              <div class="audit-pagination"><el-button :disabled="auditPage===1 || auditLoading" @click="auditPage--; loadOperationAudit()">上一页</el-button><span>第 {{ auditPage }} 页</span><el-button :disabled="auditRows.length<50 || auditLoading" @click="auditPage++; loadOperationAudit()">下一页</el-button></div>
-            </section>
-
-            <section v-else class="platform-management-panel plain-panel">
-              <div class="platform-policy-grid"><article><span>响应封装</span><strong>按接口配置</strong><small>支持字段映射和完整报文封装</small></article><article><span>成功判定</span><strong>按供应商业务码</strong><small>接口可切换为 HTTP 成功即成功</small></article><article><span>超时策略</span><strong>继承数据源配置</strong><small>接口可设置单独超时时间</small></article><article><span>安全策略</span><strong>默认关闭</strong><small>仅在接口需要时启用加密或签名</small></article></div>
+              <div class="audit-filter-grid">
+                <el-date-picker v-model="auditRange" class="audit-date-picker" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" :clearable="false" unlink-panels/>
+                <el-select v-model="auditFilters.action" clearable placeholder="全部操作类型"><el-option label="提交（POST）" value="POST"/><el-option label="修改（PUT）" value="PUT"/><el-option label="局部修改（PATCH）" value="PATCH"/><el-option label="删除（DELETE）" value="DELETE"/></el-select>
+                <el-input v-model="auditFilters.operator" clearable placeholder="操作账号前缀" @keyup.enter="searchOperationAudit"/>
+                <el-select v-model="auditFilters.targetType" clearable placeholder="全部对象类型"><el-option v-for="(label,key) in auditTargetLabels" :key="key" :label="label" :value="key"/></el-select>
+                <el-select v-model="auditFilters.outcome" clearable placeholder="全部结果"><el-option label="成功" value="SUCCESS"/><el-option label="失败" value="FAILURE"/></el-select>
+                <div class="audit-filter-actions"><el-button type="primary" :loading="auditLoading" @click="searchOperationAudit">查询</el-button><el-button :disabled="auditLoading" @click="resetOperationAudit">重置</el-button></div>
+              </div>
+              <div class="audit-results-bar"><span>操作记录</span><strong>{{ auditTotal.toLocaleString() }}</strong><small>条</small></div>
+              <el-table :data="auditRows" v-loading="auditLoading" size="small" row-key="id" class="audit-table" empty-text="当前条件下暂无操作记录" @row-click="(row:OperationAuditRecord)=>{selectedAuditRecord=row;auditDetailDrawer=true}">
+                <el-table-column prop="occurredAt" label="操作时间" width="170"><template #default="{row}">{{ formatDateTime(row.occurredAt) }}</template></el-table-column>
+                <el-table-column prop="operatorName" label="操作账号" width="130" show-overflow-tooltip/>
+                <el-table-column label="操作类型" width="110"><template #default="{row}">{{ auditActionLabel(row) }}</template></el-table-column>
+                <el-table-column label="操作对象" min-width="220" show-overflow-tooltip><template #default="{row}"><span class="audit-target">{{ auditTargetLabels[row.targetType] || row.targetType }}</span><code>{{ row.targetPath }}</code></template></el-table-column>
+                <el-table-column label="结果" width="90"><template #default="{row}"><el-tag size="small" effect="plain" :type="row.outcome==='SUCCESS'?'success':'danger'">{{ row.outcome==='SUCCESS'?'成功':'失败' }}</el-tag></template></el-table-column>
+                <el-table-column prop="traceId" label="追踪号" min-width="150" show-overflow-tooltip/>
+              </el-table>
+              <el-pagination v-model:current-page="auditPage" v-model:page-size="auditSize" class="audit-pagination" :total="auditTotal" :page-sizes="[20,50,100]" layout="total, sizes, prev, pager, next, jumper" :disabled="auditLoading" @current-change="loadOperationAudit" @size-change="searchOperationAudit"/>
+              <el-drawer v-model="auditDetailDrawer" title="操作记录详情" size="min(520px, 92vw)" destroy-on-close>
+                <el-descriptions v-if="selectedAuditRecord" :column="1" border size="small">
+                  <el-descriptions-item label="操作时间">{{ formatDateTime(selectedAuditRecord.occurredAt) }}</el-descriptions-item>
+                  <el-descriptions-item label="操作账号">{{ selectedAuditRecord.operatorName }}</el-descriptions-item>
+                  <el-descriptions-item label="操作类型">{{ auditActionLabel(selectedAuditRecord) }}</el-descriptions-item>
+                  <el-descriptions-item label="操作对象">{{ auditTargetLabels[selectedAuditRecord.targetType] || selectedAuditRecord.targetType }}</el-descriptions-item>
+                  <el-descriptions-item label="请求路径"><code>{{ selectedAuditRecord.targetPath }}</code></el-descriptions-item>
+                  <el-descriptions-item label="处理结果">{{ selectedAuditRecord.outcome==='SUCCESS'?'成功':'失败' }}（HTTP {{ selectedAuditRecord.httpStatus }}）</el-descriptions-item>
+                  <el-descriptions-item label="客户端地址">{{ selectedAuditRecord.clientIp || '-' }}</el-descriptions-item>
+                  <el-descriptions-item label="追踪号">{{ selectedAuditRecord.traceId || '-' }}</el-descriptions-item>
+                </el-descriptions>
+              </el-drawer>
             </section>
           </section>
         </template>

@@ -41,19 +41,53 @@ class PlatformOperationAuditTest {
         var controller = new PlatformOperationAudit.QueryController(jdbc);
         var request = new MockHttpServletRequest();
         LocalDate today = LocalDate.now();
-        assertThrows(ResponseStatusException.class, () -> controller.list(request, today, today, 1, 50));
+        assertThrows(ResponseStatusException.class, () -> controller.list(request, today, today, 1, 50, null, null, null, null));
 
         var session = new MockHttpSession();
         session.setAttribute(ChainTestToolController.SESSION_TOKEN, "token");
         session.setAttribute("edsp.operator.role", "操作员");
         request.setSession(session);
-        assertThrows(ResponseStatusException.class, () -> controller.list(request, today, today, 1, 50));
+        assertThrows(ResponseStatusException.class, () -> controller.list(request, today, today, 1, 50, null, null, null, null));
         verifyNoInteractions(jdbc);
 
         session.setAttribute("edsp.operator.role", "系统管理员");
-        controller.list(request, today, today, 1, 50);
+        controller.list(request, today, today, 1, 50, null, null, null, null);
+        verify(jdbc).queryForObject(contains("COUNT(*) FROM platform_operation_audit"), eq(Long.class),
+                any(LocalDateTime.class), any(LocalDateTime.class));
         verify(jdbc).queryForList(contains("FROM platform_operation_audit"), any(LocalDateTime.class),
                 any(LocalDateTime.class), eq(50), eq(0));
+    }
+
+    @Test
+    void filtersAuditHistoryInDatabaseAndRejectsInvalidValues() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        var controller = new PlatformOperationAudit.QueryController(jdbc);
+        var request = new MockHttpServletRequest();
+        var session = new MockHttpSession();
+        session.setAttribute(ChainTestToolController.SESSION_TOKEN, "token");
+        session.setAttribute("edsp.operator.role", "系统管理员");
+        request.setSession(session);
+        LocalDate today = LocalDate.now();
+
+        var result = controller.list(request, today.minusDays(1), today, 2, 20,
+                "POST", " admin ", "providers", "FAILURE");
+        assertEquals(2, result.page());
+        assertEquals(20, result.size());
+        verify(jdbc).queryForObject(contains("action=? AND operator_name LIKE ? ESCAPE '!' AND target_type=? AND outcome=?"),
+                eq(Long.class), any(LocalDateTime.class), any(LocalDateTime.class), eq("POST"),
+                eq("admin%"), eq("providers"), eq("FAILURE"));
+        verify(jdbc).queryForList(contains("action=? AND operator_name LIKE ? ESCAPE '!' AND target_type=? AND outcome=?"),
+                any(LocalDateTime.class), any(LocalDateTime.class), eq("POST"), eq("admin%"),
+                eq("providers"), eq("FAILURE"), eq(20), eq(20));
+
+        controller.list(request, today, today, 1, 20, null, "a_%!", null, null);
+        verify(jdbc).queryForObject(contains("operator_name LIKE ? ESCAPE '!'"), eq(Long.class),
+                any(LocalDateTime.class), any(LocalDateTime.class), eq("a!_!%!!%"));
+
+        assertThrows(ResponseStatusException.class, () -> controller.list(request, today, today, 1, 20,
+                "GET", null, null, null));
+        assertThrows(ResponseStatusException.class, () -> controller.list(request, today, today, 1, 20,
+                null, null, "providers' OR 1=1", null));
     }
 
     @Test
