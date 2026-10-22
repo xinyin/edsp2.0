@@ -35,6 +35,8 @@ public class ApiController {
         session.setMaxInactiveInterval(1800);
         String token = java.util.UUID.randomUUID().toString();
         session.setAttribute(ChainTestToolController.SESSION_TOKEN, token);
+        session.setAttribute("edsp.operator.username", request.username());
+        session.setAttribute("edsp.operator.role", user.role());
         return new LoginResult(token, user.displayName(), user.role(), user.institution());
     }
 

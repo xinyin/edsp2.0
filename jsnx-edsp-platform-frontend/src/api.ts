@@ -1,5 +1,5 @@
 import * as mock from './mock'
-import type { AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary, DataApplicationProvisionResult, DataApplicationProvisionSettings, DataSourceSummary, EsbDiagnosticResult, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult, MonitorAlert, MonitorPoint, MonitorSummary, PlatformResponseCode, PlatformResponseContract, ProviderAccount, ProviderSummary, ReleaseApproval, ResourceApiDetail, ResourceApiSummary, ResourceDirectoryPage, ResourceDocument, SecurityAlgorithmDescriptor, SecurityPolicy, TestResult, UsageRecord, UsageReportRow, ValidationResult, VendorDataSourceDefinition } from './types'
+import type { AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary, DataApplicationProvisionResult, DataApplicationProvisionSettings, DataSourceSummary, EsbDiagnosticResult, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult, MonitorAlert, MonitorPoint, MonitorSummary, OperationAuditRecord, PlatformResponseCode, PlatformResponseContract, ProviderAccount, ProviderSummary, ReleaseApproval, ResourceApiDetail, ResourceApiSummary, ResourceDirectoryPage, ResourceDocument, SecurityAlgorithmDescriptor, SecurityPolicy, TestResult, UsageRecord, UsageReportResult, ValidationResult, VendorDataSourceDefinition } from './types'
 
 const demoMode = import.meta.env.VITE_DEMO_MODE === 'mock'
 export const isDemoMode = () => demoMode
@@ -69,12 +69,13 @@ export const api = {
     if (!response.ok) throw new Error(await response.text() || '文档下载失败')
     return response.blob()
   },
-  usageReport: (dimension: string, from: string, to: string) => request<UsageReportRow[]>(`/api/reports?${new URLSearchParams({ dimension, from, to })}`),
-  exportUsageReport: async (dimension: string, from: string, to: string) => {
-    const response = await fetch(`/api/reports/export?${new URLSearchParams({ dimension, from, to })}`)
+  usageReport: (dimensions: string[], metrics: string[], from: string, to: string) => request<UsageReportResult>(`/api/reports?${new URLSearchParams({ dimensions: dimensions.join(','), metrics: metrics.join(','), from, to })}`),
+  exportUsageReport: async (dimensions: string[], metrics: string[], from: string, to: string) => {
+    const response = await fetch(`/api/reports/export?${new URLSearchParams({ dimensions: dimensions.join(','), metrics: metrics.join(','), from, to })}`)
     if (!response.ok) throw new Error(await response.text() || '报表下载失败')
     return response.blob()
   },
+  operationAudit: (from: string, to: string, page: number, size = 50) => request<OperationAuditRecord[]>(`/api/operation-audit?${new URLSearchParams({ from, to, page: String(page), size: String(size) })}`),
   login: async (username: string, password: string) => {
     const user = await request<LoginResult>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) })
     operatorToken = user.token

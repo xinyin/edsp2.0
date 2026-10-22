@@ -19,7 +19,7 @@ import type {
   AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary,
   DataSourceSummary, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult,
   MonitorAlert, MonitorPoint, MonitorSummary, PlatformResponseCode, ProviderAccount, ProviderSummary, ReleaseApproval, TestResult,
-  ResourceApiDetail, ResourceApiSummary, ResourceDirectoryRow, ResourceDocument, UsageRecord, UsageReportRow, ValidationResult,
+  ResourceApiDetail, ResourceApiSummary, ResourceDirectoryRow, ResourceDocument, UsageRecord, UsageReportRow, OperationAuditRecord, ValidationResult,
   DataApplicationProvisionResult, DataApplicationProvisionSettings, SecurityAlgorithmDescriptor, SecurityPolicy, PlatformResponseContract
 } from './types'
 
@@ -88,7 +88,19 @@ const directorySize = ref(20)
 const directoryLoading = ref(false)
 const documentUploading = ref(false)
 const documentForm = ref({ providerId: 0, dataSourceId: 0, resourceApiId: 0, description: '', file: null as File | null })
-const reportDimension = ref('DAY')
+const reportDimensionOptions = [
+  { value: 'PROVIDER', label: '资源提供商' }, { value: 'DATA_SOURCE', label: '数据源' },
+  { value: 'API', label: '服务 API' }, { value: 'DAY', label: '日期' },
+  { value: 'CLIENT', label: '调用系统' }, { value: 'RESULT', label: '结果状态' }
+]
+const reportMetricOptions = [
+  { value: 'callCount', label: '调用量' }, { value: 'successCount', label: '成功量' },
+  { value: 'failureCount', label: '失败量' }, { value: 'billableCount', label: '计费量' },
+  { value: 'amount', label: '金额' }, { value: 'averageDurationMs', label: '平均耗时 (ms)' },
+  { value: 'upstreamDurationMs', label: '上游平均耗时 (ms)' }
+]
+const reportDimensions = ref(['PROVIDER', 'DATA_SOURCE', 'API'])
+const reportMetrics = ref(['callCount', 'successCount', 'failureCount', 'amount'])
 function localDate(offsetDays = 0) {
   const date = new Date()
   date.setDate(date.getDate() + offsetDays)
@@ -97,6 +109,22 @@ function localDate(offsetDays = 0) {
 const reportRange = ref<[string, string]>([localDate(-30), localDate()])
 const reportRows = ref<UsageReportRow[]>([])
 const reportLoading = ref(false)
+const reportTotal = ref<UsageReportRow | null>(null)
+const reportTree = computed(() => {
+  const nodes = new Map<string, UsageReportRow>()
+  const roots: UsageReportRow[] = []
+  for (const row of reportRows.value.filter(item => item.level > 0)) nodes.set(JSON.stringify(row.path), { ...row, children: [] })
+  for (const node of nodes.values()) {
+    const parent = nodes.get(JSON.stringify(node.path.slice(0, -1)))
+    if (parent) parent.children!.push(node)
+    else roots.push(node)
+  }
+  return roots
+})
+const auditRange = ref<[string, string]>([localDate(-30), localDate()])
+const auditRows = ref<OperationAuditRecord[]>([])
+const auditPage = ref(1)
+const auditLoading = ref(false)
 const securityAlgorithms = ref<SecurityAlgorithmDescriptor[]>([])
 const securityAlgorithmLoadError = ref('')
 const algorithmDrawer = ref(false)
@@ -186,7 +214,7 @@ const savedUpstreamRequestBaseline = ref('{}')
 const savedUpstreamResponseBaseline = ref('{}')
 const savedResponseCodesBaseline = ref('')
 const platformResponseCodes = ref<PlatformResponseCode[]>([])
-type PlatformManagementTab = 'contract' | 'codes' | 'security' | 'policies'
+type PlatformManagementTab = 'contract' | 'codes' | 'security' | 'policies' | 'audit'
 const platformManagementTab = ref<PlatformManagementTab>('contract')
 const platformCodeSearch = ref('')
 const platformResponseContracts = ref<PlatformResponseContract[]>([])
@@ -493,7 +521,8 @@ const pageMeta = computed(() => ({
     contract: ['标准响应', '维护平台统一返回结构，点击查看可浏览字段定义。'],
     codes: ['返回码字典', '维护平台返回码和结果状态，供标准服务引用。'],
     security: ['安全能力', '查看平台已注册的签名和加密算法。密钥和接口启用范围在标准服务开发中配置。'],
-    policies: ['默认策略', '新接口采用以下初始策略，不会覆盖已有配置。接口级调整请进入标准服务开发。']
+    policies: ['默认策略', '新接口采用以下初始策略，不会覆盖已有配置。接口级调整请进入标准服务开发。'],
+    audit: ['操作审计', '查询平台管理配置的变更记录']
   })[platformManagementTab.value],
   approvals: ['变更审批', '统一处理服务发布申请，审批通过后才会激活发布计划'],
   releases: ['服务发布', '集中查看版本档案、上线状态、下线和归档操作']
@@ -1195,6 +1224,7 @@ async function navigate(menu: string) {
   if (menu === 'platform-management') {
     const [, , algorithms] = await Promise.all([refreshPlatformCodes(), refreshPlatformContracts(), loadSecurityAlgorithms()])
     securityAlgorithms.value = algorithms
+    if (platformManagementTab.value === 'audit') void loadOperationAudit()
   }
   if (menu === 'approvals') void refreshApprovals()
   if (menu === 'releases') void loadReleaseManagement(releaseInterfaceId.value || selectedInterfaceId.value || allInterfaces.value[0]?.id)
@@ -1204,6 +1234,7 @@ async function navigate(menu: string) {
 function openPlatformManagement(tab: PlatformManagementTab = 'contract') {
   platformManagementTab.value = tab
   if (activeMenu.value !== 'platform-management') void navigate('platform-management')
+  else if (tab === 'audit') void loadOperationAudit()
 }
 function viewPlatformContract(item: PlatformResponseContract) {
   selectedPlatformContractId.value = item.id ?? 0
@@ -1223,6 +1254,7 @@ async function refreshCurrentWorkspace() {
       await refreshPlatformCodes()
       await refreshPlatformContracts()
       securityAlgorithms.value = await loadSecurityAlgorithms()
+      if (platformManagementTab.value === 'audit') await loadOperationAudit()
     }
     else await loadAll()
   } catch (error) { ElMessage.error(error instanceof Error ? error.message : '刷新失败，请重试') }
@@ -2796,16 +2828,51 @@ async function deleteResourceDocument(item: ResourceDocument) {
 }
 async function loadUsageReport() {
   if (!reportRange.value?.length) return
+  if (!reportDimensions.value.length || !reportMetrics.value.length || reportDimensions.value.length > 4) {
+    ElMessage.warning('请选择 1 至 4 个维度，并至少选择一个度量')
+    return
+  }
   reportLoading.value = true
-  try { reportRows.value = await api.usageReport(reportDimension.value, reportRange.value[0], reportRange.value[1]) }
+  reportRows.value = []
+  reportTotal.value = null
+  try {
+    const result = await api.usageReport(reportDimensions.value, reportMetrics.value, reportRange.value[0], reportRange.value[1])
+    reportRows.value = result.rows
+    reportTotal.value = result.rows.find(item => item.level === 0) ?? null
+  }
   catch (error) { ElMessage.error(error instanceof Error ? error.message : '报表加载失败') }
   finally { reportLoading.value = false }
 }
 async function downloadUsageReport() {
   try {
     const [from, to] = reportRange.value
-    saveBlob(await api.exportUsageReport(reportDimension.value, from, to), `外部数据平台-${reportDimension.value}-${from}-${to}.csv`)
+    saveBlob(await api.exportUsageReport(reportDimensions.value, reportMetrics.value, from, to), `外部数据平台-汇总报表-${from}-${to}.csv`)
   } catch (error) { ElMessage.error(error instanceof Error ? error.message : '报表下载失败') }
+}
+async function loadOperationAudit() {
+  if (!auditRange.value?.length) return
+  auditLoading.value = true
+  auditRows.value = []
+  try { auditRows.value = await api.operationAudit(auditRange.value[0], auditRange.value[1], auditPage.value) }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : '操作审计加载失败') }
+  finally { auditLoading.value = false }
+}
+const auditActionLabels: Record<string, string> = { POST: '新增', PUT: '修改', PATCH: '修改', DELETE: '删除' }
+const auditOperationLabels: Record<string, string> = {
+  activate: '生效', publish: '发布', 'direct-publish': '发布', offline: '下线', online: '上线',
+  'sync-resource': '同步资源', decision: '审批', batch: '批量授权'
+}
+function auditActionLabel(row: OperationAuditRecord) {
+  const segments = row.targetPath.split('/')
+  const operation = segments[segments.length - 1] || ''
+  return row.action === 'POST' ? (auditOperationLabels[operation] || auditActionLabels.POST) : (auditActionLabels[row.action] || row.action)
+}
+const auditTargetLabels: Record<string, string> = {
+  providers: '资源提供商', 'provider-accounts': '资源方账号', 'data-sources': '数据源',
+  'resource-apis': '数据资源 API', 'resource-documents': '资源文档',
+  'platform-services': '标准服务', interfaces: '标准服务', approvals: '发布审批',
+  clients: '调用系统', authorizations: '访问授权', billing: '计量规则',
+  'platform-response-codes': '平台返回码', 'platform-response-contracts': '平台标准响应'
 }
 
 const monitorMaxDuration = computed(() => Math.max(1, ...monitorPoints.value.map(item => item.avgDurationMs)))
@@ -2860,6 +2927,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
           <el-menu-item aria-label="返回码字典" index="platform-management-codes" @click="openPlatformManagement('codes')"><el-icon><Tickets /></el-icon><template #title>返回码字典</template></el-menu-item>
           <el-menu-item aria-label="安全能力" index="platform-management-security" @click="openPlatformManagement('security')"><el-icon><Lock /></el-icon><template #title>安全能力</template></el-menu-item>
           <el-menu-item aria-label="默认策略" index="platform-management-policies" @click="openPlatformManagement('policies')"><el-icon><Setting /></el-icon><template #title>默认策略</template></el-menu-item>
+          <el-menu-item aria-label="操作审计" index="platform-management-audit" @click="openPlatformManagement('audit')"><el-icon><Tickets /></el-icon><template #title>操作审计</template></el-menu-item>
         </template>
         <button v-if="!sidebarCollapsed" class="menu-section-label" type="button" @click="menuGroups.operations=!menuGroups.operations"><span>运行管理</span><ArrowRight :class="{expanded:menuGroups.operations}"/></button>
         <template v-if="menuGroups.operations||sidebarCollapsed">
@@ -2960,8 +3028,9 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
 
         <template v-else-if="activeMenu === 'reports'">
           <section class="report-workspace">
-            <div class="report-toolbar"><el-select v-model="reportDimension" aria-label="统计维度"><el-option label="按日期" value="DAY"/><el-option label="按资源提供商" value="PROVIDER"/><el-option label="按数据源" value="DATA_SOURCE"/><el-option label="按服务 API" value="API"/><el-option label="按调用系统" value="CLIENT"/><el-option label="按结果状态" value="RESULT"/></el-select><el-date-picker v-model="reportRange" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期"/><el-button type="primary" :loading="reportLoading" @click="loadUsageReport">查询</el-button><el-button :disabled="!reportRows.length" @click="downloadUsageReport">下载 CSV</el-button></div>
-            <el-table :data="reportRows" v-loading="reportLoading" empty-text="当前条件下暂无调用记录"><el-table-column prop="dimensionValue" :label="reportDimension === 'DAY' ? '日期' : '统计维度'" min-width="200"/><el-table-column prop="callCount" label="调用量" min-width="100"/><el-table-column prop="successCount" label="成功量" min-width="100"/><el-table-column prop="failureCount" label="失败量" min-width="100"/><el-table-column prop="billableCount" label="计费量" min-width="100"/><el-table-column prop="amount" label="金额" min-width="100"/><el-table-column prop="averageDurationMs" label="平均耗时 (ms)" min-width="130"/></el-table>
+            <div class="report-toolbar"><el-select v-model="reportDimensions" multiple collapse-tags :max-collapse-tags="2" aria-label="统计维度" placeholder="选择维度（按选择顺序展开）"><el-option v-for="option in reportDimensionOptions" :key="option.value" :label="option.label" :value="option.value"/></el-select><el-select v-model="reportMetrics" multiple collapse-tags :max-collapse-tags="2" aria-label="统计度量" placeholder="选择度量"><el-option v-for="option in reportMetricOptions" :key="option.value" :label="option.label" :value="option.value"/></el-select><el-date-picker v-model="reportRange" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期"/><el-button type="primary" :loading="reportLoading" @click="loadUsageReport">查询</el-button><el-button :disabled="!reportRows.length" @click="downloadUsageReport">下载 CSV</el-button></div>
+            <div v-if="reportTotal" class="report-total"><strong>总计</strong><span v-for="metric in reportMetrics" :key="metric">{{ reportMetricOptions.find(item=>item.value===metric)?.label }} <b>{{ reportTotal[metric as keyof UsageReportRow] ?? '-' }}</b></span></div>
+            <el-table :data="reportTree" :row-key="(row:UsageReportRow)=>JSON.stringify(row.path)" :tree-props="{ children: 'children' }" v-loading="reportLoading" empty-text="当前条件下暂无调用记录"><el-table-column prop="label" label="统计层级" min-width="260"/><el-table-column v-for="metric in reportMetrics" :key="metric" :prop="metric" :label="reportMetricOptions.find(item=>item.value===metric)?.label || metric" min-width="125"/></el-table>
           </section>
         </template>
 
@@ -2985,6 +3054,12 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
 
             <section v-else-if="platformManagementTab==='security'" class="platform-management-panel plain-panel">
               <el-table :data="securityAlgorithms" size="small" class="platform-code-table" empty-text="安全算法目录尚未加载"><el-table-column prop="code" label="能力编码" width="190"><template #default="{row}"><code>{{ row.code }}</code></template></el-table-column><el-table-column prop="name" label="名称" min-width="150"/><el-table-column label="类型" width="110"><template #default="{row}"><el-tag size="small" effect="plain">{{ row.kind==='ENCRYPT'?'加密':'签名' }}</el-tag></template></el-table-column><el-table-column prop="category" label="分类" width="150"/><el-table-column prop="description" label="说明" min-width="280" show-overflow-tooltip/><el-table-column label="来源" width="100"><template #default="{row}">{{ row.builtIn ? '内置' : '扩展' }}</template></el-table-column></el-table>
+            </section>
+
+            <section v-else-if="platformManagementTab==='audit'" class="platform-management-panel plain-panel">
+              <div class="report-toolbar"><el-date-picker v-model="auditRange" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期"/><el-button type="primary" :loading="auditLoading" @click="auditPage=1; loadOperationAudit()">查询</el-button></div>
+              <el-table :data="auditRows" v-loading="auditLoading" size="small" empty-text="当前条件下暂无操作记录"><el-table-column prop="occurredAt" label="操作时间" width="190"><template #default="{row}">{{ formatDateTime(row.occurredAt) }}</template></el-table-column><el-table-column prop="operatorName" label="操作账号" width="130"/><el-table-column label="动作" width="110"><template #default="{row}">{{ auditActionLabel(row) }}</template></el-table-column><el-table-column label="对象类型" width="150"><template #default="{row}">{{ auditTargetLabels[row.targetType] || row.targetType }}</template></el-table-column><el-table-column prop="targetPath" label="对象路径" min-width="280" show-overflow-tooltip/><el-table-column label="结果" width="110"><template #default="{row}"><el-tag size="small" :type="row.outcome==='SUCCESS'?'success':'danger'">{{ row.outcome==='SUCCESS'?'成功':'失败' }}</el-tag></template></el-table-column><el-table-column prop="traceId" label="追踪号" min-width="160" show-overflow-tooltip/></el-table>
+              <div class="audit-pagination"><el-button :disabled="auditPage===1 || auditLoading" @click="auditPage--; loadOperationAudit()">上一页</el-button><span>第 {{ auditPage }} 页</span><el-button :disabled="auditRows.length<50 || auditLoading" @click="auditPage++; loadOperationAudit()">下一页</el-button></div>
             </section>
 
             <section v-else class="platform-management-panel plain-panel">

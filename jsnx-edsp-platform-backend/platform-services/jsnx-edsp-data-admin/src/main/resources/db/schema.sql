@@ -350,8 +350,25 @@ CREATE TABLE IF NOT EXISTS usage_record (
     called_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_usage_status_time (request_status, called_at),
     INDEX idx_usage_interface_time (interface_id, called_at),
+    INDEX idx_usage_called_at (called_at, interface_id),
     CONSTRAINT fk_usage_client FOREIGN KEY (client_id) REFERENCES api_client(id),
     CONSTRAINT fk_usage_interface FOREIGN KEY (interface_id) REFERENCES api_interface(id)
+);
+
+CREATE TABLE IF NOT EXISTS platform_operation_audit (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    operator_name VARCHAR(64) NOT NULL,
+    action VARCHAR(16) NOT NULL,
+    target_path VARCHAR(512) NOT NULL,
+    target_type VARCHAR(64) NOT NULL,
+    outcome VARCHAR(16) NOT NULL,
+    http_status INT NOT NULL,
+    trace_id VARCHAR(64),
+    client_ip VARCHAR(64),
+    occurred_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    INDEX idx_audit_time (occurred_at, id),
+    INDEX idx_audit_operator_time (operator_name, occurred_at),
+    INDEX idx_audit_target_time (target_type, occurred_at)
 );
 
 CREATE TABLE IF NOT EXISTS resource_document (

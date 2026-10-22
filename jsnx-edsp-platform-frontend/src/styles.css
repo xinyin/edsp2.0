@@ -670,7 +670,12 @@ button, input, textarea { font-family: inherit; }
 .directory-toolbar > span { color: #64748b; font-size: 12px; }
 .document-toolbar { justify-content: flex-end; margin-bottom: 10px; }
 .document-toolbar strong { font-size: 15px; }
-.report-toolbar .el-select { width: 180px; }
+.report-toolbar .el-select { width: min(300px, 100%); }
+.report-toolbar .el-date-editor { width: min(250px, 100%); }
+.report-total { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 22px; margin: 0 0 12px; padding: 9px 12px; border-block: 1px solid var(--border); background: #f5f8fa; color: #40566a; font-size: 12px; }
+.report-total strong { color: #263c50; }
+.report-total b { margin-left: 5px; color: #1f394f; font-weight: 600; }
+.audit-pagination { display: flex; justify-content: flex-end; align-items: center; gap: 10px; padding-top: 14px; color: #526273; font-size: 12px; }
 .directory-provider { border-top: 1px solid var(--border); padding: 15px 0 4px; }
 .directory-provider > header, .directory-source-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .directory-provider > header svg { width: 17px; height: 17px; color: #55718c; }
