@@ -1,5 +1,5 @@
 import * as mock from './mock'
-import type { AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary, DataApplicationProvisionResult, DataApplicationProvisionSettings, DataSourceSummary, EsbDiagnosticResult, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult, MonitorAlert, MonitorPoint, MonitorSummary, OperationAuditRecord, PlatformResponseCode, PlatformResponseContract, ProviderAccount, ProviderSummary, ReleaseApproval, ResourceApiDetail, ResourceApiSummary, ResourceDirectoryPage, ResourceDocument, SecurityAlgorithmDescriptor, SecurityPolicy, TestResult, UsageRecord, UsageReportResult, ValidationResult, VendorDataSourceDefinition } from './types'
+import type { AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary, DataApplicationProvisionResult, DataApplicationProvisionSettings, DataSourceSummary, EsbDiagnosticResult, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult, MonitorAlert, MonitorPoint, MonitorSummary, OperationAuditRecord, PlatformResponseCode, PlatformResponseContract, ProviderAccount, ProviderSummary, ReleaseApproval, ReleaseServicePage, ResourceApiDetail, ResourceApiSummary, ResourceDirectoryPage, ResourceDocument, SecurityAlgorithmDescriptor, SecurityPolicy, TestResult, UsageRecord, UsageReportResult, ValidationResult, VendorDataSourceDefinition } from './types'
 
 const demoMode = import.meta.env.VITE_DEMO_MODE === 'mock'
 export const isDemoMode = () => demoMode
@@ -107,6 +107,11 @@ export const api = {
   verifyResourceApi: (id: number) => request<TestResult>(`/api/resource-apis/${id}/verify`, { method: 'POST' }),
   createPlatformService: (body: Record<string, unknown>) => request<InterfaceSummary>('/api/platform-services', { method: 'POST', body: JSON.stringify(body) }),
   interfaces: (sourceId?: number) => request<InterfaceSummary[]>(sourceId ? `/api/interfaces?dataSourceId=${sourceId}` : '/api/interfaces', undefined, () => sourceId ? mock.interfaces.filter(item => item.dataSourceId === sourceId) : mock.interfaces),
+  releaseServices: (filters: { keyword?: string; providerId?: number; dataSourceId?: number; runStatus?: string; authorizationStatus?: string; environment?: string; page?: number; size?: number }) => {
+    const params = new URLSearchParams()
+    Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== null && value !== '') params.set(key, String(value)) })
+    return request<ReleaseServicePage>(`/api/release-services?${params}`)
+  },
   deleteInterface: (id: number) => request<void>(`/api/interfaces/${id}`, { method: 'DELETE' }, () => {
     const index = mock.interfaces.findIndex(item => item.id === id)
     if (index >= 0) mock.interfaces.splice(index, 1)
@@ -223,6 +228,7 @@ export const api = {
   clients: () => request<ClientApp[]>('/api/clients'),
   createClient: (body: Record<string, unknown>) => request<ClientApp>('/api/clients', { method: 'POST', body: JSON.stringify(body) }),
   authorizations: () => request<AuthorizationRecord[]>('/api/authorizations'),
+  authorizationSummary: () => request<{ activeCount: number }>('/api/authorizations/summary'),
   createAuthorization: (body: Record<string, unknown>) => request<AuthorizationRecord>('/api/authorizations', { method: 'POST', body: JSON.stringify(body) }),
   createAuthorizations: (body: Record<string, unknown>) => request<AuthorizationRecord[]>('/api/authorizations/batch', { method: 'POST', body: JSON.stringify(body) }),
   billingRules: () => request<BillingRule[]>('/api/billing/rules'),

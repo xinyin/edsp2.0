@@ -29,6 +29,13 @@ public final class ApiModels {
             int currentVersion, Integer publishedVersion, LocalDateTime updatedAt,
             Long resourceApiId, String resourceApiCode, String resourceApiName) {}
 
+    public record ReleaseServiceRow(
+            InterfaceSummary service, String runStatus, String providerName, String dataSourceName,
+            long activeAuthorizationClientCount, LocalDateTime latestPublishedAt) {}
+
+    public record ReleaseServicePage(
+            List<ReleaseServiceRow> rows, long total, int page, int size) {}
+
     public record ResourceApiSummary(
             long id, long dataSourceId, String resourceApiCode, String resourceApiName,
             String httpMethod, String upstreamUrl, String upstreamPath, String configScope,

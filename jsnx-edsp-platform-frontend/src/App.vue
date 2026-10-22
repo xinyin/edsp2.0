@@ -17,7 +17,7 @@ import { describeTraceFailure } from './trace-diagnostics'
 import { buildResourceGuide, guideAdvice, isHttpEndpoint, isSuccessfulE2E, requestDeadlineMs } from './resource-guide'
 import type {
   AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary,
-  DataSourceSummary, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult,
+  DataSourceSummary, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, ReleaseServiceRow, LoginResult,
   MonitorAlert, MonitorPoint, MonitorSummary, PlatformResponseCode, ProviderAccount, ProviderSummary, ReleaseApproval, TestResult,
   ResourceApiDetail, ResourceApiSummary, ResourceDirectoryRow, ResourceDocument, UsageRecord, UsageReportRow, OperationAuditRecord, ValidationResult,
   DataApplicationProvisionResult, DataApplicationProvisionSettings, SecurityAlgorithmDescriptor, SecurityPolicy, PlatformResponseContract
@@ -53,6 +53,7 @@ const allInterfaces = ref<InterfaceSummary[]>([])
 const allResourceApis = ref<ResourceApiSummary[]>([])
 const clients = ref<ClientApp[]>([])
 const authorizations = ref<AuthorizationRecord[]>([])
+const activeAuthorizationCount = ref(0)
 const authorizationSearch = ref('')
 const authorizationClient = ref(0)
 const authorizationPage = ref(1)
@@ -148,6 +149,7 @@ const savedResponsePolicyBaseline = ref('')
 const detailLoading = ref(false)
 const sourceSwitching = ref(false)
 const interfaceCache = new Map<number, InterfaceSummary[]>()
+const interfaceCatalogLoaded = ref(false)
 const detailCache = new Map<number, InterfaceDetail>()
 const selectedInterfaceBySource = new Map<number, number>()
 const selectedResourceApiBySource = new Map<number, number>()
@@ -201,6 +203,15 @@ const releaseNoteManagement = ref('完成接口配置并通过联调验证')
 const releaseSearch = ref('')
 const releaseSourceExpansion = ref<Record<number, boolean>>({})
 let releaseRequestSequence = 0
+let releaseServiceRequestSequence = 0
+const releaseServiceRows = ref<ReleaseServiceRow[]>([])
+const releaseServiceTotal = ref(0)
+const releaseServicePage = ref(1)
+const releaseServiceSize = ref(20)
+const releaseServiceLoading = ref(false)
+const releaseDetailDrawer = ref(false)
+const releaseFilters = ref({ keyword: '', providerId: 0, dataSourceId: 0, runStatus: 'ALL', authorizationStatus: 'ALL', environment: 'ALL' })
+const releaseQuickView = ref('ALL')
 const releaseNote = ref('完成接口字段标准化配置并通过联调验证')
 const requestText = ref('{}')
 const responseText = ref('{}')
@@ -684,8 +695,6 @@ const activeClients = computed(() => clients.value.filter(item => item.status ==
 const today = computed(() => new Date().toISOString().slice(0, 10))
 const validAuthorizations = computed(() => authorizations.value.filter(item => item.status === 'ACTIVE'
   && item.validFrom <= today.value && item.validTo >= today.value))
-const releaseHasAuthorization = computed(() => !!releaseDetail.value
-  && validAuthorizations.value.some(item => item.interfaceId === releaseDetail.value?.summary.id))
 function authorizationStatus(item: AuthorizationRecord) {
   if (item.status !== 'ACTIVE') return { text: '已停用', type: 'info' as const }
   if (item.validFrom > today.value) return { text: '待生效', type: 'warning' as const }
@@ -891,21 +900,30 @@ async function login() {
 async function loadAll() {
   loading.value = true
   try {
-    const [dashboardData, providerData, sourceData, resourceApiData, interfaceData, clientData, authData, rules, summary, usage, monitor, points, alerts, approvalData, algorithmData] = await Promise.all([
-      api.dashboard(), api.providers(), api.dataSources(), api.resourceApis(), api.interfaces(), api.clients(), api.authorizations(), api.billingRules(), api.billingSummary(), api.usageRecords(),
+    const loadCatalog = ['resource', 'service-development', 'authorization', 'billing'].includes(activeMenu.value)
+    const loadResourceCatalog = ['resource', 'service-development'].includes(activeMenu.value)
+    const loadAuth = activeMenu.value === 'authorization'
+    const [dashboardData, providerData, sourceData, resourceApiData, interfaceData, clientData, authData, authSummary, rules, summary, usage, monitor, points, alerts, approvalData, algorithmData] = await Promise.all([
+      api.dashboard(), api.providers(), api.dataSources(), loadResourceCatalog ? api.resourceApis() : Promise.resolve([]), loadCatalog ? api.interfaces() : Promise.resolve([]), api.clients(), loadAuth ? api.authorizations() : Promise.resolve([]), loadAuth ? Promise.resolve({ activeCount: 0 }) : api.authorizationSummary(), api.billingRules(), api.billingSummary(), api.usageRecords(),
       api.monitorSummary(), api.monitorPoints(), api.monitorAlerts(), api.approvals(), loadSecurityAlgorithms()
     ])
     dashboard.value = dashboardData
     providers.value = providerData
     sources.value = sourceData
-    allResourceApis.value = resourceApiData
-    allInterfaces.value = interfaceData
-    interfaceCache.clear()
-    sourceData.forEach(source => {
-      interfaceCache.set(source.id, interfaceData.filter(item => item.dataSourceId === source.id))
-    })
+    if (loadResourceCatalog) allResourceApis.value = resourceApiData
+    if (loadCatalog) {
+      allInterfaces.value = interfaceData
+      interfaceCatalogLoaded.value = true
+      interfaceCache.clear()
+      sourceData.forEach(source => {
+        interfaceCache.set(source.id, interfaceData.filter(item => item.dataSourceId === source.id))
+      })
+    }
     clients.value = clientData
     authorizations.value = authData
+    activeAuthorizationCount.value = loadAuth
+      ? authData.filter(item => item.status === 'ACTIVE' && item.validFrom <= today.value && item.validTo >= today.value && clientData.some(client => client.id === item.clientId && client.status === 'ACTIVE')).length
+      : authSummary.activeCount
     billingRules.value = rules
     billingSummary.value = summary
     usageRecords.value = usage
@@ -921,7 +939,7 @@ async function loadAll() {
     demo.value = isDemoMode()
     if (!selectedSourceId.value && sourceData.length) selectedSourceId.value = sourceData[0].id
     if (!selectedProviderId.value && providerData.length) { selectedProviderId.value = providerData[0].id; await loadProviderAccounts() }
-    await loadInterfaces(false)
+    if (loadCatalog) await loadInterfaces(false)
   } finally { loading.value = false }
 }
 
@@ -934,6 +952,14 @@ async function loadSecurityAlgorithms() {
     securityAlgorithmLoadError.value = error instanceof Error ? error.message : '安全算法目录加载失败'
     return []
   }
+}
+
+async function loadPlatformInterfaceCatalog() {
+  const rows = await api.interfaces()
+  allInterfaces.value = rows
+  interfaceCatalogLoaded.value = true
+  interfaceCache.clear()
+  sources.value.forEach(source => interfaceCache.set(source.id, rows.filter(item => item.dataSourceId === source.id)))
 }
 
 async function loadInterfaces(reset = true) {
@@ -1193,6 +1219,14 @@ async function navigate(menu: string) {
   if (['resource', 'service-development'].includes(activeMenu.value) && !await confirmDiscardUnsaved()) return
   const originatingResourceApiId = activeMenu.value === 'resource' ? selectedInterfaceId.value : undefined
   activeMenu.value = menu
+  if (['resource', 'service-development', 'authorization', 'billing'].includes(menu)) {
+    if (!interfaceCatalogLoaded.value) await loadPlatformInterfaceCatalog()
+  }
+  if (menu === 'authorization') {
+    authorizations.value = await api.authorizations()
+    activeAuthorizationCount.value = authorizations.value.filter(item => item.status === 'ACTIVE' && item.validFrom <= today.value && item.validTo >= today.value && clients.value.some(client => client.id === item.clientId && client.status === 'ACTIVE')).length
+  }
+  if (['resource', 'service-development'].includes(menu) && !allResourceApis.value.length) allResourceApis.value = await api.resourceApis()
   if (menu === 'resource') {
     upstreamSection.value = 0
     serviceDevelopmentStage.value = 'UPSTREAM'
@@ -1225,7 +1259,7 @@ async function navigate(menu: string) {
     if (platformManagementTab.value === 'audit') void loadOperationAudit()
   }
   if (menu === 'approvals') void refreshApprovals()
-  if (menu === 'releases') void loadReleaseManagement(releaseInterfaceId.value || selectedInterfaceId.value || allInterfaces.value[0]?.id)
+  if (menu === 'releases') void loadReleaseServices()
   await nextTick()
   document.querySelector('.page-heading')?.scrollIntoView({ block: 'start' })
 }
@@ -1247,7 +1281,7 @@ async function refreshCurrentWorkspace() {
     else if (activeMenu.value === 'reports') await loadUsageReport()
     else if (activeMenu.value === 'monitor') await refreshMonitor()
     else if (activeMenu.value === 'logs') await searchCallLogs()
-    else if (activeMenu.value === 'releases') await loadReleaseManagement()
+    else if (activeMenu.value === 'releases') await Promise.all([loadReleaseServices(), releaseDetailDrawer.value ? loadReleaseManagement() : Promise.resolve()])
     else if (activeMenu.value === 'platform-management') {
       await refreshPlatformCodes()
       await refreshPlatformContracts()
@@ -1269,30 +1303,32 @@ async function goToProviderManagement(sourceId = selectedSourceId.value) {
     await loadProviderAccounts()
   }
 }
+const releaseSourceApiCache = ref<Record<number, InterfaceSummary[]>>({})
 const releaseFilteredSources = computed(() => {
   const keyword = releaseSearch.value.trim().toLowerCase()
   if (!keyword) return sources.value
   return sources.value.filter(source => {
     const sourceText = `${source.sourceName}${source.sourceCode}${source.providerName}`.toLowerCase()
-    const apiMatched = allInterfaces.value.some(item => item.dataSourceId === source.id
-      && `${item.interfaceName}${item.interfaceCode}${item.servicePath}`.toLowerCase().includes(keyword))
+    const apiMatched = (releaseSourceApiCache.value[source.id] ?? []).some(item =>
+      `${item.interfaceName}${item.interfaceCode}${item.servicePath}`.toLowerCase().includes(keyword))
     return sourceText.includes(keyword) || apiMatched
   })
 })
 function releaseSourceInterfaces(sourceId: number) {
-  const rows = allInterfaces.value.filter(item => item.dataSourceId === sourceId)
-  const keyword = releaseSearch.value.trim().toLowerCase()
-  if (!keyword) return rows
-  const source = sources.value.find(item => item.id === sourceId)
-  const sourceMatched = source && `${source.sourceName}${source.sourceCode}${source.providerName}`.toLowerCase().includes(keyword)
-  return sourceMatched ? rows : rows.filter(item => `${item.interfaceName}${item.interfaceCode}${item.servicePath}`.toLowerCase().includes(keyword))
+  return releaseSourceApiCache.value[sourceId] ?? []
 }
 function isReleaseSourceExpanded(sourceId: number) {
-  return !!releaseSearch.value.trim() || (releaseSourceExpansion.value[sourceId] ?? sourceId === releaseInterfaceSourceId.value)
+  return releaseSourceExpansion.value[sourceId] ?? sourceId === releaseInterfaceSourceId.value
 }
-const releaseInterfaceSourceId = computed(() => allInterfaces.value.find(item => item.id === releaseInterfaceId.value)?.dataSourceId ?? 0)
+const releaseInterfaceSourceId = computed(() => releaseDetail.value?.summary.dataSourceId
+  ?? releaseServiceRows.value.find(row => row.service.id === releaseInterfaceId.value)?.service.dataSourceId ?? 0)
 function setAllReleaseSourcesExpanded(expanded: boolean) {
   releaseSourceExpansion.value = Object.fromEntries(sources.value.map(source => [source.id, expanded]))
+}
+async function loadReleaseSourceApis(sourceId: number) {
+  if (releaseSourceApiCache.value[sourceId]) return
+  try { releaseSourceApiCache.value[sourceId] = await api.interfaces(sourceId) }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : '服务目录加载失败') }
 }
 async function loadProviderAccounts() { if (selectedProviderId.value) providerAccounts.value = await api.providerAccounts(selectedProviderId.value) }
 async function refreshApprovals() { approvals.value = await api.approvals() }
@@ -1319,6 +1355,8 @@ async function openVersionHistory(version?: number) {
   releaseInterfaceId.value = selectedInterfaceId.value
   highlightedVersion.value = version ?? null
   activeMenu.value = 'releases'
+  releaseDetailDrawer.value = true
+  void loadReleaseServices()
   await loadReleaseManagement(releaseInterfaceId.value)
   highlightedVersion.value = version ?? null
 }
@@ -1335,10 +1373,45 @@ async function loadReleaseManagement(interfaceId = releaseInterfaceId.value) {
   } catch (error) { ElMessage.error(error instanceof Error ? error.message : '发布档案加载失败') }
   finally { if (requestSequence === releaseRequestSequence) releaseLoading.value = false }
 }
+async function loadReleaseServices(reset = false) {
+  if (reset) releaseServicePage.value = 1
+  const requestSequence = ++releaseServiceRequestSequence
+  releaseServiceLoading.value = true
+  try {
+    const result = await api.releaseServices({ ...releaseFilters.value, page: releaseServicePage.value, size: releaseServiceSize.value })
+    if (requestSequence !== releaseServiceRequestSequence) return
+    releaseServiceRows.value = result.rows
+    releaseServiceTotal.value = result.total
+    if (!result.rows.length && result.total > 0 && releaseServicePage.value > 1) {
+      releaseServicePage.value -= 1
+      return await loadReleaseServices()
+    }
+    if (!result.rows.some(row => row.service.id === releaseInterfaceId.value)) releaseDetailDrawer.value = false
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '服务列表加载失败') }
+  finally { if (requestSequence === releaseServiceRequestSequence) releaseServiceLoading.value = false }
+}
+function applyReleaseQuickView(view: string) {
+  releaseQuickView.value = view
+  if (view === 'RUNNING_AUTHORIZED') { releaseFilters.value.runStatus = 'RUNNING'; releaseFilters.value.authorizationStatus = 'AUTHORIZED' }
+  else if (view === 'RUNNING_UNAUTHORIZED') { releaseFilters.value.runStatus = 'RUNNING'; releaseFilters.value.authorizationStatus = 'UNAUTHORIZED' }
+  else if (view === 'OFFLINE') { releaseFilters.value.runStatus = 'OFFLINE'; releaseFilters.value.authorizationStatus = 'ALL' }
+  else { releaseFilters.value.runStatus = 'ALL'; releaseFilters.value.authorizationStatus = 'ALL' }
+  void loadReleaseServices(true)
+}
+function releaseRunStatusLabel(status: ReleaseServiceRow['runStatus']) {
+  return ({ UNPUBLISHED: '未发布', RUNNING: '运行中', OFFLINE: '已下线' } as const)[status]
+}
+function releaseServiceAuthLabel(row: ReleaseServiceRow) {
+  return row.activeAuthorizationClientCount > 0 ? `${row.activeAuthorizationClientCount} 个调用系统` : '无有效授权'
+}
 async function selectReleaseInterface(interfaceId: number) {
+  releaseDetailDrawer.value = true
   if (interfaceId === releaseInterfaceId.value && releaseDetail.value) return
-  const sourceId = allInterfaces.value.find(item => item.id === interfaceId)?.dataSourceId
-  if (sourceId) releaseSourceExpansion.value[sourceId] = true
+  const sourceId = releaseServiceRows.value.find(row => row.service.id === interfaceId)?.service.dataSourceId
+  if (sourceId) {
+    releaseSourceExpansion.value[sourceId] = true
+    void loadReleaseSourceApis(sourceId)
+  }
   highlightedVersion.value = null
   await loadReleaseManagement(interfaceId)
 }
@@ -1350,7 +1423,7 @@ async function submitReleaseFromManagement() {
     await ElMessageBox.confirm(`确认发布 ${releaseDetail.value.summary.interfaceCode} V${releaseDetail.value.summary.currentVersion}？发布后可配置调用授权。`, '确认发布服务', { type: 'warning', confirmButtonText: '确认发布', cancelButtonText: '取消' })
     await api.directPublish(releaseDetail.value.summary.id, releaseNoteManagement.value)
     ElMessage.success(`V${releaseDetail.value.summary.currentVersion} 已发布并生效，可配置 API 访问授权`)
-    await Promise.all([loadReleaseManagement(releaseDetail.value.summary.id), loadAll()])
+    await Promise.all([loadReleaseManagement(releaseDetail.value.summary.id), loadReleaseServices(), loadAll()])
   } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '服务发布失败') }
 }
 async function offlineRelease() {
@@ -1359,7 +1432,7 @@ async function offlineRelease() {
     await ElMessageBox.confirm('下线后线上调用将停止，历史版本和链路记录仍会保留。确认下线吗？', '确认下线接口', { type: 'warning', confirmButtonText: '确认下线', cancelButtonText: '取消' })
     await api.offlineInterface(releaseDetail.value.summary.id)
     ElMessage.success('接口已下线，线上执行计划已撤销')
-    await Promise.all([loadReleaseManagement(releaseDetail.value.summary.id), loadAll()])
+    await Promise.all([loadReleaseManagement(releaseDetail.value.summary.id), loadReleaseServices(), loadAll()])
   } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '下线失败') }
 }
 async function onlineRelease() {
@@ -1369,7 +1442,7 @@ async function onlineRelease() {
     await ElMessageBox.confirm(`将恢复最近一次已发布的 V${summary.publishedVersion} 执行计划和 Gateway 路由。${summary.currentVersion !== summary.publishedVersion ? `V${summary.currentVersion} 草稿会继续保留，不会进入线上流量。` : ''}现有有效授权将恢复调用，确认重新上线吗？`, '确认重新上线', { type: 'warning', confirmButtonText: '恢复线上服务', cancelButtonText: '取消' })
     await api.onlineInterface(summary.id)
     ElMessage.success(`线上 V${summary.publishedVersion} 已恢复`)
-    await Promise.all([loadReleaseManagement(summary.id), loadAll()])
+    await Promise.all([loadReleaseManagement(summary.id), loadReleaseServices(), loadAll()])
   } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '重新上线失败') }
 }
 async function archiveRelease() {
@@ -1379,6 +1452,7 @@ async function archiveRelease() {
     await ElMessageBox.confirm('归档后资源目录不再展示该 API，但版本、审批和链路记录仍会保留。确认归档删除吗？', '确认归档删除', { type: 'warning', confirmButtonText: '归档删除', cancelButtonText: '取消' })
     await api.deleteInterface(target.id)
     const nextId = removeInterfaceFromLocalState(target)
+    delete releaseSourceApiCache.value[target.dataSourceId]
     ElMessage.success('API 已归档，历史审计数据已保留')
     if (nextId) await loadReleaseManagement(nextId)
     else { releaseDetail.value = null; releaseVersions.value = []; releaseInterfaceId.value = 0 }
@@ -2958,7 +3032,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
             <div class="cockpit-kpi"><span>调用成功率</span><strong>{{ overviewSuccessRate.toFixed(1) }}<em>%</em></strong><small :class="overviewSuccessRate >= 99 ? 'positive' : 'negative'">{{ overviewSuccessRate >= 99 ? '调用正常' : '存在异常调用' }}</small><CircleCheck/></div>
             <div class="cockpit-kpi"><span>累计异常调用</span><strong>{{ monitorSummary.errorCalls.toLocaleString() }}</strong><small>全平台失败请求</small><Warning/></div>
             <div class="cockpit-kpi"><span>已发布 API</span><strong>{{ dashboard.publishedCount }}</strong><small>共 {{ dashboard.interfaceCount }} 个接口</small><Files/></div>
-            <div class="cockpit-kpi"><span>有效服务授权</span><strong>{{ validAuthorizations.length }}</strong><small>{{ clients.length }} 个调用系统</small><Key/></div>
+            <div class="cockpit-kpi"><span>有效服务授权</span><strong>{{ activeAuthorizationCount }}</strong><small>{{ clients.length }} 个调用系统</small><Key/></div>
           </section>
 
           <section class="cockpit-analytics">
@@ -3065,21 +3139,45 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
             <aside class="release-api-list plain-panel" :class="{collapsed:releaseCatalogCollapsed}">
               <button v-if="releaseCatalogCollapsed" class="api-catalog-rail" type="button" title="展开发布资源目录" aria-label="展开发布资源目录" @click="releaseCatalogCollapsed=false"><Expand/><span>API</span></button>
               <template v-else>
-              <div class="panel-heading"><div><strong>发布资源目录</strong><span>{{ sources.length }} 个数据源 · {{ allInterfaces.length }} 个 API</span></div><div class="catalog-heading-actions"><el-tag type="info">按数据源</el-tag><el-button text :icon="Fold" title="收起 API 目录" aria-label="收起 API 目录" @click="releaseCatalogCollapsed=true"/></div></div>
-              <div class="release-tree-tools"><el-input v-model="releaseSearch" :prefix-icon="Search" clearable placeholder="搜索数据源或 API"/><div><button :disabled="!!releaseSearch.trim()" @click="setAllReleaseSourcesExpanded(true)">展开全部</button><button :disabled="!!releaseSearch.trim()" @click="setAllReleaseSourcesExpanded(false)">收起全部</button></div></div>
+              <div class="panel-heading"><div><strong>发布资源目录</strong><span>{{ sources.length }} 个数据源 · 当前 {{ releaseServiceRows.length }} 个服务</span></div><div class="catalog-heading-actions"><el-tag type="info">按数据源</el-tag><el-button text :icon="Fold" title="收起 API 目录" aria-label="收起 API 目录" @click="releaseCatalogCollapsed=true"/></div></div>
+              <div class="release-tree-tools"><el-input v-model="releaseSearch" :prefix-icon="Search" clearable placeholder="搜索数据源或已展开的服务"/><div><button :disabled="!!releaseSearch.trim()" @click="setAllReleaseSourcesExpanded(false)">收起全部</button></div></div>
               <div class="release-tree">
                 <div v-for="source in releaseFilteredSources" :key="source.id" class="release-source-group">
-                  <div class="release-source-heading"><button class="release-expand" :class="{expanded:isReleaseSourceExpanded(source.id)}" :aria-expanded="isReleaseSourceExpanded(source.id)" @click="releaseSourceExpansion[source.id] = !isReleaseSourceExpanded(source.id)"><ArrowRight/></button><button class="release-source-label" @click="releaseSourceExpansion[source.id] = true"><span><strong>{{ source.sourceName }}</strong><small>{{ source.sourceCode }} · {{ releaseSourceInterfaces(source.id).length }} 个 API</small></span><i class="status-dot" :class="source.status.toLowerCase()"></i></button></div>
+                  <div class="release-source-heading"><button class="release-expand" :class="{expanded:isReleaseSourceExpanded(source.id)}" :aria-expanded="isReleaseSourceExpanded(source.id)" @click="releaseSourceExpansion[source.id] = !isReleaseSourceExpanded(source.id); if(!releaseSourceApiCache[source.id]) loadReleaseSourceApis(source.id)"><ArrowRight/></button><button class="release-source-label" @click="releaseSourceExpansion[source.id] = true; loadReleaseSourceApis(source.id)"><span><strong>{{ source.sourceName }}</strong><small>{{ source.sourceCode }} · {{ source.interfaceCount }} 个服务</small></span><i class="status-dot" :class="source.status.toLowerCase()"></i></button></div>
                   <div v-show="isReleaseSourceExpanded(source.id)" class="release-source-apis"><button v-for="item in releaseSourceInterfaces(source.id)" :key="item.id" :class="{active:item.id===releaseInterfaceId}" @click="selectReleaseInterface(item.id)"><span class="release-api-method">{{ item.httpMethod }}</span><span><strong>{{ item.interfaceName }}</strong><small>{{ item.interfaceCode }} · 草稿 V{{ item.currentVersion }}</small></span><el-tag size="small" :type="item.status==='OFFLINE'?'danger':item.status==='PENDING_APPROVAL'?'warning':item.publishedVersion!=null?'success':'info'">{{ item.status==='OFFLINE'?'已下线':item.status==='PENDING_APPROVAL'?'审批中':item.publishedVersion!=null?'线上 V'+item.publishedVersion:'未发布' }}</el-tag></button><div v-if="!releaseSourceInterfaces(source.id).length" class="release-tree-empty">没有匹配的 API</div></div>
                 </div>
                 <div v-if="!releaseFilteredSources.length" class="release-tree-empty">未找到匹配的数据源或 API</div>
               </div>
               </template>
             </aside>
+            <section class="release-service-list plain-panel">
+              <div class="release-service-filters">
+                <el-input v-model="releaseFilters.keyword" :prefix-icon="Search" clearable placeholder="搜索服务名称、编码或路径" aria-label="搜索服务" @keyup.enter="loadReleaseServices(true)" @clear="loadReleaseServices(true)"/>
+                <el-select v-model="releaseFilters.providerId" filterable aria-label="资源提供商" @change="releaseFilters.dataSourceId=0;loadReleaseServices(true)"><el-option label="全部资源提供商" :value="0"/><el-option v-for="provider in providers" :key="provider.id" :label="provider.providerName" :value="provider.id"/></el-select>
+                <el-select v-model="releaseFilters.dataSourceId" filterable aria-label="数据源" @change="loadReleaseServices(true)"><el-option label="全部数据源" :value="0"/><el-option v-for="source in sources.filter(item=>!releaseFilters.providerId || item.providerId===releaseFilters.providerId)" :key="source.id" :label="source.sourceName" :value="source.id"/></el-select>
+                <el-select v-model="releaseFilters.runStatus" aria-label="运行状态" @change="releaseQuickView='CUSTOM';loadReleaseServices(true)"><el-option label="全部运行状态" value="ALL"/><el-option label="未发布" value="UNPUBLISHED"/><el-option label="运行中" value="RUNNING"/><el-option label="已下线" value="OFFLINE"/></el-select>
+                <el-select v-model="releaseFilters.authorizationStatus" aria-label="授权状态" @change="releaseQuickView='CUSTOM';loadReleaseServices(true)"><el-option label="全部授权状态" value="ALL"/><el-option label="无有效授权" value="UNAUTHORIZED"/><el-option label="有有效授权" value="AUTHORIZED"/></el-select>
+                <el-select v-model="releaseFilters.environment" aria-label="授权环境" @change="loadReleaseServices(true)"><el-option label="全部环境" value="ALL"/><el-option label="TEST" value="TEST"/><el-option label="PROD" value="PROD"/></el-select>
+                <el-button type="primary" @click="loadReleaseServices(true)">查询</el-button>
+              </div>
+              <div class="release-quick-views"><button v-for="view in [{key:'ALL',label:'全部服务'},{key:'RUNNING_UNAUTHORIZED',label:'运行中未授权'},{key:'RUNNING_AUTHORIZED',label:'运行中已授权'},{key:'OFFLINE',label:'已下线'}]" :key="view.key" :class="{active:releaseQuickView===view.key}" @click="applyReleaseQuickView(view.key)">{{ view.label }}</button><span>共 {{ releaseServiceTotal }} 个服务</span></div>
+              <el-table :data="releaseServiceRows" v-loading="releaseServiceLoading" row-key="service.id" size="small" class="release-services-table" empty-text="当前筛选条件下暂无服务" @row-click="(row:ReleaseServiceRow)=>selectReleaseInterface(row.service.id)">
+                <el-table-column label="服务名称 / 编码" min-width="230"><template #default="{row}"><strong>{{ row.service.interfaceName }}</strong><small>{{ row.service.interfaceCode }}</small></template></el-table-column>
+                <el-table-column label="资源归属" min-width="160"><template #default="{row}"><span>{{ row.providerName }}</span><small>{{ row.dataSourceName }}</small></template></el-table-column>
+                <el-table-column label="线上版本" width="95"><template #default="{row}">{{ row.service.publishedVersion==null ? '-' : 'V'+row.service.publishedVersion }}</template></el-table-column>
+                <el-table-column label="运行状态" width="105"><template #default="{row}"><el-tag size="small" :type="row.runStatus==='OFFLINE'?'danger':row.runStatus==='RUNNING'?'success':'info'">{{ releaseRunStatusLabel(row.runStatus) }}</el-tag></template></el-table-column>
+                <el-table-column label="有效授权调用系统数" min-width="150"><template #default="{row}">{{ releaseServiceAuthLabel(row) }}</template></el-table-column>
+                <el-table-column label="最近发布时间" min-width="155"><template #default="{row}">{{ row.latestPublishedAt ? formatDateTime(row.latestPublishedAt) : '-' }}</template></el-table-column>
+                <el-table-column label="操作" width="78"><template #default="{row}"><el-button text type="primary" @click.stop="selectReleaseInterface(row.service.id)">查看</el-button></template></el-table-column>
+              </el-table>
+              <el-pagination v-model:current-page="releaseServicePage" v-model:page-size="releaseServiceSize" :total="releaseServiceTotal" :page-sizes="[20,50,100]" layout="total, sizes, prev, pager, next" background @current-change="loadReleaseServices()" @size-change="loadReleaseServices(true)"/>
+            </section>
+          </section>
+          <el-drawer v-model="releaseDetailDrawer" title="服务发布详情" size="min(960px, 92vw)" class="release-detail-drawer">
             <div v-if="releaseDetail" class="release-console-main" :class="{'is-refreshing':releaseLoading}" aria-live="polite">
               <section class="release-command plain-panel">
                 <div class="release-command-title"><span class="release-command-icon"><Promotion/></span><div><small aria-hidden="true" class="decorative-eyebrow"></small><h2>{{ releaseDetail.summary.interfaceName }}</h2><p><code>{{ releaseDetail.summary.interfaceCode }}</code><i></i>{{ releaseDetail.summary.servicePath }}</p></div></div>
-                <div class="release-state"><span>当前草稿<strong>V{{ releaseDetail.summary.currentVersion }}</strong></span><b></b><span>{{ releaseDetail.summary.status==='OFFLINE' ? '最近上线' : '线上生效' }}<strong>{{ releaseDetail.summary.publishedVersion == null ? '-' : 'V'+releaseDetail.summary.publishedVersion }}</strong></span><el-tag effect="plain" :type="releaseDetail.summary.status==='OFFLINE'?'danger':releaseDetail.summary.status==='PENDING_APPROVAL'?'warning':releaseDetail.summary.publishedVersion!=null?'success':'info'">{{ releaseDetail.summary.status==='OFFLINE'?'已下线':releaseDetail.summary.status==='PENDING_APPROVAL'?'审批中':releaseDetail.summary.publishedVersion!=null?'运行中':'未上线' }}</el-tag><el-tag v-if="releaseHasAuthorization" effect="plain" type="success">已有授权</el-tag></div>
+                <div class="release-state"><span>当前草稿<strong>V{{ releaseDetail.summary.currentVersion }}</strong></span><b></b><span>{{ releaseDetail.summary.status==='OFFLINE' ? '最近上线' : '线上生效' }}<strong>{{ releaseDetail.summary.publishedVersion == null ? '-' : 'V'+releaseDetail.summary.publishedVersion }}</strong></span><el-tag effect="plain" :type="releaseDetail.summary.status==='OFFLINE'?'danger':releaseDetail.summary.status==='PENDING_APPROVAL'?'warning':releaseDetail.summary.publishedVersion!=null?'success':'info'">{{ releaseDetail.summary.status==='OFFLINE'?'已下线':releaseDetail.summary.status==='PENDING_APPROVAL'?'审批中':releaseDetail.summary.publishedVersion!=null?'运行中':'未上线' }}</el-tag></div>
                 <div class="release-command-actions">
                   <el-button v-if="releaseDetail.summary.status!=='PENDING_APPROVAL' && releaseDetail.summary.currentVersion!==releaseDetail.summary.publishedVersion" type="primary" :icon="Promotion" @click="submitReleaseFromManagement">发布 V{{ releaseDetail.summary.currentVersion }}</el-button>
                   <el-button v-if="releaseDetail.summary.publishedVersion!=null" plain :icon="DocumentCopy" @click="openPublishedDetail(releaseDetail.summary.id)">查看接口详情</el-button>
@@ -3105,8 +3203,8 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                 </el-table>
               </section>
             </div>
-            <div v-else class="plain-panel release-console-empty"><Promotion/><strong>选择一个接口</strong><span>查看版本、上线状态及生命周期操作</span></div>
-          </section>
+            <div v-else class="plain-panel release-console-empty"><Promotion/><strong>服务详情加载中</strong></div>
+          </el-drawer>
         </template>
         <template v-else-if="activeMenu === 'approvals'">
           <section class="metric-strip"><div><span>待审批</span><strong class="warning-text">{{ pendingApprovals.length }}</strong></div><div><span>已通过</span><strong class="success-text">{{ approvals.filter(item => item.status === 'APPROVED').length }}</strong></div><div><span>已驳回</span><strong>{{ approvals.filter(item => item.status === 'REJECTED').length }}</strong></div></section>

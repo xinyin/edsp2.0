@@ -130,6 +130,19 @@ public class ApiController {
         return service.interfaces(dataSourceId);
     }
 
+    @GetMapping("/release-services")
+    public ReleaseServicePage releaseServices(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Long providerId,
+            @RequestParam(required = false) Long dataSourceId,
+            @RequestParam(defaultValue = "ALL") String runStatus,
+            @RequestParam(defaultValue = "ALL") String authorizationStatus,
+            @RequestParam(defaultValue = "ALL") String environment,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return service.releaseServices(keyword, providerId, dataSourceId, runStatus, authorizationStatus, environment, page, size);
+    }
+
     @DeleteMapping("/interfaces/{id}")
     public ResponseEntity<Void> deleteInterface(@PathVariable long id) {
         service.deleteInterface(id);
@@ -253,6 +266,9 @@ public class ApiController {
 
     @GetMapping("/authorizations")
     public List<AuthorizationRecord> authorizations() { return service.authorizations(); }
+
+    @GetMapping("/authorizations/summary")
+    public Map<String, Long> authorizationSummary() { return Map.of("activeCount", service.activeAuthorizationCount()); }
 
     @GetMapping("/internal/authorizations/check")
     public Map<String, Object> authorize(@RequestParam String clientCode,

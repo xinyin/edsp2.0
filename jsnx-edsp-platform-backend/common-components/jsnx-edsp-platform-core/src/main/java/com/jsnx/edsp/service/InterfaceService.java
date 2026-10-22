@@ -712,6 +712,91 @@ public class InterfaceService {
         return dataSourceId == null ? jdbc.query(sql, interfaceMapper()) : jdbc.query(sql, interfaceMapper(), dataSourceId);
     }
 
+    public ReleaseServicePage releaseServices(String keyword, Long providerId, Long dataSourceId,
+                                               String runStatus, String authorizationStatus,
+                                               String environment, int page, int size) {
+        int safePage = Math.max(1, page);
+        int safeSize = Math.max(1, Math.min(100, size));
+        String normalizedRunStatus = valueOr(runStatus, "ALL").trim().toUpperCase(Locale.ROOT);
+        String normalizedAuthorizationStatus = valueOr(authorizationStatus, "ALL").trim().toUpperCase(Locale.ROOT);
+        String normalizedEnvironment = valueOr(environment, "ALL").trim().toUpperCase(Locale.ROOT);
+        if (!Set.of("ALL", "UNPUBLISHED", "RUNNING", "OFFLINE").contains(normalizedRunStatus)) {
+            throw new IllegalArgumentException("不支持的服务运行状态");
+        }
+        if (!Set.of("ALL", "AUTHORIZED", "UNAUTHORIZED").contains(normalizedAuthorizationStatus)) {
+            throw new IllegalArgumentException("不支持的服务授权状态");
+        }
+        if (!Set.of("ALL", "TEST", "PROD").contains(normalizedEnvironment)) {
+            throw new IllegalArgumentException("不支持的授权环境");
+        }
+
+        String effectiveAuthorization = """
+                EXISTS (SELECT 1 FROM api_authorization ea JOIN api_client ec ON ec.id=ea.client_id
+                        WHERE ea.interface_id=ai.id AND ea.status='ACTIVE' AND ec.status='ACTIVE'
+                          AND CURRENT_DATE BETWEEN ea.valid_from AND ea.valid_to
+                          AND (?='ALL' OR ea.environment=?))
+                """;
+        StringBuilder where = new StringBuilder(" WHERE ai.status<>'DELETED'");
+        List<Object> args = new ArrayList<>();
+        if (keyword != null && !keyword.isBlank()) {
+            where.append(" AND (ai.interface_name LIKE ? OR ai.interface_code LIKE ? OR ai.service_path LIKE ? OR ds.source_name LIKE ? OR ds.source_code LIKE ? OR p.provider_name LIKE ? OR p.provider_code LIKE ?)");
+            String pattern = "%" + keyword.trim() + "%";
+            for (int i = 0; i < 7; i++) args.add(pattern);
+        }
+        if (providerId != null && providerId > 0) { where.append(" AND p.id=?"); args.add(providerId); }
+        if (dataSourceId != null && dataSourceId > 0) { where.append(" AND ds.id=?"); args.add(dataSourceId); }
+        switch (normalizedRunStatus) {
+            case "UNPUBLISHED" -> where.append(" AND ai.published_version IS NULL");
+            case "RUNNING" -> where.append(" AND EXISTS (SELECT 1 FROM published_route pr WHERE pr.interface_id=ai.id)");
+            case "OFFLINE" -> where.append(" AND ai.published_version IS NOT NULL AND NOT EXISTS (SELECT 1 FROM published_route pr WHERE pr.interface_id=ai.id)");
+        }
+        if ("AUTHORIZED".equals(normalizedAuthorizationStatus)) where.append(" AND ").append(effectiveAuthorization);
+        else if ("UNAUTHORIZED".equals(normalizedAuthorizationStatus)) where.append(" AND NOT ").append(effectiveAuthorization);
+
+        String joins = " FROM api_interface ai JOIN data_source ds ON ds.id=ai.data_source_id JOIN data_provider p ON p.id=ds.provider_id ";
+        List<Object> queryArgs = new ArrayList<>(args);
+        if ("AUTHORIZED".equals(normalizedAuthorizationStatus) || "UNAUTHORIZED".equals(normalizedAuthorizationStatus)) {
+            queryArgs.add(normalizedEnvironment);
+            queryArgs.add(normalizedEnvironment);
+        }
+        Long total = jdbc.queryForObject("SELECT COUNT(*)" + joins + where, Long.class, queryArgs.toArray());
+
+        List<Object> rowArgs = new ArrayList<>();
+        rowArgs.add(normalizedEnvironment);
+        rowArgs.add(normalizedEnvironment);
+        rowArgs.addAll(args);
+        if ("AUTHORIZED".equals(normalizedAuthorizationStatus) || "UNAUTHORIZED".equals(normalizedAuthorizationStatus)) {
+            rowArgs.add(normalizedEnvironment);
+            rowArgs.add(normalizedEnvironment);
+        }
+        rowArgs.add((safePage - 1) * safeSize);
+        rowArgs.add(safeSize);
+        String rowSql = """
+                SELECT ai.*,ds.endpoint_url,ds.default_timeout_ms,ra.resource_api_code,ra.resource_api_name,
+                       p.provider_name,ds.source_name AS data_source_name,
+                       CASE WHEN ai.published_version IS NULL THEN 'UNPUBLISHED'
+                            WHEN EXISTS (SELECT 1 FROM published_route pr WHERE pr.interface_id=ai.id) THEN 'RUNNING'
+                            ELSE 'OFFLINE' END release_run_status,
+                       (SELECT COUNT(DISTINCT ea.client_id) FROM api_authorization ea JOIN api_client ec ON ec.id=ea.client_id
+                        WHERE ea.interface_id=ai.id AND ea.status='ACTIVE' AND ec.status='ACTIVE'
+                          AND CURRENT_DATE BETWEEN ea.valid_from AND ea.valid_to
+                          AND (?='ALL' OR ea.environment=?)) active_authorization_client_count,
+                       COALESCE((SELECT MAX(rr.released_at) FROM release_record rr WHERE rr.interface_id=ai.id),
+                                (SELECT MAX(pr.published_at) FROM published_route pr WHERE pr.interface_id=ai.id)) latest_published_at
+                FROM api_interface ai JOIN data_source ds ON ds.id=ai.data_source_id
+                LEFT JOIN resource_api ra ON ra.id=ai.resource_api_id
+                JOIN data_provider p ON p.id=ds.provider_id
+                """
+                + where + " ORDER BY COALESCE((SELECT MAX(rr.released_at) FROM release_record rr WHERE rr.interface_id=ai.id),ai.updated_at) DESC,ai.id DESC LIMIT ?,?";
+        List<ReleaseServiceRow> rows = jdbc.query(rowSql, (rs, rowNum) -> {
+            Timestamp latest = rs.getTimestamp("latest_published_at");
+            return new ReleaseServiceRow(interfaceMapper().mapRow(rs, rowNum), rs.getString("release_run_status"), rs.getString("provider_name"),
+                    rs.getString("data_source_name"), rs.getLong("active_authorization_client_count"),
+                    latest == null ? null : latest.toLocalDateTime());
+        }, rowArgs.toArray());
+        return new ReleaseServicePage(rows, total == null ? 0 : total, safePage, safeSize);
+    }
+
     /** Soft-delete a draft while retaining related audit, billing and call data. */
     @Transactional
     public void deleteInterface(long interfaceId) {
@@ -1948,6 +2033,15 @@ public class InterfaceService {
                 rs.getLong("interface_id"), rs.getString("interface_name"), rs.getString("interface_code"),
                 rs.getString("environment"), rs.getInt("daily_quota"), rs.getDate("valid_from").toLocalDate(),
                 rs.getDate("valid_to").toLocalDate(), rs.getString("status"), rs.getString("approved_by")));
+    }
+
+    public long activeAuthorizationCount() {
+        Long count = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM api_authorization a JOIN api_client c ON c.id=a.client_id
+                WHERE a.status='ACTIVE' AND c.status='ACTIVE'
+                  AND CURRENT_DATE BETWEEN a.valid_from AND a.valid_to
+                """, Long.class);
+        return count == null ? 0 : count;
     }
 
     public Map<String, Object> authorize(String clientCode, String servicePath) {

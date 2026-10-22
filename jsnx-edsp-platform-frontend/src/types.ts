@@ -81,6 +81,16 @@ export interface InterfaceSummary {
   resourceApiName?: string
 }
 
+export interface ReleaseServiceRow {
+  service: InterfaceSummary
+  runStatus: 'UNPUBLISHED' | 'RUNNING' | 'OFFLINE'
+  providerName: string
+  dataSourceName: string
+  activeAuthorizationClientCount: number
+  latestPublishedAt?: string
+}
+export interface ReleaseServicePage { rows: ReleaseServiceRow[]; total: number; page: number; size: number }
+
 export interface ResourceApiSummary {
   id: number
   dataSourceId: number
