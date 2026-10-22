@@ -25,7 +25,7 @@ import type {
 
 const loggedIn = ref(false)
 const loginLoading = ref(false)
-const loginForm = ref({ username: 'admin', password: 'admin123' })
+const loginForm = ref({ username: '', password: '' })
 const user = ref<LoginResult | null>(null)
 const activeMenu = ref('overview')
 const sidebarCollapsed = useDisplayPreference('sidebar-collapsed')
@@ -891,9 +891,13 @@ const resourcePrimaryActionDisabled = computed(() => activeTab.value === 'releas
 const slowestLogNode = computed(() => callTrace.value?.nodes.reduce((slowest, node) => !slowest || node.durationMs > slowest.durationMs ? node : slowest, callTrace.value.nodes[0]))
 
 async function login() {
+  if (!loginForm.value.username.trim() || !loginForm.value.password) {
+    ElMessage.warning('请输入账号和密码')
+    return
+  }
   loginLoading.value = true
   try {
-    user.value = await api.login(loginForm.value.username, loginForm.value.password)
+    user.value = await api.login(loginForm.value.username.trim(), loginForm.value.password)
     loggedIn.value = true
     await loadAll()
     ElMessage.success('登录成功')
@@ -2977,21 +2981,20 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
     <main class="login-form-panel">
       <form class="login-box" @submit.prevent="login">
         <div class="login-brand">
-          <span class="login-brand-mark">ED</span>
           <div class="login-brand-copy">
+            <small>江苏农信</small>
             <strong>外部数据平台</strong>
-            <small>EXTERNAL DATA SERVICE PLATFORM</small>
           </div>
         </div>
-        <div class="login-title"><h2>登录平台</h2></div>
-        <label>用户名</label><el-input v-model="loginForm.username" :prefix-icon="UserIcon" size="large" />
-        <label>密码</label><el-input v-model="loginForm.password" :prefix-icon="Lock" type="password" show-password size="large" />
-
+        <div class="login-fields">
+          <label for="login-username">账号</label>
+          <el-input id="login-username" v-model="loginForm.username" autocomplete="username" placeholder="请输入账号" size="large" />
+          <label for="login-password">密码</label>
+          <el-input id="login-password" v-model="loginForm.password" autocomplete="current-password" placeholder="请输入密码" type="password" show-password size="large" />
+        </div>
         <el-button native-type="submit" type="primary" size="large" :loading="loginLoading">登录</el-button>
-
       </form>
     </main>
-    <footer class="login-page-footer">江苏农信外部数据服务管理控制台</footer>
   </div>
 
   <el-container v-else class="app-shell" :class="{'sidebar-collapsed':sidebarCollapsed}" v-loading="loading">

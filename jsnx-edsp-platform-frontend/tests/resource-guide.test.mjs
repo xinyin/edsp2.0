@@ -371,6 +371,11 @@ test('登录页使用纯色背景和居中卡片，不再渲染左右分栏品�
   assert.match(loginPageRule, /place-items:\s*center[^}]*background:\s*#[0-9a-f]{6}/is)
   assert.doesNotMatch(loginPageRule, /login-platform-bg|background-image|url\(/)
   assert.match(styles, /\.login-form-panel\s*\{[^}]*width:\s*min\(420px,\s*100%\)/s)
+  assert.doesNotMatch(appText, /登录平台|EXTERNAL DATA SERVICE PLATFORM|login-page-footer/)
+  assert.match(appText, /const loginForm = ref\(\{ username: '', password: '' \}\)/)
+  assert.match(appText, /for="login-username"[\s\S]*autocomplete="username"[\s\S]*for="login-password"[\s\S]*autocomplete="current-password"/)
+  assert.match(styles, /\.login-fields \.el-input\s*\{[^}]*width:\s*100%/s)
+  assert.doesNotMatch(styles, /\.login-fields \.el-input\s*\{[^}]*display:\s*block/s)
 })
 
 test('已接入数据源可修改归属、名称、协议和连接配置', () => {
