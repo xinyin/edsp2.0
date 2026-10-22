@@ -363,19 +363,19 @@ test('空映射被视为已完成，响应可整报文封装', async () => {
   assert.equal(s.detail.value.mappings.length, 0)
 })
 
-test('登录页使用纯色背景和居中卡片，不再渲染左右分栏品牌面板', () => {
-  const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
-  const loginPageRule = styles.match(/\.login-page\s*\{[^}]*\}/s)?.[0] ?? ''
-  assert.match(appText, /class="login-page"[\s\S]*class="login-form-panel"[\s\S]*class="login-box"/)
-  assert.doesNotMatch(appText, /class="login-brand-panel"/)
-  assert.match(loginPageRule, /place-items:\s*center[^}]*background:\s*#[0-9a-f]{6}/is)
-  assert.doesNotMatch(loginPageRule, /login-platform-bg|background-image|url\(/)
-  assert.match(styles, /\.login-form-panel\s*\{[^}]*width:\s*min\(420px,\s*100%\)/s)
-  assert.doesNotMatch(appText, /登录平台|EXTERNAL DATA SERVICE PLATFORM|login-page-footer/)
+test('登录页使用提供的银行品牌版式，并保留真实登录表单', () => {
+  const loginStyles = readFileSync(new URL('../src/login-page.css', import.meta.url), 'utf8')
+  const logo = readFileSync(new URL('../public/images/jsrcub-emblem.png', import.meta.url))
+  assert.match(appText, /class="bank-login-page"[\s\S]*class="bank-login-brand-pane"[\s\S]*class="bank-login-form-pane"/)
+  assert.match(appText, /src="\/images\/jsrcub-emblem\.png"/)
+  assert.ok(logo.length > 0)
+  assert.match(loginStyles, /\.bank-login-shell\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1\.14fr\) minmax\(0, 1fr\)/)
+  assert.match(loginStyles, /@media \(max-width: 600px\)/)
+  assert.doesNotMatch(appText, /登录平台|EXTERNAL DATA SERVICE PLATFORM/)
   assert.match(appText, /const loginForm = ref\(\{ username: '', password: '' \}\)/)
   assert.match(appText, /for="login-username"[\s\S]*autocomplete="username"[\s\S]*for="login-password"[\s\S]*autocomplete="current-password"/)
-  assert.match(styles, /\.login-fields \.el-input\s*\{[^}]*width:\s*100%/s)
-  assert.doesNotMatch(styles, /\.login-fields \.el-input\s*\{[^}]*display:\s*block/s)
+  assert.match(appText, /class="bank-login-form" @submit\.prevent="login"/)
+  assert.match(appText, /class="bank-login-submit" native-type="submit"[\s\S]*:loading="loginLoading"/)
 })
 
 test('已接入数据源可修改归属、名称、协议和连接配置', () => {

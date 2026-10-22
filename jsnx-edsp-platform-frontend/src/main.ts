@@ -6,5 +6,6 @@ import './styles.css'
 import App from './App.vue'
 import './typography.css'
 import './console-theme.css'
+import './login-page.css'
 
 createApp(App).use(ElementPlus, { locale: zhCn }).mount('#app')

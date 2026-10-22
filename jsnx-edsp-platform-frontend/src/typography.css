@@ -24,7 +24,6 @@ body { font-size: var(--edsp-text-body); line-height: 1.5; }
 .version-history-panel h3,
 .vendor-brand-icon + div h2 { font-size: var(--edsp-text-section); font-weight: 600; line-height: 1.5; }
 .login-message h1 { font-size: clamp(24px, 2.2vw, 30px); font-weight: 600; }
-.login-brand strong { font-size: 18px; }
 .metric-strip strong,
 .version-detail-hero > strong,
 .batch-auth-selected strong,

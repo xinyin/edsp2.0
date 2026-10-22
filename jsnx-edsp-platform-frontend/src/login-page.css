@@ -1,0 +1,160 @@
+.bank-login-page {
+  --login-text: #eef3fb;
+  --login-secondary: #9caecb;
+  --login-muted: #7185a5;
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  overflow: hidden;
+  color: var(--login-text);
+  background: linear-gradient(155deg, #091b35, #050d1f 58%, #07152c);
+}
+
+.bank-login-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(rgba(133, 171, 232, .05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(133, 171, 232, .05) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: linear-gradient(to bottom, transparent, #000 20%, #000 75%, transparent);
+}
+
+.bank-login-shell {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.14fr) minmax(0, 1fr);
+  width: min(1080px, 100%);
+  min-height: 600px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 16px;
+  background: #0c1930;
+  box-shadow: 0 34px 76px rgba(0, 0, 0, .4);
+}
+
+.bank-login-brand-pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 54px 52px;
+  overflow: hidden;
+  border-right: 1px solid rgba(255, 255, 255, .08);
+  background: linear-gradient(155deg, #162b51, #0d1c38 65%, #0b1730);
+}
+
+.bank-login-brand-pane::before {
+  position: absolute;
+  inset: 0;
+  content: '';
+  pointer-events: none;
+  background: repeating-linear-gradient(115deg, transparent 0 46px, rgba(116, 161, 240, .04) 46px 47px);
+}
+
+.bank-login-brand,
+.bank-login-headline,
+.bank-login-features { position: relative; z-index: 1; }
+
+.bank-login-brand { display: flex; align-items: center; gap: 14px; }
+.bank-login-brand img {
+  width: 52px;
+  height: 52px;
+  padding: 6px;
+  flex: 0 0 52px;
+  border-radius: 11px;
+  background: #fff;
+  object-fit: contain;
+}
+.bank-login-brand-name { display: grid; gap: 4px; min-width: 0; }
+.bank-login-brand-name strong { font-size: 15px; line-height: 1.35; font-weight: 600; }
+.bank-login-brand-name span { font-size: 10px; color: var(--login-secondary); letter-spacing: 1.5px; }
+
+.bank-login-headline h1 { margin: 0; font-size: 38px; line-height: 1.35; font-weight: 700; color: #f3f7ff; }
+.bank-login-divider { display: block; width: 52px; height: 3px; margin: 23px 0 20px; border-radius: 3px; background: #48aed7; }
+.bank-login-headline p { margin: 0; color: var(--login-secondary); font-size: 14px; line-height: 1.8; }
+.bank-login-features { display: flex; flex-wrap: wrap; gap: 12px 25px; }
+.bank-login-features span { display: inline-flex; align-items: center; gap: 8px; color: var(--login-secondary); font-size: 12px; white-space: nowrap; }
+.bank-login-features i { width: 6px; height: 6px; border-radius: 50%; background: #58bfdc; }
+
+.bank-login-form-pane {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding: 52px 58px;
+}
+.bank-login-form-header h2 { margin: 0; font-size: 26px; line-height: 1.3; font-weight: 600; color: #f3f7ff; }
+.bank-login-form-header p { margin: 10px 0 0; color: var(--login-muted); font-size: 13px; }
+.bank-login-form { margin-top: 40px; }
+.bank-login-field { margin-bottom: 23px; }
+.bank-login-field label { display: block; margin-bottom: 9px; color: var(--login-secondary); font-size: 13px; }
+.bank-login-field .el-input { width: 100%; }
+.bank-login-field .el-input__wrapper {
+  min-height: 50px;
+  padding: 0 15px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .045);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .13) inset;
+}
+.bank-login-field .el-input__wrapper:hover { box-shadow: 0 0 0 1px rgba(133, 171, 232, .55) inset; }
+.bank-login-field .el-input__wrapper.is-focus { box-shadow: 0 0 0 2px #4d85ff inset; }
+.bank-login-field .el-input__inner { color: var(--login-text); font-size: 14px; }
+.bank-login-field .el-input__inner::placeholder { color: #8395b0; }
+.bank-login-field .el-input__prefix,
+.bank-login-field .el-input__suffix { color: var(--login-muted); }
+.bank-login-field .el-input__prefix .el-icon { font-size: 17px; }
+.bank-login-submit.el-button {
+  width: 100%;
+  min-height: 52px;
+  margin-top: 8px;
+  border: 0;
+  border-radius: 9px;
+  color: #fff;
+  background: #2866df;
+  font-size: 15px;
+  font-weight: 600;
+  box-shadow: 0 10px 24px rgba(20, 76, 188, .3);
+}
+.bank-login-submit.el-button:hover,
+.bank-login-submit.el-button:focus { background: #3977f0; }
+.bank-login-submit.el-button:active { background: #235ac7; }
+.bank-login-footer { display: grid; gap: 7px; margin-top: 43px; color: var(--login-muted); font-size: 11px; line-height: 1.6; text-align: center; }
+.bank-login-footer span:first-child { color: var(--login-secondary); }
+
+@media (max-width: 900px) {
+  .bank-login-page { padding: 24px; overflow: auto; }
+  .bank-login-shell { grid-template-columns: 1fr; width: min(600px, 100%); min-height: 0; }
+  .bank-login-brand-pane { min-height: 255px; padding: 32px 38px; border-right: 0; border-bottom: 1px solid rgba(255, 255, 255, .08); }
+  .bank-login-headline h1 { font-size: 28px; }
+  .bank-login-divider { margin: 13px 0 11px; }
+  .bank-login-features { display: none; }
+  .bank-login-form-pane { padding: 38px; }
+  .bank-login-form { margin-top: 27px; }
+  .bank-login-footer { margin-top: 27px; }
+}
+
+@media (max-width: 600px) {
+  .bank-login-page { padding: 16px; }
+  .bank-login-shell { border-radius: 12px; }
+  .bank-login-brand-pane { min-height: 0; gap: 29px; padding: 25px 25px 28px; }
+  .bank-login-brand img { width: 42px; height: 42px; flex-basis: 42px; }
+  .bank-login-brand-name strong { font-size: 13px; }
+  .bank-login-brand-name span { font-size: 9px; letter-spacing: .7px; }
+  .bank-login-headline h1 { font-size: 24px; }
+  .bank-login-headline p { font-size: 12px; }
+  .bank-login-form-pane { padding: 27px 25px 30px; }
+  .bank-login-form-header h2 { font-size: 22px; }
+  .bank-login-form { margin-top: 24px; }
+  .bank-login-footer { margin-top: 24px; font-size: 10px; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .bank-login-shell { animation: bank-login-enter .55s ease-out both; }
+  @keyframes bank-login-enter { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+}

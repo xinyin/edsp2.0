@@ -48,14 +48,6 @@
 body { background: var(--canvas); }
 .main-content { min-width: 0; padding: 20px 24px 30px; background: var(--canvas); }
 
-/* Keep login and console on the same visual system. */
-.login-box .el-input__wrapper { min-height: 46px; padding: 0 13px; border-radius: 4px; background: #fff; box-shadow: 0 0 0 1px #ccdbe7 inset; }
-.login-box .el-input__wrapper:hover { box-shadow: 0 0 0 1px #9bb5c9 inset; }
-.login-box .el-input__wrapper.is-focus { box-shadow: 0 0 0 2px var(--brand) inset; }
-.login-box .el-input__inner { color: #1b354c; font-size: 14px; }
-.login-box .el-input__inner::placeholder { color: #8b9dac; }
-.login-box .el-button--primary { background: var(--brand); border-color: var(--brand); }
-
 /* Shell */
 .sidebar { color: var(--text-regular); background: var(--nav); border-right: 1px solid #cbddeb; }
 .brand { height: 60px; padding: 12px; gap: 9px; border-bottom: 1px solid #cbddeb; background: #f2f8fd; }

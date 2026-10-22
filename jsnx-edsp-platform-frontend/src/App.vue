@@ -2977,23 +2977,53 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
 </script>
 
 <template>
-  <div v-if="!loggedIn" class="login-page">
-    <main class="login-form-panel">
-      <form class="login-box" @submit.prevent="login">
-        <div class="login-brand">
-          <div class="login-brand-copy">
-            <small>江苏农信</small>
-            <strong>外部数据平台</strong>
+  <div v-if="!loggedIn" class="bank-login-page">
+    <div class="bank-login-grid" aria-hidden="true"></div>
+    <main class="bank-login-shell">
+      <section class="bank-login-brand-pane" aria-label="平台品牌">
+        <div class="bank-login-brand">
+          <img src="/images/jsrcub-emblem.png" alt="江苏农商联合银行标识" />
+          <div class="bank-login-brand-name">
+            <strong>江苏农村商业联合银行</strong>
+            <span>EXTERNAL DATA PLATFORM</span>
           </div>
         </div>
-        <div class="login-fields">
-          <label for="login-username">账号</label>
-          <el-input id="login-username" v-model="loginForm.username" autocomplete="username" placeholder="请输入账号" size="large" />
-          <label for="login-password">密码</label>
-          <el-input id="login-password" v-model="loginForm.password" autocomplete="current-password" placeholder="请输入密码" type="password" show-password size="large" />
+        <div class="bank-login-headline">
+          <h1>外部数据<br />开发管理平台</h1>
+          <span class="bank-login-divider"></span>
+          <p>统一接入 · 标准服务 · 全链路管理</p>
         </div>
-        <el-button native-type="submit" type="primary" size="large" :loading="loginLoading">登录</el-button>
-      </form>
+        <div class="bank-login-features" aria-label="平台能力">
+          <span><i></i>数据资源接入</span>
+          <span><i></i>标准服务开发</span>
+          <span><i></i>运行链路追踪</span>
+        </div>
+      </section>
+      <section class="bank-login-form-pane" aria-label="账号登录">
+        <div class="bank-login-form-header">
+          <h2>欢迎使用</h2>
+          <p>使用平台账号登录</p>
+        </div>
+        <form class="bank-login-form" @submit.prevent="login">
+          <div class="bank-login-field">
+            <label for="login-username">账号</label>
+            <el-input id="login-username" v-model="loginForm.username" autocomplete="username" placeholder="请输入账号" size="large">
+              <template #prefix><el-icon><UserIcon /></el-icon></template>
+            </el-input>
+          </div>
+          <div class="bank-login-field">
+            <label for="login-password">密码</label>
+            <el-input id="login-password" v-model="loginForm.password" autocomplete="current-password" placeholder="请输入密码" type="password" show-password size="large">
+              <template #prefix><el-icon><Lock /></el-icon></template>
+            </el-input>
+          </div>
+          <el-button class="bank-login-submit" native-type="submit" type="primary" size="large" :loading="loginLoading">登录</el-button>
+        </form>
+        <footer class="bank-login-footer">
+          <span>仅限授权用户访问</span>
+          <span>© 2026 江苏农村商业联合银行</span>
+        </footer>
+      </section>
     </main>
   </div>
 
