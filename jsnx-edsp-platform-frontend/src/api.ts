@@ -174,7 +174,7 @@ export const api = {
   }),
   platformResponseContracts: () => request<PlatformResponseContract[]>('/api/platform-response-contracts', undefined, () => [{
     id: 1, contractCode: 'EDSP_STANDARD', contractName: '平台标准响应 V1', version: 1,
-    description: '平台统一对外响应结构', enabled: true, defaultContract: true,
+    description: '平台统一对外响应结构', enabled: true, defaultContract: true, active: true,
     fields: [
       { key: 'code', label: '平台返回码', type: 'STRING', required: true, description: '平台统一结果码' },
       { key: 'message', label: '平台提示语', type: 'STRING', required: true, description: '平台统一提示语' },
@@ -188,6 +188,9 @@ export const api = {
   }),
   updatePlatformResponseContract: (id: number, body: PlatformResponseContract) => request<PlatformResponseContract>(`/api/platform-response-contracts/${id}`, {
     method: 'PUT', headers: { 'X-Edsp-Operator-Token': operatorToken }, body: JSON.stringify(body)
+  }),
+  activatePlatformResponseContract: (id: number) => request<PlatformResponseContract>(`/api/platform-response-contracts/${id}/activate`, {
+    method: 'POST', headers: { 'X-Edsp-Operator-Token': operatorToken }
   }),
   deletePlatformResponseContract: (id: number) => request<{ deleted: boolean }>(`/api/platform-response-contracts/${id}`, {
     method: 'DELETE', headers: { 'X-Edsp-Operator-Token': operatorToken }

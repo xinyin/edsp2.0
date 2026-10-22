@@ -182,6 +182,7 @@ export interface PlatformResponseContract {
   description: string
   enabled: boolean
   defaultContract: boolean
+  active: boolean
   fields: PlatformResponseField[]
 }
 

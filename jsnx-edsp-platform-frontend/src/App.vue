@@ -196,7 +196,7 @@ const contractEditorDialog = ref(false)
 const contractEditorOriginalId = ref(0)
 const contractEditorSaving = ref(false)
 const contractEditorForm = ref<PlatformResponseContract>({
-  contractCode: '', contractName: '', version: 1, description: '', enabled: true, defaultContract: false, fields: []
+  contractCode: '', contractName: '', version: 1, description: '', enabled: true, defaultContract: false, active: false, fields: []
 })
 const selectedPlatformContract = computed(() => platformResponseContracts.value.find(item => item.id === selectedPlatformContractId.value)
   ?? platformResponseContracts.value.find(item => item.defaultContract)
@@ -2205,10 +2205,21 @@ async function savePlatformCode() {
 function clonePlatformContract(item: PlatformResponseContract): PlatformResponseContract {
   return { ...item, fields: item.fields.map(field => ({ ...field })) }
 }
+async function activatePlatformContract(item: PlatformResponseContract) {
+  if (!item.id || item.active) return
+  try {
+    await ElMessageBox.confirm(`确认让“${item.contractName} V${item.version}”立即生效？后续平台接口将按该版本补齐标准字段，未映射字段输出为空。`, '立即生效', { type: 'warning', confirmButtonText: '确认生效', cancelButtonText: '取消' })
+    await api.activatePlatformResponseContract(item.id)
+    await refreshPlatformContracts()
+    ElMessage.success('标准响应已生效，后续调用将使用最新版本')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '标准响应生效失败')
+  }
+}
 function editPlatformContract(item?: PlatformResponseContract) {
   contractEditorOriginalId.value = item?.id ?? 0
   contractEditorForm.value = item ? clonePlatformContract(item) : {
-    contractCode: '', contractName: '', version: 1, description: '', enabled: true, defaultContract: false,
+    contractCode: '', contractName: '', version: 1, description: '', enabled: true, defaultContract: false, active: false,
     fields: [{ key: '', label: '', type: 'STRING', required: false, description: '' }]
   }
   contractEditorDialog.value = true
@@ -2964,7 +2975,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
           <section class="platform-management">
             <section v-if="platformManagementTab==='contract'" class="platform-management-panel plain-panel">
               <div class="platform-list-toolbar"><el-button type="primary" :icon="Plus" @click="editPlatformContract()">新增标准响应</el-button></div>
-              <el-table :data="platformResponseContracts" size="small" class="platform-contract-list" empty-text="暂无标准响应"><el-table-column prop="contractCode" label="编码" width="180"><template #default="{row}"><code>{{ row.contractCode }}</code></template></el-table-column><el-table-column prop="contractName" label="名称" min-width="200"/><el-table-column label="版本" width="80"><template #default="{row}">V{{ row.version }}</template></el-table-column><el-table-column label="状态" width="120"><template #default="{row}"><el-tag size="small" :type="row.defaultContract?'success':'info'">{{ row.defaultContract ? '默认使用' : row.enabled ? '可用' : '停用' }}</el-tag></template></el-table-column><el-table-column prop="description" label="说明" min-width="220" show-overflow-tooltip/><el-table-column label="操作" width="170" fixed="right"><template #default="{row}"><el-button text type="primary" @click.stop="viewPlatformContract(row)">查看</el-button><el-button text type="primary" @click.stop="editPlatformContract(row)">编辑</el-button><el-button text type="danger" :disabled="row.defaultContract" @click.stop="deletePlatformContract(row)">删除</el-button></template></el-table-column></el-table>
+              <el-table :data="platformResponseContracts" size="small" class="platform-contract-list" empty-text="暂无标准响应"><el-table-column prop="contractCode" label="编码" width="180"><template #default="{row}"><code>{{ row.contractCode }}</code></template></el-table-column><el-table-column prop="contractName" label="名称" min-width="200"/><el-table-column label="版本" width="80"><template #default="{row}">V{{ row.version }}</template></el-table-column><el-table-column label="状态" width="120"><template #default="{row}"><el-tag size="small" :type="row.active?'success':row.enabled?'info':'warning'">{{ row.active ? '当前生效' : row.enabled ? '待生效' : '停用' }}</el-tag></template></el-table-column><el-table-column prop="description" label="说明" min-width="220" show-overflow-tooltip/><el-table-column label="操作" width="240" fixed="right"><template #default="{row}"><el-button text type="primary" @click.stop="viewPlatformContract(row)">查看</el-button><el-button text type="primary" @click.stop="editPlatformContract(row)">编辑</el-button><el-button text type="success" :disabled="row.active || !row.enabled" @click.stop="activatePlatformContract(row)">立即生效</el-button><el-button text type="danger" :disabled="row.defaultContract || row.active" @click.stop="deletePlatformContract(row)">删除</el-button></template></el-table-column></el-table>
             </section>
 
             <section v-else-if="platformManagementTab==='codes'" class="platform-management-panel plain-panel">

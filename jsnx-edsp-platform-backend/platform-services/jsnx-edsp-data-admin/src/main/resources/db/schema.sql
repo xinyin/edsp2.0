@@ -220,6 +220,8 @@ CREATE TABLE IF NOT EXISTS platform_response_contract (
     version_no INT NOT NULL,
     description VARCHAR(500) NOT NULL DEFAULT '',
     fields_json JSON NOT NULL,
+    active_fields_json JSON NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 0,
     enabled TINYINT(1) NOT NULL DEFAULT 1,
     is_default TINYINT(1) NOT NULL DEFAULT 0,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
