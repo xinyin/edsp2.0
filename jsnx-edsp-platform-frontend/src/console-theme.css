@@ -1,43 +1,51 @@
 /* EDSP commercial console theme: restrained enterprise shell + API workbench. */
 :root {
   font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
-  --nav: #eaf3fb;
-  --nav-active: #d5e7f8;
-  --nav-hover: #deedfa;
-  --brand: #1766a6;
-  --brand-dark: #104d80;
-  --brand-soft: #eaf4fd;
-  --accent: #27836e;
-  --info: #587e9e;
-  --warning: #a66d26;
-  --danger: #ae535b;
-  --border: #d3e1ec;
-  --muted: #5e7183;
-  --text-primary: #183047;
-  --text-regular: #3c5367;
+  --nav: #16294e;
+  --nav-active: rgba(255, 255, 255, 0.12);
+  --nav-hover: rgba(255, 255, 255, 0.07);
+  --brand: #2a55a5;
+  --brand-dark: #244a91;
+  --brand-soft: #edf2fb;
+  --brand-100: #dce7f7;
+  --brand-200: #bccfec;
+  --brand-300: #8ba8dc;
+  --brand-400: #5f83c4;
+  --brand-800: #1e3f7d;
+  --brand-900: #152c58;
+  --accent: #0e9f8a;
+  --info: #2a55a5;
+  --warning: #f59e0b;
+  --danger: #e5484d;
+  --border: #d5dbe4;
+  --muted: #6b7280;
+  --text-primary: #1f2937;
+  --text-regular: #374151;
+  --sidebar-text: rgba(255, 255, 255, 0.66);
+  --sidebar-hover-bg: rgba(255, 255, 255, 0.07);
   --surface: #fff;
-  --canvas: #f6f9fd;
-  --soft: #f7fbfe;
-  --workspace-aside: #eef5fb;
-  --workspace-chrome: #f3f8fd;
-  --selection: #dcecfb;
-  --el-color-primary: #1766a6;
-  --el-color-primary-light-3: #5d94c0;
-  --el-color-primary-light-5: #8bb3d2;
-  --el-color-primary-light-7: #bad4e7;
-  --el-color-primary-light-8: #d1e3f0;
-  --el-color-primary-light-9: #eaf4fd;
-  --el-color-primary-dark-2: #104d80;
-  --el-color-success: #27836e;
-  --el-color-warning: #a66d26;
-  --el-color-danger: #ae535b;
-  --el-color-info: #587e9e;
-  --el-text-color-primary: #183047;
-  --el-text-color-regular: #3c5367;
-  --el-text-color-secondary: #5e7183;
-  --el-border-color: #d3e1ec;
-  --el-border-color-light: #e5eef5;
-  --el-fill-color-light: #f3f8fd;
+  --canvas: #e8ecf2;
+  --soft: #f4f6fa;
+  --workspace-aside: #f4f6fa;
+  --workspace-chrome: #f7f9fc;
+  --selection: #edf2fb;
+  --el-color-primary: #2a55a5;
+  --el-color-primary-light-3: #5f83c4;
+  --el-color-primary-light-5: #8ba8dc;
+  --el-color-primary-light-7: #bccfec;
+  --el-color-primary-light-8: #dce7f7;
+  --el-color-primary-light-9: #edf2fb;
+  --el-color-primary-dark-2: #244a91;
+  --el-color-success: #0e9f8a;
+  --el-color-warning: #f59e0b;
+  --el-color-danger: #e5484d;
+  --el-color-info: #2a55a5;
+  --el-text-color-primary: #1f2937;
+  --el-text-color-regular: #374151;
+  --el-text-color-secondary: #6b7280;
+  --el-border-color: #d5dbe4;
+  --el-border-color-light: #dde2ea;
+  --el-fill-color-light: #f7f9fc;
   --el-border-radius-base: 4px;
   --el-font-size-base: 13px;
   color: var(--text-primary);
@@ -49,26 +57,26 @@ body { background: var(--canvas); }
 .main-content { min-width: 0; padding: 20px 24px 30px; background: var(--canvas); }
 
 /* Shell */
-.sidebar { color: var(--text-regular); background: var(--nav); border-right: 1px solid #cbddeb; }
-.brand { height: 60px; padding: 12px; gap: 9px; border-bottom: 1px solid #cbddeb; background: #f2f8fd; }
-.brand .brand-mark { width: 32px; height: 32px; border: 1px solid var(--brand); border-radius: 4px; color: #fff; background: var(--brand); font-size: 12px; }
-.brand .brand-name { color: var(--brand-dark); font-size: 14px; font-weight: 600; white-space: nowrap; }
-.brand .brand-sub { margin-top: 2px; color: #637f96; font-size: 12px; }
-.sidebar-collapse-button { color: #5e7387; background: rgba(255,255,255,.62); }
-.sidebar-collapse-button:hover { color: var(--brand); background: #fff; }
-.sidebar.collapsed .sidebar-collapse-button { position: absolute; top: 60px; right: auto; left: 0; z-index: 20; width: 68px; height: 36px; border-radius: 0; color: var(--brand-dark); background: var(--nav); border-bottom: 1px solid #cbddeb; box-shadow: none; }
-.sidebar.collapsed .sidebar-collapse-button:hover { color: var(--brand-dark); background: var(--nav-hover); }
+.sidebar { color: var(--sidebar-text); background: var(--nav); border-right: 1px solid #0f1e3a; }
+.brand { height: 60px; padding: 12px; gap: 9px; border-bottom: 1px solid rgba(255,255,255,.08); background: var(--nav); }
+.brand .brand-mark { width: 32px; height: 32px; flex: 0 0 32px; border: 0; border-radius: 4px; object-fit: contain; background: #fff; }
+.brand .brand-name { color: #fff; font-size: 14px; font-weight: 600; white-space: nowrap; }
+.brand .brand-sub { margin-top: 2px; color: rgba(255,255,255,.5); font-size: 12px; }
+.sidebar-collapse-button { color: var(--sidebar-text); background: rgba(255,255,255,.06); }
+.sidebar-collapse-button:hover { color: #fff; background: rgba(255,255,255,.12); }
+.sidebar.collapsed .sidebar-collapse-button { position: absolute; top: 60px; right: auto; left: 0; z-index: 20; width: 68px; height: 36px; border-radius: 0; color: var(--sidebar-text); background: var(--nav); border-bottom: 1px solid rgba(255,255,255,.08); box-shadow: none; }
+.sidebar.collapsed .sidebar-collapse-button:hover { color: #fff; background: var(--sidebar-hover-bg); }
 .side-menu { background: transparent; border: 0; }
-.side-menu .el-menu-item { height: 40px; margin: 2px 8px; border-radius: 4px; color: #38536b; font-size: 13px; }
-.side-menu .el-menu-item:hover { color: var(--brand-dark); background: var(--nav-hover); }
-.side-menu .el-menu-item.is-active { color: var(--brand-dark); background: var(--nav-active); box-shadow: inset 3px 0 var(--brand); font-weight: 600; }
-.side-menu .el-menu-item .el-icon { color: #4e789a; }
-.side-menu .el-menu-item.is-active .el-icon { color: var(--brand); }
-.menu-section-label { margin-top: 10px; color: #57738d; font-size: 12px; }
-.menu-section-label:hover { color: #426785; }
-.sidebar-footer { color: #476783; border-color: #cbddeb; background: #e1effb; }
-.sidebar-footer strong { color: #344c60; font-size: 12px; font-weight: 500; }
-.sidebar-footer span { color: #74889b; font-size: 12px; }
+.side-menu .el-menu-item { height: 40px; margin: 2px 8px; border-radius: 4px; color: rgba(255,255,255,.66); font-size: 13px; }
+.side-menu .el-menu-item:hover { color: #fff; background: var(--nav-hover); }
+.side-menu .el-menu-item.is-active { color: #fff; background: var(--nav-active); box-shadow: inset 3px 0 var(--brand-300); font-weight: 600; }
+.side-menu .el-menu-item .el-icon { color: rgba(255,255,255,.66); }
+.side-menu .el-menu-item.is-active .el-icon { color: #fff; }
+.menu-section-label { margin-top: 10px; color: rgba(255,255,255,.38); font-size: 12px; }
+.menu-section-label:hover { color: rgba(255,255,255,.66); }
+.sidebar-footer { color: rgba(255,255,255,.8); border-color: rgba(255,255,255,.08); background: transparent; }
+.sidebar-footer strong { color: rgba(255,255,255,.8); font-size: 12px; font-weight: 500; }
+.sidebar-footer span { color: rgba(255,255,255,.42); font-size: 12px; }
 .sidebar.collapsed .side-menu { width: 68px; }
 .sidebar.collapsed .side-menu { padding-top: 42px; }
 .sidebar.collapsed .side-menu .el-menu-item { width: 48px; margin: 2px 10px; padding: 0; }
@@ -109,7 +117,7 @@ body { background: var(--canvas); }
 .el-popper.is-light { border-color: var(--border); box-shadow: 0 8px 24px rgba(40,67,94,.14); }
 .el-pagination button:hover, .el-pagination .el-pager li:hover { color: var(--brand); }
 .el-pagination .el-pager li.is-active { color: #fff; background: var(--brand); }
-.el-table { --el-table-header-bg-color: #f4f7fb; --el-table-row-hover-bg-color: #f2f5f8; --el-table-border-color: #e2e8ef; font-size: 12px; }
+.el-table { --el-table-header-bg-color: #f7f9fc; --el-table-row-hover-bg-color: #fafbfc; --el-table-border-color: #dde2ea; font-size: 12px; }
 .el-table th.el-table__cell { height: 39px; color: #536577; font-weight: 600; }
 .el-table td.el-table__cell { padding: 8px 0; }
 .el-table .cell { line-height: 1.55; }
@@ -447,7 +455,7 @@ body { background: var(--canvas); }
 .upstream-validation-panel,
 .auth-summary-panel,
 .monitor-node-inspector,
-.trace-facts { color: var(--text-regular); background: #f7fbfe; }
+.trace-facts { color: var(--text-regular); background: #f7f9fc; }
 .resource-workbench .el-segmented { border: 1px solid var(--border); background: #e9f2fa; }
 .resource-workbench .el-segmented__item.is-selected { color: var(--brand-dark); }
 .resource-workbench .el-segmented__item-selected { background: #fff; box-shadow: 0 0 0 1px #b8c9d7; }
