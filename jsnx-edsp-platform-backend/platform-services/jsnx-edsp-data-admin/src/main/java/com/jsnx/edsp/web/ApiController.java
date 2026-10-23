@@ -28,6 +28,7 @@ public class ApiController {
 
     @PostMapping("/auth/login")
     public LoginResult login(@Valid @RequestBody LoginRequest request, HttpServletRequest http) {
+        http.setAttribute(PlatformOperationAudit.AUTH_OPERATOR_ATTRIBUTE, auditOperator(request.username()));
         LoginResult user = service.login(request);
         var previous = http.getSession(false);
         if (previous != null) previous.invalidate();
@@ -38,6 +39,23 @@ public class ApiController {
         session.setAttribute("edsp.operator.username", request.username());
         session.setAttribute("edsp.operator.role", user.role());
         return new LoginResult(token, user.displayName(), user.role(), user.institution());
+    }
+
+    @PostMapping("/auth/logout")
+    public ResponseEntity<Void> logout(HttpServletRequest http) {
+        var session = http.getSession(false);
+        if (session == null || session.getAttribute(ChainTestToolController.SESSION_TOKEN) == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        Object operator = session.getAttribute("edsp.operator.username");
+        http.setAttribute(PlatformOperationAudit.AUTH_OPERATOR_ATTRIBUTE,
+                auditOperator(operator == null ? null : String.valueOf(operator)));
+        session.invalidate();
+        return ResponseEntity.noContent().build();
+    }
+
+    private static String auditOperator(String username) {
+        if (username == null || username.isBlank()) return "UNKNOWN";
+        return username.length() > 64 ? username.substring(0, 64) : username;
     }
 
     @GetMapping("/dashboard")

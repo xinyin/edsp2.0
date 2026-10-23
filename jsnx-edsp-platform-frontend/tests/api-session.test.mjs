@@ -38,3 +38,9 @@ test('登录接口本身返回 401 时不触发会话失效事件', async () => 
   await assert.rejects(api.login('admin', 'wrong'))
   assert.deepEqual(events, [])
 })
+
+test('主动退出返回 401 时不重复触发会话失效事件', async () => {
+  const { api, events } = apiWithStatus(401)
+  await assert.rejects(api.logout(), error => error.name === 'ApiRequestError' && error.status === 401)
+  assert.deepEqual(events, [])
+})

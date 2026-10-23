@@ -78,6 +78,22 @@ class ChainTestToolControllerTest {
         assertNotEquals("old-fixed-token", result.token());
         assertNotSame(oldSession, http.getSession());
         assertEquals(result.token(), http.getSession().getAttribute(ChainTestToolController.SESSION_TOKEN));
+        assertEquals("admin", http.getAttribute(PlatformOperationAudit.AUTH_OPERATOR_ATTRIBUTE));
         assertNotEquals(result.token(), controller.login(request, new MockHttpServletRequest()).token());
+    }
+
+    @Test
+    void logoutCapturesOperatorBeforeInvalidatingSession() {
+        var controller = new ApiController(mock(InterfaceService.class), mock(PublishedPlanRegistry.class));
+        var http = new MockHttpServletRequest();
+        assertEquals(401, controller.logout(http).getStatusCode().value());
+
+        var session = new MockHttpSession();
+        session.setAttribute(ChainTestToolController.SESSION_TOKEN, "issued-token");
+        session.setAttribute("edsp.operator.username", "admin");
+        http.setSession(session);
+        assertEquals(204, controller.logout(http).getStatusCode().value());
+        assertEquals("admin", http.getAttribute(PlatformOperationAudit.AUTH_OPERATOR_ATTRIBUTE));
+        assertTrue(session.isInvalid());
     }
 }

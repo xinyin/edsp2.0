@@ -1555,10 +1555,15 @@ async function deleteSelectedProvider() {
 }
 function openAccountDialog() { accountForm.value = { username: '', displayName: '', mobile: '', email: '', roleCode: 'PROVIDER_ADMIN', permissions: ['DATASOURCE_VIEW', 'API_VIEW'], status: 'ACTIVE' }; accountDialog.value = true }
 async function saveAccount() { if (!selectedProviderId.value) return; await api.createProviderAccount(selectedProviderId.value, accountForm.value); accountDialog.value = false; await loadProviderAccounts(); ElMessage.success('资源提供商账号已创建') }
-function logout() { loggedIn.value = false; user.value = null; api.clearOperatorSession(); activeMenu.value = 'overview' }
+function clearLocalSession() { loggedIn.value = false; user.value = null; api.clearOperatorSession(); activeMenu.value = 'overview' }
+async function logout() {
+  try { await api.logout() }
+  catch (error) { ElMessage.warning(error instanceof Error ? `退出记录未能保存：${error.message}` : '退出记录未能保存') }
+  finally { clearLocalSession() }
+}
 function handleSessionExpired() {
   if (!loggedIn.value) return
-  logout()
+  clearLocalSession()
   ElMessage.warning('登录会话已失效，请重新登录')
 }
 if (typeof window !== 'undefined') window.addEventListener('edsp:session-expired', handleSessionExpired)
@@ -2961,7 +2966,7 @@ function resetOperationAudit() {
   auditFilters.value = { action: '', operator: '', targetType: '', outcome: '' }
   searchOperationAudit()
 }
-const auditActionLabels: Record<string, string> = { POST: '新增', PUT: '修改', PATCH: '修改', DELETE: '删除' }
+const auditActionLabels: Record<string, string> = { POST: '新增', PUT: '修改', PATCH: '修改', DELETE: '删除', LOGIN: '登录', LOGOUT: '退出' }
 const auditOperationLabels: Record<string, string> = {
   activate: '生效', publish: '发布', 'direct-publish': '发布', offline: '下线', online: '上线',
   'sync-resource': '同步资源', decision: '审批', batch: '批量授权'
@@ -2976,7 +2981,7 @@ const auditTargetLabels: Record<string, string> = {
   'resource-apis': '数据资源 API', 'resource-documents': '资源文档',
   'platform-services': '标准服务', interfaces: '标准服务', approvals: '发布审批',
   clients: '调用系统', authorizations: '访问授权', billing: '计量规则',
-  'platform-response-codes': '平台返回码', 'platform-response-contracts': '平台标准响应'
+  'platform-response-codes': '平台返回码', 'platform-response-contracts': '平台标准响应', auth: '用户会话'
 }
 
 const monitorMaxDuration = computed(() => Math.max(1, ...monitorPoints.value.map(item => item.avgDurationMs)))
@@ -3186,7 +3191,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
             <section v-else-if="platformManagementTab==='audit'" class="platform-management-panel plain-panel">
               <div class="audit-filter-grid">
                 <el-date-picker v-model="auditRange" class="audit-date-picker" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" :clearable="false" unlink-panels/>
-                <el-select v-model="auditFilters.action" clearable placeholder="全部操作类型"><el-option label="提交（POST）" value="POST"/><el-option label="修改（PUT）" value="PUT"/><el-option label="局部修改（PATCH）" value="PATCH"/><el-option label="删除（DELETE）" value="DELETE"/></el-select>
+                <el-select v-model="auditFilters.action" clearable placeholder="全部操作类型"><el-option label="登录" value="LOGIN"/><el-option label="退出" value="LOGOUT"/><el-option label="提交（POST）" value="POST"/><el-option label="修改（PUT）" value="PUT"/><el-option label="局部修改（PATCH）" value="PATCH"/><el-option label="删除（DELETE）" value="DELETE"/></el-select>
                 <el-input v-model="auditFilters.operator" clearable placeholder="操作账号前缀" @keyup.enter="searchOperationAudit"/>
                 <el-select v-model="auditFilters.targetType" clearable placeholder="全部对象类型"><el-option v-for="(label,key) in auditTargetLabels" :key="key" :label="label" :value="key"/></el-select>
                 <el-select v-model="auditFilters.outcome" clearable placeholder="全部结果"><el-option label="成功" value="SUCCESS"/><el-option label="失败" value="FAILURE"/></el-select>

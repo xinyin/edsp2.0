@@ -26,6 +26,7 @@ import java.util.Set;
 public class PlatformOperationAudit implements HandlerInterceptor {
     private static final Logger log = LoggerFactory.getLogger(PlatformOperationAudit.class);
     private static final Set<String> METHODS = Set.of("POST", "PUT", "PATCH", "DELETE");
+    static final String AUTH_OPERATOR_ATTRIBUTE = "edsp.audit.auth-operator";
     private final JdbcTemplate jdbc;
 
     public PlatformOperationAudit(JdbcTemplate jdbc) { this.jdbc = jdbc; }
@@ -55,14 +56,17 @@ public class PlatformOperationAudit implements HandlerInterceptor {
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception error) {
         String path = request.getRequestURI();
         if (!shouldAudit(request.getMethod(), path)) return;
-        var session = request.getSession(false);
-        Object operator = session == null ? null : session.getAttribute("edsp.operator.username");
+        boolean authentication = path.equals("/api/auth/login") || path.equals("/api/auth/logout");
+        var session = authentication ? null : request.getSession(false);
+        Object operator = authentication ? request.getAttribute(AUTH_OPERATOR_ATTRIBUTE)
+                : session == null ? null : session.getAttribute("edsp.operator.username");
         int status = response.getStatus();
         try {
             jdbc.update("""
                     INSERT INTO platform_operation_audit(operator_name,action,target_path,target_type,outcome,http_status,trace_id,client_ip)
                     VALUES(?,?,?,?,?,?,?,?)
-                    """, operator == null ? "UNKNOWN" : String.valueOf(operator), request.getMethod(), path,
+                    """, operator == null ? "UNKNOWN" : String.valueOf(operator),
+                    auditAction(request.getMethod(), path), path,
                     targetType(path), error == null && status < 400 ? "SUCCESS" : "FAILURE", status,
                     request.getHeader("X-Trace-Id"), request.getRemoteAddr());
         } catch (Exception auditError) {
@@ -71,11 +75,18 @@ public class PlatformOperationAudit implements HandlerInterceptor {
     }
 
     static boolean shouldAudit(String method, String path) {
+        if ("POST".equals(method) && (path.equals("/api/auth/login") || path.equals("/api/auth/logout"))) return true;
         return METHODS.contains(method) && path.startsWith("/api/")
                 && !path.startsWith("/api/auth/") && !path.startsWith("/api/internal/")
                 && !path.startsWith("/api/test-tools/") && !path.endsWith("/test")
                 && !path.endsWith("/validate") && !path.endsWith("/verify")
                 && !path.endsWith("/diagnostic");
+    }
+
+    private static String auditAction(String method, String path) {
+        if (path.equals("/api/auth/login")) return "LOGIN";
+        if (path.equals("/api/auth/logout")) return "LOGOUT";
+        return method;
     }
 
     static String targetType(String path) {
@@ -86,7 +97,7 @@ public class PlatformOperationAudit implements HandlerInterceptor {
     @RestController
     @RequestMapping("/api/operation-audit")
     public static class QueryController {
-        private static final Set<String> ACTIONS = Set.of("POST", "PUT", "PATCH", "DELETE");
+        private static final Set<String> ACTIONS = Set.of("POST", "PUT", "PATCH", "DELETE", "LOGIN", "LOGOUT");
         private static final Set<String> OUTCOMES = Set.of("SUCCESS", "FAILURE");
         private final JdbcTemplate jdbc;
         public QueryController(JdbcTemplate jdbc) { this.jdbc = jdbc; }

@@ -46,7 +46,7 @@ async function request<T>(path: string, init?: RequestInit, fallback?: () => T |
       const parsed: unknown = JSON.parse(responseText)
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) payload = parsed as Record<string, unknown>
     } catch { /* Keep raw response as the message. */ }
-    if (response.status === 401 && path !== '/api/auth/login') {
+    if (response.status === 401 && path !== '/api/auth/login' && path !== '/api/auth/logout') {
       operatorToken = ''
       if (typeof window !== 'undefined') window.dispatchEvent(new Event('edsp:session-expired'))
       throw new ApiRequestError('登录会话已失效，请重新登录', 401, payload)
@@ -90,6 +90,7 @@ export const api = {
     operatorToken = user.token
     return user
   },
+  logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
   dashboard: () => request<DashboardSummary>('/api/dashboard', undefined, () => mock.dashboard),
   securityAlgorithms: () => request<SecurityAlgorithmDescriptor[]>('/api/security-algorithms'),
   providers: () => request<ProviderSummary[]>('/api/providers', undefined, () => [{ id: 1, providerCode: 'QXB', providerName: '企信资源提供商', contactName: '张经理', accessDate: '2026-01-01', messageEncoding: 'UTF-8', chargeRequired: true, encryptionRequired: true, loginRequired: true, status: 'ACTIVE' }]),
