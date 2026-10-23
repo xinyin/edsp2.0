@@ -30,7 +30,6 @@ const user = ref<LoginResult | null>(null)
 const activeMenu = ref('overview')
 const sidebarCollapsed = useDisplayPreference('sidebar-collapsed')
 const resourceCatalogCollapsed = useDisplayPreference('resource-catalog-collapsed')
-const releaseCatalogCollapsed = useDisplayPreference('release-catalog-collapsed')
 const menuGroups = ref({ resources: true, services: true, platform: true, operations: true })
 const loading = ref(false)
 const demo = ref(false)
@@ -205,9 +204,6 @@ const releaseInterfaceId = ref(0)
 const releaseDetail = ref<InterfaceDetail | null>(null)
 const releaseVersions = ref<InterfaceVersionHistory[]>([])
 const releaseLoading = ref(false)
-const releaseNoteManagement = ref('完成接口配置并通过联调验证')
-const releaseSearch = ref('')
-const releaseSourceExpansion = ref<Record<number, boolean>>({})
 let releaseRequestSequence = 0
 let releaseServiceRequestSequence = 0
 const releaseServiceRows = ref<ReleaseServiceRow[]>([])
@@ -1316,33 +1312,6 @@ async function goToProviderManagement(sourceId = selectedSourceId.value) {
     await loadProviderAccounts()
   }
 }
-const releaseSourceApiCache = ref<Record<number, InterfaceSummary[]>>({})
-const releaseFilteredSources = computed(() => {
-  const keyword = releaseSearch.value.trim().toLowerCase()
-  if (!keyword) return sources.value
-  return sources.value.filter(source => {
-    const sourceText = `${source.sourceName}${source.sourceCode}${source.providerName}`.toLowerCase()
-    const apiMatched = (releaseSourceApiCache.value[source.id] ?? []).some(item =>
-      `${item.interfaceName}${item.interfaceCode}${item.servicePath}`.toLowerCase().includes(keyword))
-    return sourceText.includes(keyword) || apiMatched
-  })
-})
-function releaseSourceInterfaces(sourceId: number) {
-  return releaseSourceApiCache.value[sourceId] ?? []
-}
-function isReleaseSourceExpanded(sourceId: number) {
-  return releaseSourceExpansion.value[sourceId] ?? sourceId === releaseInterfaceSourceId.value
-}
-const releaseInterfaceSourceId = computed(() => releaseDetail.value?.summary.dataSourceId
-  ?? releaseServiceRows.value.find(row => row.service.id === releaseInterfaceId.value)?.service.dataSourceId ?? 0)
-function setAllReleaseSourcesExpanded(expanded: boolean) {
-  releaseSourceExpansion.value = Object.fromEntries(sources.value.map(source => [source.id, expanded]))
-}
-async function loadReleaseSourceApis(sourceId: number) {
-  if (releaseSourceApiCache.value[sourceId]) return
-  try { releaseSourceApiCache.value[sourceId] = await api.interfaces(sourceId) }
-  catch (error) { ElMessage.error(error instanceof Error ? error.message : '服务目录加载失败') }
-}
 async function loadProviderAccounts() { if (selectedProviderId.value) providerAccounts.value = await api.providerAccounts(selectedProviderId.value) }
 async function refreshApprovals() { approvals.value = await api.approvals() }
 function versionStatusText(item: InterfaceVersionHistory) {
@@ -1419,56 +1388,62 @@ function releaseServiceAuthLabel(row: ReleaseServiceRow) {
 }
 async function selectReleaseInterface(interfaceId: number) {
   releaseDetailDrawer.value = true
-  if (interfaceId === releaseInterfaceId.value && releaseDetail.value) return
-  const sourceId = releaseServiceRows.value.find(row => row.service.id === interfaceId)?.service.dataSourceId
-  if (sourceId) {
-    releaseSourceExpansion.value[sourceId] = true
-    void loadReleaseSourceApis(sourceId)
-  }
+  if (interfaceId === releaseInterfaceId.value && releaseDetail.value?.summary.id === interfaceId) return
   highlightedVersion.value = null
   await loadReleaseManagement(interfaceId)
 }
-async function submitReleaseFromManagement() {
-  if (!releaseDetail.value || releaseDetail.value.summary.status === 'PENDING_APPROVAL') return
+async function handleReleaseRowCommand(command: string, row: ReleaseServiceRow) {
+  const interfaceId = row.service.id
+  if (command === 'published') return openPublishedDetail(interfaceId)
+  if (command === 'authorize') {
+    authForm.value.interfaceId = interfaceId
+    navigate('authorization')
+    return
+  }
+  if (command === 'archive') return archiveRelease(row.service)
+}
+async function submitReleaseFromManagement(summary: InterfaceSummary) {
+  if (summary.status === 'PENDING_APPROVAL' || summary.currentVersion === summary.publishedVersion) return
   try {
-    const check = await api.validate(releaseDetail.value.summary.id)
+    const check = await api.validate(summary.id)
     if (!check.valid) throw new Error(check.errors.join('；') || '发布前校验未通过')
-    await ElMessageBox.confirm(`确认发布 ${releaseDetail.value.summary.interfaceCode} V${releaseDetail.value.summary.currentVersion}？发布后可配置调用授权。`, '确认发布服务', { type: 'warning', confirmButtonText: '确认发布', cancelButtonText: '取消' })
-    await api.directPublish(releaseDetail.value.summary.id, releaseNoteManagement.value)
-    ElMessage.success(`V${releaseDetail.value.summary.currentVersion} 已发布并生效，可配置 API 访问授权`)
-    await Promise.all([loadReleaseManagement(releaseDetail.value.summary.id), loadReleaseServices(), loadAll()])
+    const { value: releaseNote } = await ElMessageBox.prompt(`确认发布 ${summary.interfaceCode} V${summary.currentVersion}？`, '发布服务', {
+      confirmButtonText: '确认发布', cancelButtonText: '取消', inputPlaceholder: '填写本次变更内容',
+      inputValidator: value => !!value.trim() || '请填写发布说明'
+    })
+    await api.directPublish(summary.id, releaseNote.trim())
+    ElMessage.success(`V${summary.currentVersion} 已发布并生效`)
+    await Promise.all([loadReleaseServices(), loadAll()])
   } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '服务发布失败') }
 }
-async function offlineRelease() {
-  if (!releaseDetail.value) return
+async function offlineRelease(summary: InterfaceSummary) {
   try {
     await ElMessageBox.confirm('下线后线上调用将停止，历史版本和链路记录仍会保留。确认下线吗？', '确认下线接口', { type: 'warning', confirmButtonText: '确认下线', cancelButtonText: '取消' })
-    await api.offlineInterface(releaseDetail.value.summary.id)
+    await api.offlineInterface(summary.id)
     ElMessage.success('接口已下线，线上执行计划已撤销')
-    await Promise.all([loadReleaseManagement(releaseDetail.value.summary.id), loadReleaseServices(), loadAll()])
+    await Promise.all([loadReleaseServices(), loadAll()])
   } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '下线失败') }
 }
-async function onlineRelease() {
-  if (!releaseDetail.value?.summary.publishedVersion) return
-  const summary = releaseDetail.value.summary
+async function onlineRelease(summary: InterfaceSummary) {
+  if (!summary.publishedVersion) return
   try {
     await ElMessageBox.confirm(`将恢复最近一次已发布的 V${summary.publishedVersion} 执行计划和 Gateway 路由。${summary.currentVersion !== summary.publishedVersion ? `V${summary.currentVersion} 草稿会继续保留，不会进入线上流量。` : ''}现有有效授权将恢复调用，确认重新上线吗？`, '确认重新上线', { type: 'warning', confirmButtonText: '恢复线上服务', cancelButtonText: '取消' })
     await api.onlineInterface(summary.id)
     ElMessage.success(`线上 V${summary.publishedVersion} 已恢复`)
-    await Promise.all([loadReleaseManagement(summary.id), loadReleaseServices(), loadAll()])
+    await Promise.all([loadReleaseServices(), loadAll()])
   } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '重新上线失败') }
 }
-async function archiveRelease() {
-  if (!releaseDetail.value) return
-  const target = { ...releaseDetail.value.summary }
+async function archiveRelease(target: InterfaceSummary) {
   try {
     await ElMessageBox.confirm('归档后资源目录不再展示该 API，但版本、审批和链路记录仍会保留。确认归档删除吗？', '确认归档删除', { type: 'warning', confirmButtonText: '归档删除', cancelButtonText: '取消' })
     await api.deleteInterface(target.id)
-    const nextId = removeInterfaceFromLocalState(target)
-    delete releaseSourceApiCache.value[target.dataSourceId]
+    removeInterfaceFromLocalState(target)
     ElMessage.success('API 已归档，历史审计数据已保留')
-    if (nextId) await loadReleaseManagement(nextId)
-    else { releaseDetail.value = null; releaseVersions.value = []; releaseInterfaceId.value = 0 }
+    releaseDetailDrawer.value = false
+    releaseDetail.value = null
+    releaseVersions.value = []
+    releaseInterfaceId.value = 0
+    await loadReleaseServices()
   } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '归档失败') }
 }
 
@@ -3248,21 +3223,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
           </section>
         </template>
         <template v-else-if="activeMenu === 'releases'">
-          <section class="release-console" :class="{'catalog-collapsed':releaseCatalogCollapsed}">
-            <aside class="release-api-list plain-panel" :class="{collapsed:releaseCatalogCollapsed}">
-              <button v-if="releaseCatalogCollapsed" class="api-catalog-rail" type="button" title="展开发布资源目录" aria-label="展开发布资源目录" @click="releaseCatalogCollapsed=false"><Expand/><span>API</span></button>
-              <template v-else>
-              <div class="panel-heading"><div><strong>发布资源目录</strong><span>{{ sources.length }} 个数据源 · 当前 {{ releaseServiceRows.length }} 个服务</span></div><div class="catalog-heading-actions"><el-tag type="info">按数据源</el-tag><el-button text :icon="Fold" title="收起 API 目录" aria-label="收起 API 目录" @click="releaseCatalogCollapsed=true"/></div></div>
-              <div class="release-tree-tools"><el-input v-model="releaseSearch" :prefix-icon="Search" clearable placeholder="搜索数据源或已展开的服务"/><div><button :disabled="!!releaseSearch.trim()" @click="setAllReleaseSourcesExpanded(false)">收起全部</button></div></div>
-              <div class="release-tree">
-                <div v-for="source in releaseFilteredSources" :key="source.id" class="release-source-group">
-                  <div class="release-source-heading"><button class="release-expand" :class="{expanded:isReleaseSourceExpanded(source.id)}" :aria-expanded="isReleaseSourceExpanded(source.id)" @click="releaseSourceExpansion[source.id] = !isReleaseSourceExpanded(source.id); if(!releaseSourceApiCache[source.id]) loadReleaseSourceApis(source.id)"><ArrowRight/></button><button class="release-source-label" @click="releaseSourceExpansion[source.id] = true; loadReleaseSourceApis(source.id)"><span><strong>{{ source.sourceName }}</strong><small>{{ source.sourceCode }} · {{ source.interfaceCount }} 个服务</small></span><i class="status-dot" :class="source.status.toLowerCase()"></i></button></div>
-                  <div v-show="isReleaseSourceExpanded(source.id)" class="release-source-apis"><button v-for="item in releaseSourceInterfaces(source.id)" :key="item.id" :class="{active:item.id===releaseInterfaceId}" @click="selectReleaseInterface(item.id)"><span class="release-api-method">{{ item.httpMethod }}</span><span><strong>{{ item.interfaceName }}</strong><small>{{ item.interfaceCode }} · 草稿 V{{ item.currentVersion }}</small></span><el-tag size="small" :type="item.status==='OFFLINE'?'danger':item.status==='PENDING_APPROVAL'?'warning':item.publishedVersion!=null?'success':'info'">{{ item.status==='OFFLINE'?'已下线':item.status==='PENDING_APPROVAL'?'审批中':item.publishedVersion!=null?'线上 V'+item.publishedVersion:'未发布' }}</el-tag></button><div v-if="!releaseSourceInterfaces(source.id).length" class="release-tree-empty">没有匹配的 API</div></div>
-                </div>
-                <div v-if="!releaseFilteredSources.length" class="release-tree-empty">未找到匹配的数据源或 API</div>
-              </div>
-              </template>
-            </aside>
+          <section class="release-console release-console-list">
             <section class="release-service-list plain-panel">
               <div class="release-service-filters">
                 <el-input v-model="releaseFilters.keyword" :prefix-icon="Search" clearable placeholder="搜索服务名称、编码或路径" aria-label="搜索服务" @keyup.enter="loadReleaseServices(true)" @clear="loadReleaseServices(true)"/>
@@ -3281,7 +3242,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                 <el-table-column label="运行状态" width="105"><template #default="{row}"><el-tag size="small" :type="row.runStatus==='OFFLINE'?'danger':row.runStatus==='RUNNING'?'success':'info'">{{ releaseRunStatusLabel(row.runStatus) }}</el-tag></template></el-table-column>
                 <el-table-column label="有效授权调用系统数" min-width="150"><template #default="{row}">{{ releaseServiceAuthLabel(row) }}</template></el-table-column>
                 <el-table-column label="最近发布时间" min-width="155"><template #default="{row}">{{ row.latestPublishedAt ? formatDateTime(row.latestPublishedAt) : '-' }}</template></el-table-column>
-                <el-table-column label="操作" width="78"><template #default="{row}"><el-button text type="primary" @click.stop="selectReleaseInterface(row.service.id)">查看</el-button></template></el-table-column>
+                <el-table-column label="操作" min-width="190" fixed="right"><template #default="{row}"><div class="release-row-actions"><el-button text type="primary" @click.stop="selectReleaseInterface(row.service.id)">详情</el-button><el-button v-if="row.service.status!=='PENDING_APPROVAL' && row.service.currentVersion!==row.service.publishedVersion" text type="primary" @click.stop="submitReleaseFromManagement(row.service)">发布</el-button><el-button v-else-if="row.runStatus==='OFFLINE'" text type="primary" @click.stop="onlineRelease(row.service)">上线</el-button><el-button v-else-if="row.runStatus==='RUNNING'" text type="warning" @click.stop="offlineRelease(row.service)">下线</el-button><el-dropdown trigger="click" @command="(command:string)=>handleReleaseRowCommand(command,row)" @click.stop><el-button text aria-label="更多操作">更多</el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="published" :disabled="row.service.publishedVersion==null">查看已发布接口</el-dropdown-item><el-dropdown-item command="authorize" :disabled="row.runStatus!=='RUNNING'">访问授权</el-dropdown-item><el-dropdown-item command="archive" :disabled="!(row.runStatus==='OFFLINE' && row.service.publishedVersion!=null) && !(row.service.status==='DRAFT' && row.service.publishedVersion==null)">归档删除</el-dropdown-item></el-dropdown-menu></template></el-dropdown></div></template></el-table-column>
               </el-table>
               <el-pagination v-model:current-page="releaseServicePage" v-model:page-size="releaseServiceSize" :total="releaseServiceTotal" :page-sizes="[20,50,100]" layout="total, sizes, prev, pager, next" background @current-change="loadReleaseServices()" @size-change="loadReleaseServices(true)"/>
             </section>
@@ -3291,17 +3252,8 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
               <section class="release-command plain-panel">
                 <div class="release-command-title"><span class="release-command-icon"><Promotion/></span><div><small aria-hidden="true" class="decorative-eyebrow"></small><h2>{{ releaseDetail.summary.interfaceName }}</h2><p><code>{{ releaseDetail.summary.interfaceCode }}</code><i></i>{{ releaseDetail.summary.servicePath }}</p></div></div>
                 <div class="release-state"><span>当前草稿<strong>V{{ releaseDetail.summary.currentVersion }}</strong></span><b></b><span>{{ releaseDetail.summary.status==='OFFLINE' ? '最近上线' : '线上生效' }}<strong>{{ releaseDetail.summary.publishedVersion == null ? '-' : 'V'+releaseDetail.summary.publishedVersion }}</strong></span><el-tag effect="plain" :type="releaseDetail.summary.status==='OFFLINE'?'danger':releaseDetail.summary.status==='PENDING_APPROVAL'?'warning':releaseDetail.summary.publishedVersion!=null?'success':'info'">{{ releaseDetail.summary.status==='OFFLINE'?'已下线':releaseDetail.summary.status==='PENDING_APPROVAL'?'审批中':releaseDetail.summary.publishedVersion!=null?'运行中':'未上线' }}</el-tag></div>
-                <div class="release-command-actions">
-                  <el-button v-if="releaseDetail.summary.status!=='PENDING_APPROVAL' && releaseDetail.summary.currentVersion!==releaseDetail.summary.publishedVersion" type="primary" :icon="Promotion" @click="submitReleaseFromManagement">发布 V{{ releaseDetail.summary.currentVersion }}</el-button>
-                  <el-button v-if="releaseDetail.summary.publishedVersion!=null" plain :icon="DocumentCopy" @click="openPublishedDetail(releaseDetail.summary.id)">查看接口详情</el-button>
-                  <el-button v-if="releaseDetail.summary.publishedVersion!=null && releaseDetail.summary.status==='PUBLISHED'" type="primary" plain :icon="Key" @click="authForm.interfaceId=releaseDetail.summary.id; navigate('authorization')">配置访问授权</el-button>
-                  <el-button v-if="releaseDetail.summary.status==='OFFLINE' && releaseDetail.summary.publishedVersion!=null" type="primary" :icon="Promotion" @click="onlineRelease">恢复线上 V{{ releaseDetail.summary.publishedVersion }}</el-button>
-                  <el-button v-if="releaseDetail.summary.publishedVersion!=null && releaseDetail.summary.status!=='OFFLINE'" type="warning" plain @click="offlineRelease">下线接口</el-button>
-                  <el-button v-if="(releaseDetail.summary.status==='OFFLINE' && releaseDetail.summary.publishedVersion!=null) || (releaseDetail.summary.status==='DRAFT' && releaseDetail.summary.publishedVersion==null)" type="danger" plain :icon="Delete" @click="archiveRelease">归档删除</el-button>
-                </div>
               </section>
               <div v-if="!sources.find(source=>source.id===releaseDetail?.summary.dataSourceId)?.runtimeUrl" class="release-routing-warning" role="status"><div><strong>发布前需配置应用路由</strong><span>当前资源提供商尚未配置 Gateway 可访问的处理应用地址，完成配置后可继续发布。</span></div><el-button @click="editReleaseRuntime">前往资源方管理</el-button></div>
-              <section v-if="releaseDetail.summary.currentVersion!==releaseDetail.summary.publishedVersion && releaseDetail.summary.status!=='PENDING_APPROVAL'" class="release-submit-panel plain-panel"><div><strong>待发布版本 V{{ releaseDetail.summary.currentVersion }}</strong><span v-if="releaseDetail.summary.status==='OFFLINE'">当前服务已下线，可发布草稿版本或恢复最近的已发布版本。</span></div><CopyableBlock :value="releaseNoteManagement"><el-input v-model="releaseNoteManagement" type="textarea" :rows="2" placeholder="填写本次变更内容"/></CopyableBlock></section>
               <section id="interface-version-history" class="version-history-panel plain-panel">
                 <header><div><h3>接口版本历史</h3></div><el-tag type="info">{{ releaseVersions.length }} 个版本</el-tag></header>
                 <el-alert v-if="releaseVersions.some(item => !item.historyComplete)" title="检测到旧版本记录不完整" type="warning" :closable="false" description="接口主表保留了已发布版本号，但旧审批单、发布记录或执行计划快照缺失；版本仍保留并阻止未经下线的删除。"/>

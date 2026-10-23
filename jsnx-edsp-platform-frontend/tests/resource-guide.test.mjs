@@ -503,7 +503,8 @@ test('异常节点明确区分缺少业务码、未配置码值和供应商错�
 test('发布入口使用正式用语且不再出现口语化上线文案', () => {
   assert.doesNotMatch(appText + guideSource, /直接上线|一键上线|上线草稿/)
   assert.match(appText, /确认发布服务/)
-  assert.match(appText, /发布 V\{\{ releaseDetail\.summary\.currentVersion \}\}/)
+  assert.match(appText, /submitReleaseFromManagement\(row\.service\)/)
+  assert.doesNotMatch(appText, /release-command-actions[\s\S]{0,500}submitReleaseFromManagement/)
 })
 
 test('全链路失败自动定位异常节点并显示具体原因', async () => {
@@ -853,7 +854,7 @@ test('侧边栏菜单超出视口时可独立滚动，品牌与底部区域不�
 })
 test('已下线接口提供恢复最近线上版本入口并保留更高版本草稿', () => {
   assert.match(apiText, /interfaces\/\$\{id\}\/online/)
-  assert.match(appText, /status==='OFFLINE'.*恢复线上 V\{\{ releaseDetail\.summary\.publishedVersion \}\}/s)
+  assert.match(appText, /onlineRelease\(row\.service\)/)
   assert.match(appText, /草稿会继续保留，不会进入线上流量/)
 })
 test('已下线接口仍可编辑保存，并可选择上线新草稿或恢复旧线上版本', () => {
@@ -868,8 +869,8 @@ test('已下线接口仍可编辑保存，并可选择上线新草稿或恢复�
   assert.equal(s.detail.value.summary.status, 'OFFLINE')
   assert.equal(s.detail.value.summary.currentVersion, 3)
   assert.equal(s.resourceEditorState.value.label, '线上已下线')
-  assert.match(appText, /发布 V\{\{ releaseDetail\.summary\.currentVersion \}\}/)
-  assert.match(appText, /恢复线上 V\{\{ releaseDetail\.summary\.publishedVersion \}\}/)
+  assert.match(appText, /submitReleaseFromManagement\(row\.service\)/)
+  assert.match(appText, /onlineRelease\(row\.service\)/)
 })
 test('服务归档规则与后端一致：未发布草稿和已下线版本可归档', () => {
   const s = harness()
