@@ -29,7 +29,7 @@ spring:
       - id: edsp-admin
         uri: "${ADMIN_URI:http://127.0.0.1:8081}"
         predicates:
-        - Path=/api/auth/**,/api/test-tools/**,/api/dashboard,/api/providers/**,/api/data-sources/**,/api/resource-apis/**,/api/resource-directory/**,/api/resource-documents/**,/api/reports/**,/api/operation-audit/**,/api/platform-services/**,/api/interfaces/**,/api/approvals/**,/api/clients/**,/api/authorizations/**,/api/billing/**,/api/usage-records,/api/security-algorithms,/api/platform-response-codes/**,/api/platform-response-contracts/**
+        - Path=/api/auth/**,/api/test-tools/**,/api/dashboard,/api/providers/**,/api/data-sources/**,/api/resource-apis/**,/api/resource-directory/**,/api/resource-documents/**,/api/reports/**,/api/operation-audit/**,/api/platform-services/**,/api/interfaces/**,/api/release-services/**,/api/approvals/**,/api/clients/**,/api/authorizations/**,/api/billing/**,/api/usage-records,/api/security-algorithms,/api/platform-response-codes/**,/api/platform-response-contracts/**
       - id: edsp-published-api-dynamic
         uri: http://127.0.0.1:9
         predicates:
