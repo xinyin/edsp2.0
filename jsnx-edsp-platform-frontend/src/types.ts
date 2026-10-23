@@ -116,6 +116,9 @@ export interface ResourceApiDetail {
   requestHeaders: Record<string, string>
   configuredTimeoutMs?: number | null
   timeoutSource: 'DATA_SOURCE' | 'RESOURCE_API'
+  executionMode: 'HTTP' | 'SQL'
+  sqlTemplate: string
+  sqlParameters: Record<string, string>
 }
 
 export interface FieldMapping {
@@ -223,6 +226,9 @@ export interface InterfaceDetail {
   responseCodes: ResponseCodeMapping[]
   responsePolicy: ResponsePolicy
   securityPolicy: SecurityPolicy
+  executionMode?: 'HTTP' | 'SQL'
+  sqlTemplate?: string
+  sqlParameters?: Record<string, string>
 }
 
 export interface ValidationResult {

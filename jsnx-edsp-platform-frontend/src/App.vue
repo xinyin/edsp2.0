@@ -308,7 +308,7 @@ const deleteApiRestriction = computed(() => {
   if (detail.value?.summary.publishedVersion != null) return '接口已有发布版本，请先在服务发布中下线，再归档删除；版本、授权和链路记录会保留。'
   return '仅支持归档从未发布的草稿，或已下线的服务。'
 })
-const apiForm = ref({ dataSourceId: 1, interfaceCode: '', interfaceName: '', servicePath: '', httpMethod: 'POST', configScope: 'INHERIT' as 'INHERIT'|'OVERRIDE', upstreamPath: '', upstreamUrl: '', timeoutMode: 'INHERIT' as 'INHERIT'|'OVERRIDE', timeoutMs: 3000, generateMock: false, upstreamRequestExample: null as Record<string, unknown> | null })
+const apiForm = ref({ dataSourceId: 1, interfaceCode: '', interfaceName: '', servicePath: '', httpMethod: 'POST', configScope: 'INHERIT' as 'INHERIT'|'OVERRIDE', upstreamPath: '', upstreamUrl: '', timeoutMode: 'INHERIT' as 'INHERIT'|'OVERRIDE', timeoutMs: 3000, generateMock: false, upstreamRequestExample: null as Record<string, unknown> | null, executionMode: 'HTTP' as 'HTTP'|'SQL', sqlTemplate: '', sqlParameters: '{}' })
 const platformServiceDialog = ref(false)
 const platformServiceCreating = ref(false)
 const platformServiceForm = ref({ resourceApiId: 0, serviceCode: '', serviceName: '', servicePath: '', httpMethod: 'POST' })
@@ -320,7 +320,7 @@ const serviceResourceOptions = computed(() => allResourceApis.value
     return { ...resource, lineage: `${provider?.providerName ?? source?.providerName ?? '未知提供商'} / ${source?.sourceName ?? '未知数据源'}` }
   }))
 const serviceCreationResource = computed(() => serviceResourceOptions.value.find(item => item.id === platformServiceForm.value.resourceApiId))
-const connectionForm = ref({ configScope: 'INHERIT' as 'INHERIT'|'OVERRIDE', upstreamPath: '', upstreamUrl: '', timeoutMode: 'INHERIT' as 'INHERIT'|'OVERRIDE', timeoutMs: 3000, requestHeaders: [] as { name: string; value: string }[] })
+const connectionForm = ref({ configScope: 'INHERIT' as 'INHERIT'|'OVERRIDE', upstreamPath: '', upstreamUrl: '', timeoutMode: 'INHERIT' as 'INHERIT'|'OVERRIDE', timeoutMs: 3000, requestHeaders: [] as { name: string; value: string }[], executionMode: 'HTTP' as 'HTTP'|'SQL', sqlTemplate: '', sqlParameters: '{}' })
 const vendorRequestExample = ref<Record<string, unknown> | null>(null)
 const vendorResponseExample = ref<Record<string, unknown> | null>(null)
 const clientDialog = ref(false)
@@ -568,6 +568,7 @@ function adaptResourceDetail(item: ResourceApiDetail): InterfaceDetail {
     timeoutSource: item.timeoutSource === 'RESOURCE_API' ? 'INTERFACE' : 'DATA_SOURCE', retryCount: 0,
     vendorCodePath: 'result.code', mappings: [], responseCodes: [],
     responsePolicy: { dataMode: 'WHOLE_BODY', codeMode: 'VENDOR_CODE', successCode: '0000' },
+    executionMode: item.executionMode ?? 'HTTP', sqlTemplate: item.sqlTemplate ?? '', sqlParameters: item.sqlParameters ?? {},
     securityPolicy: { interfaceId: item.summary.id, enabled: false, encryptMode: 'NONE', signatureMode: 'NONE', requestFields: '', encryptionKeyReference: '', signingKeyReference: '', signatureField: 'signature', description: '' }
   }
 }
@@ -1055,7 +1056,10 @@ async function loadDetail() {
       timeoutMs: loadedDetail.configuredTimeoutMs ?? loadedDetail.timeoutMs,
       requestHeaders: resourceWorkspace
         ? Object.entries(loadedDetail.requestHeaders ?? {}).map(([name, value]) => ({ name, value }))
-        : []
+        : [],
+      executionMode: resourceWorkspace ? (loadedDetail.executionMode ?? 'HTTP') : 'HTTP',
+      sqlTemplate: resourceWorkspace ? (loadedDetail.sqlTemplate ?? '') : '',
+      sqlParameters: resourceWorkspace ? JSON.stringify(loadedDetail.sqlParameters ?? {}, null, 2) : '{}'
     }
     securityPolicy.value = loadedDetail.securityPolicy ?? { interfaceId: loadedDetail.summary.id, enabled: false, encryptMode: 'NONE', signatureMode: 'NONE', requestFields: '', encryptionKeyReference: '', signingKeyReference: '', signatureField: 'signature', description: '' }
     savedMappingsBaseline.value = structuredClone(loadedDetail.mappings)
@@ -1818,7 +1822,8 @@ function initializeApiDialog(source: DataSourceSummary | undefined) {
     interfaceName: `${source?.sourceName ?? '外部数据'}查询接口${sequence}`,
     servicePath: `/api/v1/${pathCode}/query-${sequence}`,
     httpMethod: 'POST', configScope: 'INHERIT', upstreamPath: '', upstreamUrl: '',
-    timeoutMode: 'INHERIT', timeoutMs: source?.defaultTimeoutMs ?? 3000, generateMock: false, upstreamRequestExample: null
+    timeoutMode: 'INHERIT', timeoutMs: source?.defaultTimeoutMs ?? 3000, generateMock: false, upstreamRequestExample: null,
+    executionMode: source?.protocolType === 'LOCAL_SQL' ? 'SQL' : 'HTTP', sqlTemplate: '', sqlParameters: '{}'
   }
   vendorRequestExample.value = null
   vendorResponseExample.value = null
@@ -1968,6 +1973,16 @@ async function createInterface() {
   apiCreating.value = true
   let created: ResourceApiSummary
   try {
+    let sqlParameters: Record<string, string> = {}
+    try {
+      const parsed = JSON.parse(apiForm.value.sqlParameters || '{}')
+      if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error()
+      sqlParameters = parsed
+    } catch {
+      ElMessage.warning('SQL 参数必须是有效的 JSON 对象')
+      apiCreating.value = false
+      return
+    }
     created = await api.createResourceApi({
       dataSourceId: apiForm.value.dataSourceId,
       resourceApiCode: apiForm.value.interfaceCode,
@@ -1979,7 +1994,10 @@ async function createInterface() {
       generateMock: apiForm.value.generateMock,
       timeoutMs: apiForm.value.timeoutMode === 'OVERRIDE' ? apiForm.value.timeoutMs : null,
       requestExample: vendorRequestExample.value,
-      responseExample: vendorResponseExample.value
+      responseExample: vendorResponseExample.value,
+      executionMode: apiForm.value.executionMode,
+      sqlTemplate: apiForm.value.sqlTemplate,
+      sqlParameters
     })
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : 'API 草稿创建失败')
@@ -2004,7 +2022,7 @@ async function saveConnectionConfig() {
     ElMessage.success('当前上游配置已保存，无需重复保存')
     return true
   }
-  if (!isHttpEndpoint(previewUpstreamUrl.value)) {
+  if (connectionForm.value.executionMode !== 'SQL' && !isHttpEndpoint(previewUpstreamUrl.value)) {
     guideError.value = '请填写有效的 HTTP / HTTPS 上游地址。'
     ElMessage.warning(guideError.value)
     return false
@@ -2025,11 +2043,15 @@ async function saveConnectionConfig() {
   try {
     let upstreamRequestExample: Record<string, unknown>
     let upstreamResponseExample: Record<string, unknown>
+    let sqlParameters: Record<string, string> = {}
     try {
       upstreamRequestExample = JSON.parse(upstreamRequestText.value)
       upstreamResponseExample = JSON.parse(responseText.value)
+      const parsedParameters = JSON.parse(connectionForm.value.sqlParameters || '{}')
+      if (!parsedParameters || Array.isArray(parsedParameters) || typeof parsedParameters !== 'object') throw new Error()
+      sqlParameters = parsedParameters
     } catch {
-      guideError.value = '上游请求或响应样例不是有效 JSON，请检查后保存。'
+      guideError.value = '上游请求、响应样例或 SQL 参数不是有效 JSON，请检查后保存。'
       ElMessage.warning(guideError.value)
       return false
     }
@@ -2041,7 +2063,10 @@ async function saveConnectionConfig() {
         timeoutMs: connectionForm.value.timeoutMode === 'OVERRIDE' ? connectionForm.value.timeoutMs : null,
         requestHeaders,
         requestExample: upstreamRequestExample,
-        responseExample: upstreamResponseExample
+        responseExample: upstreamResponseExample,
+        executionMode: connectionForm.value.executionMode,
+        sqlTemplate: connectionForm.value.sqlTemplate,
+        sqlParameters
       })
       detail.value = adaptResourceDetail(resourceSaved)
       const resourceIndex = allResourceApis.value.findIndex(item => item.id === resourceSaved.summary.id)
@@ -3362,6 +3387,13 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                     <section class="api-config-card">
                         <header><div><h3>接口连接</h3></div><el-tag :type="previewUpstreamUrl ? 'info' : 'warning'" effect="plain" size="small">{{ connectionForm.configScope==='INHERIT' ? '继承数据源' : '独立配置' }}</el-tag></header>
                         <div class="api-card-body">
+                          <template v-if="connectionForm.executionMode==='SQL'">
+                            <el-form label-position="top">
+                              <el-form-item label="SQL 查询语句" required><CopyableBlock :value="connectionForm.sqlTemplate"><el-input v-model="connectionForm.sqlTemplate" type="textarea" :rows="10" resize="vertical" placeholder="SELECT id, name FROM user_info WHERE user_id = :userId"/></CopyableBlock></el-form-item>
+                              <el-form-item label="请求参数 JSON"><CopyableBlock :value="connectionForm.sqlParameters"><el-input v-model="connectionForm.sqlParameters" type="textarea" :rows="5" resize="vertical" placeholder="{\n  &quot;userId&quot;: &quot;10001&quot;\n}"/></CopyableBlock></el-form-item>
+                            </el-form>
+                          </template>
+                          <template v-else>
                           <el-form v-if="connectionForm.configScope==='INHERIT'" label-position="top"><el-form-item label="接口路径"><el-input v-model="connectionForm.upstreamPath" placeholder="/vendor/api/enterprise-basic"/></el-form-item></el-form>
                           <div class="connection-summary"><span>上游连接</span><strong>{{ connectionForm.configScope==='INHERIT' ? (selectedSource.endpointUrl ? `继承「${selectedSource.sourceName}」` : '数据源地址待配置') : '当前接口独立配置' }}</strong><button type="button" :aria-expanded="connectionDetailsExpanded" aria-controls="resource-connection-details" @click="connectionDetailsExpanded=!connectionDetailsExpanded">{{ connectionDetailsExpanded ? '收起详情' : '查看详情' }}<ArrowRight :class="{expanded:connectionDetailsExpanded}"/></button></div>
                           <div v-if="connectionDetailsExpanded || !previewUpstreamUrl" id="resource-connection-details" class="connection-details">
@@ -3381,6 +3413,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                             </div>
                             <el-button :icon="Plus" text @click="connectionForm.requestHeaders.push({ name: '', value: '' })">添加请求头</el-button>
                           </details>
+                          </template>
                         </div>
                       </section>
                     </div>
@@ -3614,7 +3647,25 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
   <el-dialog v-model="sourceSettingsDialog" title="编辑数据源" width="680px" :close-on-click-modal="false"><el-alert v-if="sourceSettingsError" :title="sourceSettingsError" type="error" :closable="false" show-icon/><el-form label-position="top" style="margin-top:18px"><div class="form-grid"><el-form-item label="资源提供商" required><el-select v-model="sourceSettingsForm.providerId" filterable><el-option v-for="item in providers" :key="item.id" :label="item.providerName" :value="item.id"/></el-select></el-form-item><el-form-item label="数据源名称" required><el-input v-model="sourceSettingsForm.sourceName" maxlength="100"/></el-form-item><el-form-item label="数据源编码"><el-input v-model="sourceSettingsForm.sourceCode" disabled/><HelpTip title="数据源编码" content="数据源唯一标识，创建后不可修改。配置应用路由统一在资源方管理中维护。"/></el-form-item><el-form-item label="协议类型" required><el-select v-model="sourceSettingsForm.protocolType"><el-option label="HTTP JSON" value="HTTP_JSON"/><el-option label="WebService" value="SOAP"/><el-option label="本地数据集" value="LOCAL_SQL"/></el-select></el-form-item></div><el-form-item v-if="sourceSettingsForm.protocolType!=='LOCAL_SQL'" label="数据源基础地址" required><el-input v-model="sourceSettingsForm.endpoint" placeholder="https://provider.example.com"/><HelpTip title="基础地址继承" content="选择继承数据源的资源接口使用此供应商地址。已发布服务继续使用发布快照，重新发布后才应用新配置。"/></el-form-item><el-form-item label="默认请求超时"><el-input-number v-model="sourceSettingsForm.defaultTimeoutMs" :min="100" :max="120000" :step="500" controls-position="right"/><span class="form-unit">毫秒（ms）</span></el-form-item><div class="dialog-context"><span>变更生效范围</span><HelpTip title="变更生效范围" content="目录归属和草稿配置立即生效；继承配置的接口建议重新测试。已发布服务保持原发布快照，重新发布后切换。"/></div></el-form><template #footer><el-button :disabled="sourceSettingsSaving" @click="sourceSettingsDialog=false">取消</el-button><el-button type="primary" :loading="sourceSettingsSaving" @click="saveSourceSettings">保存修改</el-button></template></el-dialog>
   <el-dialog v-model="sourceRuntimeDialog" v-loading="sourceRuntimeStatusLoading" title="资源提供商应用路由配置" width="680px" class="runtime-provision-dialog" :close-on-click-modal="!sourceRuntimeSaving"><div class="dialog-context"><span>{{ selectedProvider?.providerName }}</span><HelpTip title="配置应用路由" content="同一资源提供商下的数据源和接口共用独立处理应用。接入测试、编排测试及正式调用均经该应用访问资源提供商。"/></div><el-form label-position="top" style="margin-top:18px"><el-form-item required><template #label>处理应用标识<HelpTip title="处理应用标识" content="用于 Java 模块名、Spring 应用名和 Nacos Data ID，须与实际部署的应用一致。"/></template><el-input v-model="sourceRuntimeForm.applicationName" placeholder="jsnx-edsp-data-provider-example"/></el-form-item><div class="form-grid"><el-form-item required><template #label>应用访问地址<HelpTip title="应用访问地址" content="Gateway 和管理服务访问处理应用的基础地址，非供应商接口地址。单实例填写协议、主机和端口；采用 VIP 时填写 VIP 地址。"/></template><el-input v-model="sourceRuntimeForm.runtimeUrl" placeholder="http://127.0.0.1:8201"/></el-form-item><el-form-item required><template #label>应用监听端口<HelpTip title="应用监听端口" content="写入 Nacos 的 server.port，决定 Java 应用实际监听端口。直接访问时应与应用访问地址端口一致；有 VIP 转发时可以不同。"/></template><el-input-number v-model="sourceRuntimeForm.serverPort" :min="1" :max="65535" :step="1" controls-position="right"/></el-form-item></div></el-form><div class="provision-destination"><span>Java 工程生成目录</span><code>{{ provisionSettings?.outputRoot || '由 Admin 服务端配置决定' }}</code><HelpTip title="工程生成与部署" content="此操作保存路由、生成 Java 工程并同步 Nacos，不自动部署。生成代码仍需纳入 Git、打包并发布运行。"/></div><section v-if="sourceRuntimeResult" class="provision-result"><header><strong>{{ sourceRuntimeStatusLoaded ? '已保存的执行信息' : '本次执行结果' }}</strong><span>工程与配置中心状态</span></header><div class="provision-step"><i :class="sourceRuntimeResult.routeSave.status.toLowerCase()"></i><div><strong>路由持久化</strong><small>{{ sourceRuntimeResult.routeSave.message }}</small></div><b>{{ provisionStatusLabel(sourceRuntimeResult.routeSave.status) }}</b></div><div class="provision-step"><i :class="sourceRuntimeResult.generation.status.toLowerCase()"></i><div><strong>Java 工程</strong><small>{{ sourceRuntimeResult.generation.message }}</small><small v-if="sourceRuntimeResult.generation.packageName">{{ sourceRuntimeResult.generation.packageName }} · {{ sourceRuntimeResult.generation.generatedFiles.length }} 个生成文件</small><code v-if="sourceRuntimeResult.generation.outputDirectory">{{ sourceRuntimeResult.generation.outputDirectory }}</code></div><b>{{ provisionStatusLabel(sourceRuntimeResult.generation.status) }}</b></div><div class="provision-step"><i :class="sourceRuntimeResult.nacos.status.toLowerCase()"></i><div><strong>Nacos 配置</strong><small>{{ sourceRuntimeResult.nacos.dataId || '-' }} · Group {{ sourceRuntimeResult.nacos.group }} · Namespace {{ sourceRuntimeResult.nacos.namespace || 'public' }}</small><small>{{ sourceRuntimeResult.nacos.message }}</small></div><b>{{ provisionStatusLabel(sourceRuntimeResult.nacos.status) }}</b></div><div class="provision-step"><i :class="sourceRuntimeResult.routeRefresh.status.toLowerCase()"></i><div><strong>Gateway 路由刷新</strong><small>{{ sourceRuntimeResult.routeRefresh.message }}</small></div><b>{{ provisionStatusLabel(sourceRuntimeResult.routeRefresh.status) }}</b></div></section><template #footer><el-button v-if="sourceRuntimeResult?.generation.outputDirectory" @click="copyGeneratedPath">复制生成目录</el-button><el-button @click="sourceRuntimeDialog=false">{{ sourceRuntimeResult ? '关闭' : '取消' }}</el-button><el-button type="primary" :loading="sourceRuntimeSaving" @click="saveSourceRuntime">{{ hasProvisionedRuntime() ? '重新生成并同步' : '保存、生成并同步' }}</el-button></template></el-dialog>
   <el-dialog v-model="apiDialog" title="新增资源 API" width="660px">
-    <el-form label-position="top"><div class="form-grid"><el-form-item label="所属数据源"><el-select v-model="apiForm.dataSourceId"><el-option v-for="item in sources" :key="item.id" :label="`${item.sourceName} · 默认 ${item.defaultTimeoutMs ?? 3000}ms`" :value="item.id"/></el-select></el-form-item><el-form-item label="上游 HTTP 方法"><el-select v-model="apiForm.httpMethod"><el-option label="POST" value="POST"/><el-option label="GET" value="GET"/></el-select></el-form-item><el-form-item label="资源 API 名称" required><el-input v-model="apiForm.interfaceName"/></el-form-item><el-form-item label="资源 API 编码" required><el-input v-model="apiForm.interfaceCode"/><small class="form-hint">用于唯一标识资源提供商的原始接口</small></el-form-item></div><section class="api-policy-section"><header><strong>上游连接策略</strong><span>资源 API 只描述供应商原始接口定义，不在此定义平台服务路径</span></header><el-segmented v-model="apiForm.configScope" :options="[{label:'继承数据源',value:'INHERIT'},{label:'单接口覆盖',value:'OVERRIDE'}]"/><div class="source-default-facts"><span>基础地址<b>{{ selectedApiSource?.endpointUrl || '未配置' }}</b></span><span>默认超时<b>{{ selectedApiSource?.defaultTimeoutMs ?? 3000 }} ms</b></span><span>服务封装<b>保存后单独创建</b></span></div><el-form-item v-if="apiForm.configScope==='INHERIT'" label="供应商接口相对路径" required><el-input v-model="apiForm.upstreamPath" placeholder="/vendor/api/query"/></el-form-item><el-form-item v-else label="接口独立完整地址" required><el-input v-model="apiForm.upstreamUrl" placeholder="https://provider.example.com/vendor/api/query"/></el-form-item><div class="timeout-policy"><div class="timeout-policy-choice"><label>超时策略</label><div class="timeout-choice-group" role="radiogroup" aria-label="超时策略"><button type="button" role="radio" :aria-checked="apiForm.timeoutMode==='INHERIT'" :class="{selected:apiForm.timeoutMode==='INHERIT'}" @click="apiForm.timeoutMode='INHERIT'"><span class="timeout-choice-radio"/><span><strong>继承数据源默认</strong><small>使用当前数据源的 {{ selectedApiSource?.defaultTimeoutMs ?? 3000 }} ms</small></span></button><button type="button" role="radio" :aria-checked="apiForm.timeoutMode==='OVERRIDE'" :class="{selected:apiForm.timeoutMode==='OVERRIDE'}" @click="apiForm.timeoutMode='OVERRIDE'"><span class="timeout-choice-radio"/><span><strong>当前接口覆盖</strong><small>仅修改此资源 API</small></span></button></div></div><div class="timeout-policy-value"><label>接口超时（毫秒）</label><el-input-number v-model="apiForm.timeoutMs" :disabled="apiForm.timeoutMode==='INHERIT'" :min="100" :max="120000" :step="500"/><small>{{ apiForm.timeoutMode==='INHERIT' ? '当前生效值：' + (selectedApiSource?.defaultTimeoutMs ?? 3000) + ' ms' : '设置后仅对此接口生效' }}</small></div></div></section></el-form>
+    <el-form label-position="top">
+      <div class="form-grid">
+        <el-form-item label="所属数据源"><el-select v-model="apiForm.dataSourceId" @change="initializeApiDialog(sources.find(item => item.id === apiForm.dataSourceId))"><el-option v-for="item in sources" :key="item.id" :label="`${item.sourceName} · 默认 ${item.defaultTimeoutMs ?? 3000}ms`" :value="item.id"/></el-select></el-form-item>
+        <el-form-item :label="apiForm.executionMode==='SQL' ? '查询方式' : '上游 HTTP 方法'"><el-tag v-if="apiForm.executionMode==='SQL'" effect="plain">数据库 SQL</el-tag><el-select v-else v-model="apiForm.httpMethod"><el-option label="POST" value="POST"/><el-option label="GET" value="GET"/></el-select></el-form-item>
+        <el-form-item label="资源 API 名称" required><el-input v-model="apiForm.interfaceName"/></el-form-item>
+        <el-form-item label="资源 API 编码" required><el-input v-model="apiForm.interfaceCode"/></el-form-item>
+      </div>
+      <template v-if="apiForm.executionMode==='SQL'">
+        <el-form-item label="SQL 查询语句" required><CopyableBlock :value="apiForm.sqlTemplate"><el-input v-model="apiForm.sqlTemplate" type="textarea" :rows="9" resize="vertical" placeholder="SELECT id, name FROM user_info WHERE user_id = :userId"/></CopyableBlock></el-form-item>
+        <el-form-item label="请求参数 JSON"><CopyableBlock :value="apiForm.sqlParameters"><el-input v-model="apiForm.sqlParameters" type="textarea" :rows="5" resize="vertical" placeholder="{\n  &quot;userId&quot;: &quot;STRING&quot;\n}"/></CopyableBlock></el-form-item>
+      </template>
+      <section v-else class="api-policy-section">
+        <header><strong>上游连接策略</strong></header><el-segmented v-model="apiForm.configScope" :options="[{label:'继承数据源',value:'INHERIT'},{label:'单接口覆盖',value:'OVERRIDE'}]"/>
+        <div class="source-default-facts"><span>基础地址<b>{{ selectedApiSource?.endpointUrl || '未配置' }}</b></span><span>默认超时<b>{{ selectedApiSource?.defaultTimeoutMs ?? 3000 }} ms</b></span></div>
+        <el-form-item v-if="apiForm.configScope==='INHERIT'" label="供应商接口相对路径" required><el-input v-model="apiForm.upstreamPath" placeholder="/vendor/api/query"/></el-form-item>
+        <el-form-item v-else label="接口独立完整地址" required><el-input v-model="apiForm.upstreamUrl" placeholder="https://provider.example.com/vendor/api/query"/></el-form-item>
+        <div class="timeout-policy"><div class="timeout-policy-choice"><label>超时策略</label><div class="timeout-choice-group" role="radiogroup" aria-label="超时策略"><button type="button" role="radio" :aria-checked="apiForm.timeoutMode==='INHERIT'" :class="{selected:apiForm.timeoutMode==='INHERIT'}" @click="apiForm.timeoutMode='INHERIT'"><span class="timeout-choice-radio"/><span><strong>继承数据源默认</strong><small>使用当前数据源的 {{ selectedApiSource?.defaultTimeoutMs ?? 3000 }} ms</small></span></button><button type="button" role="radio" :aria-checked="apiForm.timeoutMode==='OVERRIDE'" :class="{selected:apiForm.timeoutMode==='OVERRIDE'}" @click="apiForm.timeoutMode='OVERRIDE'"><span class="timeout-choice-radio"/><span><strong>当前接口覆盖</strong><small>仅修改此资源 API</small></span></button></div></div><div class="timeout-policy-value"><label>接口超时（毫秒）</label><el-input-number v-model="apiForm.timeoutMs" :disabled="apiForm.timeoutMode==='INHERIT'" :min="100" :max="120000" :step="500"/><small>{{ apiForm.timeoutMode==='INHERIT' ? '当前生效值：' + (selectedApiSource?.defaultTimeoutMs ?? 3000) + ' ms' : '设置后仅对此接口生效' }}</small></div></div>
+      </section>
+    </el-form>
     <template #footer><el-button @click="apiDialog=false">取消</el-button><el-button type="primary" :loading="apiCreating" @click="createInterface">创建资源草稿</el-button></template>
   </el-dialog>
   <el-dialog v-model="apiMetadataDialog" title="编辑资源 API" width="560px">

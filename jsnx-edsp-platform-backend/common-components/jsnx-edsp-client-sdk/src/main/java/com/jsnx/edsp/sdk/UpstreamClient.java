@@ -22,7 +22,19 @@ public class UpstreamClient {
     private final Map<String, ProviderConnector> connectors;
 
     public UpstreamClient(ObjectMapper mapper) {
-        this(mapper, ServiceLoader.load(ProviderConnector.class).stream().map(ServiceLoader.Provider::get).toList());
+        List<ProviderConnector> extensions = new java.util.ArrayList<>();
+        extensions.add(new DatabaseProviderConnector(key -> {
+            String system = System.getProperty(key);
+            return system == null ? System.getenv(key) : system;
+        }));
+        extensions.addAll(ServiceLoader.load(ProviderConnector.class).stream().map(ServiceLoader.Provider::get).toList());
+        this.mapper = mapper;
+        Map<String, ProviderConnector> registered = new LinkedHashMap<>();
+        for (ProviderConnector connector : extensions) {
+            String mode = connector.accessMode().trim().toUpperCase(Locale.ROOT);
+            if (registered.putIfAbsent(mode, connector) != null) throw new IllegalArgumentException("重复的提供商连接器：" + mode);
+        }
+        this.connectors = Map.copyOf(registered);
     }
 
     public UpstreamClient(ObjectMapper mapper, List<ProviderConnector> extensions) {

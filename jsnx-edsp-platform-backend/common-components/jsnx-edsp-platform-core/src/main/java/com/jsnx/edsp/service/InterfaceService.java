@@ -9,6 +9,7 @@ import com.jsnx.edsp.plan.ResponsePolicySupport;
 import com.jsnx.edsp.plan.SecurityPlanSupport;
 import com.jsnx.edsp.plan.SecurityAlgorithm;
 import com.jsnx.edsp.plan.SecurityAlgorithmRegistry;
+import com.jsnx.edsp.plan.SqlQuerySupport;
 import com.jsnx.edsp.plan.XmlRequestTypeSupport;
 import com.jsnx.edsp.transform.FieldTransformSupport;
 import jakarta.annotation.PostConstruct;
@@ -218,10 +219,28 @@ public class InterfaceService {
             jdbc.update("UPDATE resource_api SET request_headers='{}' WHERE request_headers IS NULL");
             jdbc.execute("ALTER TABLE resource_api MODIFY COLUMN request_headers JSON NOT NULL DEFAULT ('{}')");
         }
+        if (columnMissing("resource_api", "execution_mode")) {
+            jdbc.execute("ALTER TABLE resource_api ADD COLUMN execution_mode VARCHAR(16) NOT NULL DEFAULT 'HTTP' AFTER request_headers");
+        }
+        if (columnMissing("resource_api", "sql_template")) {
+            jdbc.execute("ALTER TABLE resource_api ADD COLUMN sql_template TEXT NULL AFTER execution_mode");
+        }
+        if (columnMissing("resource_api", "sql_parameters")) {
+            jdbc.execute("ALTER TABLE resource_api ADD COLUMN sql_parameters JSON NOT NULL DEFAULT ('{}') AFTER sql_template");
+        }
         if (columnMissing("api_interface", "upstream_request_headers")) {
             jdbc.execute("ALTER TABLE api_interface ADD COLUMN upstream_request_headers JSON NULL AFTER standard_response_example");
             jdbc.update("UPDATE api_interface SET upstream_request_headers='{}' WHERE upstream_request_headers IS NULL");
             jdbc.execute("ALTER TABLE api_interface MODIFY COLUMN upstream_request_headers JSON NOT NULL DEFAULT ('{}')");
+        }
+        if (columnMissing("api_interface", "execution_mode")) {
+            jdbc.execute("ALTER TABLE api_interface ADD COLUMN execution_mode VARCHAR(16) NOT NULL DEFAULT 'HTTP' AFTER upstream_request_headers");
+        }
+        if (columnMissing("api_interface", "sql_template")) {
+            jdbc.execute("ALTER TABLE api_interface ADD COLUMN sql_template TEXT NULL AFTER execution_mode");
+        }
+        if (columnMissing("api_interface", "sql_parameters")) {
+            jdbc.execute("ALTER TABLE api_interface ADD COLUMN sql_parameters JSON NOT NULL DEFAULT ('{}') AFTER sql_template");
         }
         // Before verified_checksum existed, saveResourceApi already cleared verified_at on every
         // contract change. Therefore a remaining verified_at safely identifies a previously
@@ -544,12 +563,20 @@ public class InterfaceService {
     public ResourceApiSummary createResourceApi(CreateResourceApiRequest request) {
         String code = request.resourceApiCode().trim().toUpperCase(Locale.ROOT);
         Map<String, Object> source = jdbc.queryForMap(
-                "SELECT endpoint_url,default_timeout_ms FROM data_source WHERE id=?", request.dataSourceId());
+                "SELECT ds.endpoint_url,ds.default_timeout_ms,ds.protocol_type,p.access_mode FROM data_source ds JOIN data_provider p ON p.id=ds.provider_id WHERE ds.id=?", request.dataSourceId());
+        boolean databaseSource = "LOCAL_SQL".equalsIgnoreCase(String.valueOf(source.get("protocol_type")));
+        String executionMode = normalizeExecutionMode(request.executionMode(), databaseSource ? "SQL" : "HTTP");
+        validateDatabaseMode(source, executionMode);
+        String sqlTemplate = normalizeSqlTemplate(request.sqlTemplate(), executionMode);
+        Map<String, String> sqlParameters = validSqlParameters(request.sqlParameters());
         String scope = request.generateMock() ? "OVERRIDE" : normalizeConfigScope(request.configScope());
         String path = normalizePath(request.upstreamPath());
         String url = request.generateMock() ? "http://127.0.0.1:8080/mock/vendor/" + code
                 : trimTrailingSlash(request.upstreamUrl());
-        if ("INHERIT".equals(scope)) {
+        if (isSqlExecution(executionMode)) {
+            url = "jdbc://" + code;
+            path = null;
+        } else if ("INHERIT".equals(scope)) {
             if (source.get("endpoint_url") == null || String.valueOf(source.get("endpoint_url")).isBlank()) {
                 throw new IllegalArgumentException("所选数据源未配置基础地址，请改用接口独立配置");
             }
@@ -566,11 +593,13 @@ public class InterfaceService {
         Integer timeout = request.timeoutMs() == null ? null : validTimeout(request.timeoutMs(), 3000);
         jdbc.update("""
                 INSERT INTO resource_api(data_source_id,resource_api_code,resource_api_name,http_method,
-                    upstream_url,upstream_path,config_scope,request_example,response_example,request_headers,timeout_ms,status,current_version)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,'DRAFT',1)
+                    upstream_url,upstream_path,config_scope,request_example,response_example,request_headers,
+                    execution_mode,sql_template,sql_parameters,timeout_ms,status,current_version)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'DRAFT',1)
                 """, request.dataSourceId(), code, request.resourceApiName().trim(), request.httpMethod(),
                 url, path, scope, json.write(requestExample), json.write(responseExample),
-                json.write(validRequestHeaders(request.requestHeaders())), timeout);
+                json.write(validRequestHeaders(request.requestHeaders())), executionMode, sqlTemplate,
+                json.write(sqlParameters), timeout);
         long id = Objects.requireNonNull(jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class));
         return resourceApiSummary(id);
     }
@@ -582,19 +611,29 @@ public class InterfaceService {
                 json.readMap(String.valueOf(row.get("request_example"))),
                 json.readMap(String.valueOf(row.get("response_example"))),
                 readRequestHeaders(row.get("request_headers")), configured,
-                configured == null ? "DATA_SOURCE" : "RESOURCE_API");
+                configured == null ? "DATA_SOURCE" : "RESOURCE_API",
+                valueOr((String) row.get("execution_mode"), "HTTP"),
+                Objects.toString(row.get("sql_template"), ""), readStringMap(row.get("sql_parameters")));
     }
 
     @Transactional
     public ResourceApiDetail saveResourceApi(long id, SaveResourceApiRequest request) {
         Map<String, Object> row = jdbc.queryForMap("""
-                SELECT ds.endpoint_url FROM resource_api ra JOIN data_source ds ON ds.id=ra.data_source_id
+                SELECT ds.endpoint_url,ds.protocol_type,p.access_mode FROM resource_api ra JOIN data_source ds ON ds.id=ra.data_source_id
+                JOIN data_provider p ON p.id=ds.provider_id
                 WHERE ra.id=? FOR UPDATE
                 """, id);
+        String executionMode = normalizeExecutionMode(request.executionMode(), "HTTP");
+        validateDatabaseMode(row, executionMode);
+        String sqlTemplate = normalizeSqlTemplate(request.sqlTemplate(), executionMode);
+        Map<String, String> sqlParameters = validSqlParameters(request.sqlParameters());
         String scope = normalizeConfigScope(request.configScope());
         String path = normalizePath(request.upstreamPath());
         String url = trimTrailingSlash(request.upstreamUrl());
-        if ("INHERIT".equals(scope)) {
+        if (isSqlExecution(executionMode)) {
+            url = "jdbc://resource-api-" + id;
+            path = null;
+        } else if ("INHERIT".equals(scope)) {
             if (row.get("endpoint_url") == null || String.valueOf(row.get("endpoint_url")).isBlank()) {
                 throw new IllegalArgumentException("数据源未配置基础地址，请改用接口独立配置");
             }
@@ -606,10 +645,12 @@ public class InterfaceService {
         Integer timeout = request.timeoutMs() == null ? null : validTimeout(request.timeoutMs(), 3000);
         jdbc.update("""
                 UPDATE resource_api SET config_scope=?,upstream_path=?,upstream_url=?,timeout_ms=?,
-                    request_example=?,response_example=?,request_headers=?,status='READY',verified_at=NULL,verified_checksum=NULL,current_version=current_version+1
+                    request_example=?,response_example=?,request_headers=?,execution_mode=?,sql_template=?,sql_parameters=?,
+                    status='READY',verified_at=NULL,verified_checksum=NULL,current_version=current_version+1
                 WHERE id=?
                 """, scope, path, url, timeout, json.write(request.requestExample()),
-                json.write(request.responseExample()), json.write(validRequestHeaders(request.requestHeaders())), id);
+                json.write(request.responseExample()), json.write(validRequestHeaders(request.requestHeaders())),
+                executionMode, sqlTemplate, json.write(sqlParameters), id);
         return resourceApi(id);
     }
 
@@ -674,14 +715,15 @@ public class InterfaceService {
                 INSERT INTO api_interface(resource_api_id,data_source_id,interface_code,interface_name,service_path,http_method,
                     upstream_url,upstream_path,config_scope,dispatch_mode,request_schema,response_schema,request_example,
                     upstream_request_example,upstream_response_example,standard_response_example,upstream_request_headers,timeout_ms,retry_count,
-                    upstream_status,status,current_version)
-                VALUES(?,?,?,?,?, ?,?,?,?,'DIRECT',?,?,?,?,?,?,?,?,0,'READY','DRAFT',1)
+                    execution_mode,sql_template,sql_parameters,upstream_status,status,current_version)
+                VALUES(?,?,?,?,?, ?,?,?,?,'DIRECT',?,?,?,?,?,?,?,?,?,?,?,0,'READY','DRAFT',1)
                 """, resource.summary().id(), resource.summary().dataSourceId(), request.serviceCode().trim().toUpperCase(Locale.ROOT),
                 request.serviceName().trim(), servicePath, request.httpMethod().toUpperCase(Locale.ROOT), resource.summary().upstreamUrl(),
                 resource.summary().upstreamPath(), resource.summary().configScope(),
                 json.write(Map.of("type", "object")), json.write(Map.of("type", "object")),
                 json.write(resource.requestExample()), json.write(resource.requestExample()), json.write(resource.responseExample()),
-                json.write(resource.responseExample()), json.write(resource.requestHeaders()), resource.configuredTimeoutMs());
+                json.write(resource.responseExample()), json.write(resource.requestHeaders()), resource.configuredTimeoutMs(),
+                resource.executionMode(), resource.sqlTemplate(), json.write(resource.sqlParameters()));
         long id = Objects.requireNonNull(jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class));
         jdbc.update("""
                 INSERT INTO response_code_mapping(interface_id,vendor_code,standard_code,result_status,retryable,billable)
@@ -952,7 +994,9 @@ public class InterfaceService {
                 configuredTimeoutMs == null ? "DATA_SOURCE" : "INTERFACE",
                 ((Number) row.get("retry_count")).intValue(),
                 normalizeVendorCodePath((String) row.get("vendor_code_path")), fieldMappings, responseCodes(id), securityPolicy(id),
-                responsePolicy(row.get("response_policy"), fieldMappings.stream().anyMatch(m -> "RESPONSE".equals(m.direction()))));
+                responsePolicy(row.get("response_policy"), fieldMappings.stream().anyMatch(m -> "RESPONSE".equals(m.direction()))),
+                valueOr(row.get("execution_mode") == null ? null : String.valueOf(row.get("execution_mode")), "HTTP"),
+                Objects.toString(row.get("sql_template"), ""), readStringMap(row.get("sql_parameters")));
     }
 
     @Transactional
@@ -968,16 +1012,32 @@ public class InterfaceService {
                 && Objects.equals(draft.requestExample(), draft.upstreamRequestExample());
         boolean inheritResponse = draft.mappings().stream().noneMatch(m -> "RESPONSE".equals(m.direction()))
                 && Objects.equals(draft.standardResponseExample(), draft.upstreamResponseExample());
-        jdbc.update("""
+        String syncSql = """
                 UPDATE api_interface SET config_scope=?,upstream_path=?,upstream_url=?,timeout_ms=?,
                 upstream_request_example=?,upstream_response_example=?,upstream_request_headers=?,request_example=?,standard_response_example=?,
                 upstream_status='READY',current_version=COALESCE(published_version,0)+1,
                 status=CASE WHEN status='OFFLINE' THEN 'OFFLINE' ELSE 'DRAFT' END WHERE id=?
-                """, resource.summary().configScope(), resource.summary().upstreamPath(), resource.summary().upstreamUrl(),
+                """;
+        List<Object> syncArgs = new ArrayList<>(Arrays.asList(resource.summary().configScope(), resource.summary().upstreamPath(), resource.summary().upstreamUrl(),
                 resource.configuredTimeoutMs(), json.write(resource.requestExample()), json.write(resource.responseExample()),
                 json.write(resource.requestHeaders()),
                 json.write(inheritRequest ? resource.requestExample() : draft.requestExample()),
-                json.write(inheritResponse ? resource.responseExample() : draft.standardResponseExample()), interfaceId);
+                json.write(inheritResponse ? resource.responseExample() : draft.standardResponseExample()), interfaceId));
+        if ("SQL".equalsIgnoreCase(resource.executionMode())) {
+            syncSql = """
+                    UPDATE api_interface SET config_scope=?,upstream_path=?,upstream_url=?,timeout_ms=?,
+                    upstream_request_example=?,upstream_response_example=?,upstream_request_headers=?,request_example=?,standard_response_example=?,
+                    execution_mode=?,sql_template=?,sql_parameters=?,
+                    upstream_status='READY',current_version=COALESCE(published_version,0)+1,
+                    status=CASE WHEN status='OFFLINE' THEN 'OFFLINE' ELSE 'DRAFT' END WHERE id=?
+                    """;
+            syncArgs = new ArrayList<>(Arrays.asList(resource.summary().configScope(), resource.summary().upstreamPath(), resource.summary().upstreamUrl(),
+                    resource.configuredTimeoutMs(), json.write(resource.requestExample()), json.write(resource.responseExample()),
+                    json.write(resource.requestHeaders()), json.write(inheritRequest ? resource.requestExample() : draft.requestExample()),
+                    json.write(inheritResponse ? resource.responseExample() : draft.standardResponseExample()), resource.executionMode(),
+                    resource.sqlTemplate(), json.write(resource.sqlParameters()), interfaceId));
+        }
+        jdbc.update(syncSql, syncArgs.toArray());
         invalidateDraftValidation(interfaceId);
         return interfaceDetail(interfaceId);
     }
@@ -1846,6 +1906,7 @@ public class InterfaceService {
         payload.put("upstreamHttpMethod", upstreamHttpMethod(summary));
         Map<String, Object> connection = new LinkedHashMap<>(providerConnection(summary));
         connection.put("requestHeaders", requestHeaders);
+        connection.put("resourceQuery", resourceQuery(summary));
         payload.put("providerConnection", connection);
         payload.put("timeoutMs", summary.effectiveTimeoutMs());
         payload.put("requestBody", request);
@@ -2611,7 +2672,8 @@ public class InterfaceService {
         Map<String, Object> connection = new LinkedHashMap<>(providerConnection(plan.summary()));
         List<Map<String, Object>> snapshots = jdbc.queryForList("""
                 SELECT JSON_EXTRACT(plan_json,'$.upstreamRequestHeaders') request_headers,
-                       JSON_EXTRACT(plan_json,'$.upstreamRequestExample') request_example
+                       JSON_EXTRACT(plan_json,'$.upstreamRequestExample') request_example,
+                       JSON_EXTRACT(plan_json,'$.resourceQuery') resource_query
                 FROM release_plan_snapshot WHERE interface_id=? AND release_version=?
                 """, interfaceId, plan.version());
         if (!snapshots.isEmpty() && snapshots.get(0).get("request_headers") != null) {
@@ -2619,6 +2681,9 @@ public class InterfaceService {
         }
         if (!snapshots.isEmpty() && snapshots.get(0).get("request_example") != null) {
             result.put("upstreamRequestExample", json.readMap(String.valueOf(snapshots.get(0).get("request_example"))));
+        }
+        if (!snapshots.isEmpty() && snapshots.get(0).get("resource_query") != null) {
+            connection.put("resourceQuery", json.readMap(String.valueOf(snapshots.get(0).get("resource_query"))));
         }
         result.put("providerConnection", connection);
         result.put("upstreamHttpMethod", publishedUpstreamMethod(plan.summary(), plan.version()));
@@ -2649,6 +2714,20 @@ public class InterfaceService {
         result.put("accessConfig", row.get("access_config") == null ? Map.of()
                 : json.readMap(String.valueOf(row.get("access_config"))));
         return result;
+    }
+
+    private Map<String, Object> resourceQuery(InterfaceSummary summary) {
+        long resourceId = summary.resourceApiId() == null ? -1L : summary.resourceApiId();
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT execution_mode,sql_template,sql_parameters FROM resource_api WHERE id=?", resourceId);
+        if (rows.isEmpty()) {
+            rows = jdbc.queryForList("SELECT execution_mode,sql_template,sql_parameters FROM api_interface WHERE id=?", summary.id());
+        }
+        if (rows.isEmpty()) return Map.of("executionMode", "HTTP", "sqlTemplate", "", "sqlParameters", Map.of());
+        Map<String, Object> row = rows.get(0);
+        return Map.of("executionMode", valueOr(Objects.toString(row.get("execution_mode"), null), "HTTP"),
+                "sqlTemplate", Objects.toString(row.get("sql_template"), ""),
+                "sqlParameters", readStringMap(row.get("sql_parameters")));
     }
 
     private Map<String, String> upstreamRequestHeaders(InterfaceSummary summary) {
@@ -2776,6 +2855,7 @@ public class InterfaceService {
         snapshot.put("summary", detail.summary());
         snapshot.put("upstreamHttpMethod", upstreamHttpMethod(detail.summary()));
         snapshot.put("upstreamRequestHeaders", upstreamRequestHeaders(detail.summary()));
+        snapshot.put("resourceQuery", resourceQuery(detail.summary()));
         snapshot.put("vendorCodePath", detail.vendorCodePath());
         snapshot.put("responseCodes", detail.responseCodes());
         snapshot.put("responsePolicy", detail.responsePolicy());
@@ -2957,6 +3037,49 @@ public class InterfaceService {
             throw new IllegalArgumentException("连接配置模式只支持 INHERIT 或 OVERRIDE");
         }
         return scope;
+    }
+
+    private String normalizeExecutionMode(String value, String fallback) {
+        String mode = valueOr(value, fallback).trim().toUpperCase(Locale.ROOT);
+        if (!Set.of("HTTP", "SQL").contains(mode)) {
+            throw new IllegalArgumentException("不支持的资源执行模式：" + value);
+        }
+        return mode;
+    }
+
+    private boolean isSqlExecution(String mode) { return "SQL".equalsIgnoreCase(mode); }
+
+    private void validateDatabaseMode(Map<String, Object> source, String executionMode) {
+        boolean databaseSource = "LOCAL_SQL".equalsIgnoreCase(Objects.toString(source.get("protocol_type"), ""));
+        boolean databaseProvider = "DATABASE".equalsIgnoreCase(Objects.toString(source.get("access_mode"), ""));
+        if (databaseSource != databaseProvider) throw new IllegalArgumentException("数据库资源必须同时使用数据库接入类型和 LOCAL_SQL 数据源协议");
+        if (databaseSource != isSqlExecution(executionMode)) throw new IllegalArgumentException("数据库数据源请选择 SQL 执行模式，HTTP 数据源请选择 HTTP 执行模式");
+    }
+
+    private String normalizeSqlTemplate(String sql, String mode) {
+        if (!isSqlExecution(mode)) return null;
+        SqlQuerySupport.validateAndFindParameters(sql);
+        return sql.trim();
+    }
+
+    private Map<String, String> validSqlParameters(Map<String, String> input) {
+        if (input == null || input.isEmpty()) return Map.of();
+        if (input.size() > 64) throw new IllegalArgumentException("SQL 参数最多 64 项");
+        Map<String, String> result = new LinkedHashMap<>();
+        input.forEach((key, value) -> {
+            if (key == null || !key.matches("[A-Za-z_][A-Za-z0-9_]*")) throw new IllegalArgumentException("SQL 参数名不合法：" + key);
+            if (value != null && value.length() > 2000) throw new IllegalArgumentException("SQL 参数值过长：" + key);
+            result.put(key, value == null ? "" : value);
+        });
+        return result;
+    }
+
+    private Map<String, String> readStringMap(Object raw) {
+        if (raw == null) return Map.of();
+        Map<String, Object> values = json.readMap(String.valueOf(raw));
+        Map<String, String> result = new LinkedHashMap<>();
+        values.forEach((key, value) -> result.put(key, value == null ? "" : String.valueOf(value)));
+        return result;
     }
 
     private int validTimeout(Integer value, int fallback) {

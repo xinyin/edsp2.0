@@ -45,7 +45,15 @@ public final class ApiModels {
     public record ResourceApiDetail(
             ResourceApiSummary summary, Map<String, Object> requestExample,
             Map<String, Object> responseExample, Map<String, String> requestHeaders, Integer configuredTimeoutMs,
-            String timeoutSource) {}
+            String timeoutSource, String executionMode, String sqlTemplate,
+            Map<String, String> sqlParameters) {
+        public ResourceApiDetail(ResourceApiSummary summary, Map<String, Object> requestExample,
+                Map<String, Object> responseExample, Map<String, String> requestHeaders,
+                Integer configuredTimeoutMs, String timeoutSource) {
+            this(summary, requestExample, responseExample, requestHeaders, configuredTimeoutMs,
+                    timeoutSource, "HTTP", "", Map.of());
+        }
+    }
 
     public record FieldMapping(
             Long id, @NotBlank String direction, @NotBlank String sourcePath,
@@ -62,7 +70,13 @@ public final class ApiModels {
             String timeoutSource, int retryCount,
             String vendorCodePath,
             List<FieldMapping> mappings, List<ResponseCodeMapping> responseCodes,
-            SecurityPolicy securityPolicy, Map<String, Object> responsePolicy) {
+            SecurityPolicy securityPolicy, Map<String, Object> responsePolicy,
+            String executionMode, String sqlTemplate, Map<String, String> sqlParameters) {
+        public InterfaceDetail {
+            executionMode = executionMode == null || executionMode.isBlank() ? "HTTP" : executionMode;
+            sqlTemplate = sqlTemplate == null ? "" : sqlTemplate;
+            sqlParameters = sqlParameters == null ? Map.of() : Map.copyOf(sqlParameters);
+        }
         public InterfaceDetail(InterfaceSummary summary, Map<String, Object> requestSchema,
                 Map<String, Object> responseSchema, Map<String, Object> requestExample,
                 Map<String, Object> upstreamRequestExample, Map<String, Object> upstreamResponseExample,
@@ -72,7 +86,20 @@ public final class ApiModels {
                 SecurityPolicy securityPolicy) {
             this(summary, requestSchema, responseSchema, requestExample, upstreamRequestExample,
                     upstreamResponseExample, standardResponseExample, timeoutMs, configuredTimeoutMs,
-                    timeoutSource, retryCount, vendorCodePath, mappings, responseCodes, securityPolicy, Map.of());
+                    timeoutSource, retryCount, vendorCodePath, mappings, responseCodes, securityPolicy, Map.of(),
+                    "HTTP", "", Map.of());
+        }
+        public InterfaceDetail(InterfaceSummary summary, Map<String, Object> requestSchema,
+                Map<String, Object> responseSchema, Map<String, Object> requestExample,
+                Map<String, Object> upstreamRequestExample, Map<String, Object> upstreamResponseExample,
+                Map<String, Object> standardResponseExample, int timeoutMs, Integer configuredTimeoutMs,
+                String timeoutSource, int retryCount, String vendorCodePath,
+                List<FieldMapping> mappings, List<ResponseCodeMapping> responseCodes,
+                SecurityPolicy securityPolicy, Map<String, Object> responsePolicy) {
+            this(summary, requestSchema, responseSchema, requestExample, upstreamRequestExample,
+                    upstreamResponseExample, standardResponseExample, timeoutMs, configuredTimeoutMs,
+                    timeoutSource, retryCount, vendorCodePath, mappings, responseCodes, securityPolicy,
+                    responsePolicy, "HTTP", "", Map.of());
         }
     }
 
@@ -213,12 +240,14 @@ public final class ApiModels {
             @NotBlank String httpMethod, String upstreamUrl, String upstreamPath,
             String configScope, Integer timeoutMs, boolean generateMock,
             Map<String, Object> requestExample, Map<String, Object> responseExample,
-            Map<String, String> requestHeaders) {}
+            Map<String, String> requestHeaders, String executionMode, String sqlTemplate,
+            Map<String, String> sqlParameters) {}
 
     public record SaveResourceApiRequest(
             @NotBlank String configScope, String upstreamPath, String upstreamUrl,
             Integer timeoutMs, @NotNull Map<String, Object> requestExample,
-            @NotNull Map<String, Object> responseExample, Map<String, String> requestHeaders) {}
+            @NotNull Map<String, Object> responseExample, Map<String, String> requestHeaders,
+            String executionMode, String sqlTemplate, Map<String, String> sqlParameters) {}
 
     public record UpdateResourceApiMetadataRequest(
             @NotBlank @Pattern(regexp = "[A-Za-z0-9_-]+", message = "资源 API 编码不能包含空格或特殊字符") String resourceApiCode,

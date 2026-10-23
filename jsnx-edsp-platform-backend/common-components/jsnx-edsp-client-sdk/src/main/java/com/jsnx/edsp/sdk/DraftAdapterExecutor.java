@@ -47,6 +47,12 @@ public final class DraftAdapterExecutor {
         String upstreamUrl = text(payload.get("upstreamUrl"));
         Map<String, Object> connection = payload.get("providerConnection") instanceof Map<?, ?> config
                 ? new LinkedHashMap<>((Map<String, Object>) config) : Map.of();
+        if (payload.containsKey("executionMode") || payload.containsKey("sqlTemplate")) {
+            Map<String, Object> query = new LinkedHashMap<>();
+            query.put("executionMode", text(payload.get("executionMode")));
+            query.put("sqlTemplate", text(payload.get("sqlTemplate")));
+            connection.put("resourceQuery", query);
+        }
         int timeoutMs = timeout(payload.get("timeoutMs"));
         Map<String, Object> requestBody = payload.get("requestBody") instanceof Map<?, ?> body
                 ? new LinkedHashMap<>((Map<String, Object>) body) : Map.of();
