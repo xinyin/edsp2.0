@@ -1556,6 +1556,12 @@ async function deleteSelectedProvider() {
 function openAccountDialog() { accountForm.value = { username: '', displayName: '', mobile: '', email: '', roleCode: 'PROVIDER_ADMIN', permissions: ['DATASOURCE_VIEW', 'API_VIEW'], status: 'ACTIVE' }; accountDialog.value = true }
 async function saveAccount() { if (!selectedProviderId.value) return; await api.createProviderAccount(selectedProviderId.value, accountForm.value); accountDialog.value = false; await loadProviderAccounts(); ElMessage.success('资源提供商账号已创建') }
 function logout() { loggedIn.value = false; user.value = null; api.clearOperatorSession(); activeMenu.value = 'overview' }
+function handleSessionExpired() {
+  if (!loggedIn.value) return
+  logout()
+  ElMessage.warning('登录会话已失效，请重新登录')
+}
+if (typeof window !== 'undefined') window.addEventListener('edsp:session-expired', handleSessionExpired)
 
 function openSourceWizard() {
   sourceStep.value = 0
@@ -2852,7 +2858,10 @@ async function loadResourceDirectory() {
     const result = await api.resourceDirectory({ ...directoryFilters.value, page: directoryPage.value, size: directorySize.value })
     directoryRows.value = result.rows
     directoryTotal.value = result.total
-  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '资源目录加载失败') }
+  } catch (error) {
+    if (!(error instanceof ApiRequestError && error.status === 401))
+      ElMessage.error(error instanceof Error ? error.message : '资源目录加载失败')
+  }
   finally { directoryLoading.value = false }
 }
 function searchResourceDirectory() { directoryPage.value = 1; void loadResourceDirectory() }
