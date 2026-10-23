@@ -47,9 +47,10 @@ public final class DraftAdapterExecutor {
         String upstreamUrl = text(payload.get("upstreamUrl"));
         Map<String, Object> connection = payload.get("providerConnection") instanceof Map<?, ?> config
                 ? new LinkedHashMap<>((Map<String, Object>) config) : Map.of();
+        String executionMode = text(payload.get("executionMode"));
         if (payload.containsKey("executionMode") || payload.containsKey("sqlTemplate")) {
             Map<String, Object> query = new LinkedHashMap<>();
-            query.put("executionMode", text(payload.get("executionMode")));
+            query.put("executionMode", executionMode);
             query.put("sqlTemplate", text(payload.get("sqlTemplate")));
             connection.put("resourceQuery", query);
         }
@@ -72,6 +73,11 @@ public final class DraftAdapterExecutor {
             result.put("success", false);
             result.put("errorType", "TRANSPORT");
             result.put("errorMessage", error.getMessage());
+        } catch (IllegalArgumentException error) {
+            if (!executionMode.startsWith("METADATA_")) throw error;
+            result.put("success", false);
+            result.put("errorType", "ADAPTER");
+            result.put("errorMessage", error.getMessage() == null ? "处理应用请求参数无效" : error.getMessage());
         } catch (IllegalStateException error) {
             result.put("success", false);
             result.put("errorType", "ADAPTER");

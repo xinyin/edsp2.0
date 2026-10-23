@@ -115,6 +115,16 @@ public class ApiController {
         return service.resourceApis(dataSourceId);
     }
 
+    @GetMapping("/data-sources/{id}/database-tables")
+    public Map<String, Object> databaseTables(@PathVariable long id) {
+        return service.databaseMetadata(id, null);
+    }
+
+    @GetMapping("/data-sources/{id}/database-columns")
+    public Map<String, Object> databaseColumns(@PathVariable long id, @RequestParam String table) {
+        return service.databaseMetadata(id, table);
+    }
+
     @PostMapping("/resource-apis")
     public ResourceApiSummary createResourceApi(@Valid @RequestBody CreateResourceApiRequest request) {
         return service.createResourceApi(request);

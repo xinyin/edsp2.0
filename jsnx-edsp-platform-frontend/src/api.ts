@@ -109,6 +109,8 @@ export const api = {
   saveDataSourceSettings: (id: number, body: { providerId: number; sourceName: string; protocolType: string; endpoint: string; defaultTimeoutMs: number }) =>
     request<DataSourceSummary>(`/api/data-sources/${id}/settings`, { method: 'PUT', body: JSON.stringify(body) }),
   resourceApis: (sourceId?: number) => request<ResourceApiSummary[]>(sourceId ? `/api/resource-apis?dataSourceId=${sourceId}` : '/api/resource-apis'),
+  databaseTables: (sourceId: number) => request<{ tables: { name: string; type: string; remarks?: string }[] }>(`/api/data-sources/${sourceId}/database-tables`),
+  databaseColumns: (sourceId: number, table: string) => request<{ table: string; columns: { name: string; type: string; nullable: boolean; ordinal: number }[] }>(`/api/data-sources/${sourceId}/database-columns?table=${encodeURIComponent(table)}`),
   createResourceApi: (body: Record<string, unknown>) => request<ResourceApiSummary>('/api/resource-apis', { method: 'POST', body: JSON.stringify(body) }),
   resourceApi: (id: number) => request<ResourceApiDetail>(`/api/resource-apis/${id}`),
   resourceValidationStatus: (id: number) => request<{ upstreamVerified: boolean }>(`/api/resource-apis/${id}/validation-status`),

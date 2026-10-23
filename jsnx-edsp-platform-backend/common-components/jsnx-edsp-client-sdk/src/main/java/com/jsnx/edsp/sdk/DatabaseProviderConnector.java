@@ -32,18 +32,24 @@ public final class DatabaseProviderConnector implements ProviderConnector, AutoC
     public Map<String, Object> execute(Map<String, Object> connection, String method, String endpoint,
                                        Map<String, Object> request, String traceId, int timeoutMs) {
         Map<String, Object> query = map(connection.get("resourceQuery"));
-        if (!"SQL".equalsIgnoreCase(text(query.get("executionMode")))) {
+        String executionMode = text(query.get("executionMode"));
+        if ("METADATA_TABLES".equalsIgnoreCase(executionMode)
+                || "METADATA_COLUMNS".equalsIgnoreCase(executionMode)) {
+            return metadata(connection, executionMode, endpoint, timeoutMs);
+        }
+        if (!"SQL".equalsIgnoreCase(executionMode)) {
             throw new IllegalArgumentException("数据库资源 API 尚未配置 SQL 查询模式");
         }
         String sql = text(query.get("sqlTemplate"));
         Set<String> names = SqlQuerySupport.validateAndFindParameters(sql);
         Map<String, Object> values = request == null ? Map.of() : request;
+        Map<String, Object> parameterTypes = map(query.get("sqlParameters"));
         Map<String, Object> parameters = new LinkedHashMap<>();
         for (String name : names) {
             if (!values.containsKey(name)) throw new IllegalArgumentException("SQL 查询缺少请求参数：" + name);
             Object value = values.get(name);
             if (value instanceof Map<?, ?>) throw new IllegalArgumentException("SQL 参数不支持对象值：" + name);
-            parameters.put(name, value);
+            parameters.put(name, typedParameter(name, text(parameterTypes.get(name)), value));
         }
 
         Map<String, Object> config = map(connection.get("accessConfig"));
@@ -72,6 +78,82 @@ public final class DatabaseProviderConnector implements ProviderConnector, AutoC
         response.put("rowCount", rows.size());
         response.put("rowLimitReached", rows.size() >= maxRows);
         return response;
+    }
+
+    private Object typedParameter(String name, String type, Object value) {
+        if (value == null || type.isBlank() || "STRING".equalsIgnoreCase(type)) {
+            if (value instanceof Iterable<?>) throw new IllegalArgumentException("SQL 参数不支持集合值：" + name);
+            return value;
+        }
+        String raw = String.valueOf(value).trim();
+        try {
+            return switch (type.toUpperCase(Locale.ROOT)) {
+                case "NUMBER", "DECIMAL" -> value instanceof Number ? value : new java.math.BigDecimal(raw);
+                case "INTEGER", "INT", "LONG" -> value instanceof Number number
+                        ? number.longValue() : Long.valueOf(raw);
+                case "BOOLEAN", "BOOL" -> {
+                    if (value instanceof Boolean) yield value;
+                    if (!"true".equalsIgnoreCase(raw) && !"false".equalsIgnoreCase(raw))
+                        throw new IllegalArgumentException("SQL 参数应为布尔值：" + name);
+                    yield Boolean.valueOf(raw);
+                }
+                case "DATE" -> java.time.LocalDate.parse(raw);
+                case "DATETIME" -> java.time.LocalDateTime.parse(raw);
+                default -> throw new IllegalArgumentException("不支持的 SQL 参数类型：" + type);
+            };
+        } catch (NumberFormatException | java.time.format.DateTimeParseException invalid) {
+            throw new IllegalArgumentException("SQL 参数类型不匹配：" + name + "（" + type + "）", invalid);
+        }
+    }
+
+    private Map<String, Object> metadata(Map<String, Object> connection, String mode, String tableName, int timeoutMs) {
+        Map<String, Object> config = map(connection.get("accessConfig"));
+        String url = text(config.get("jdbcUrl"));
+        String user = text(config.get("username"));
+        if (!url.startsWith("jdbc:") || user.isBlank()) throw new IllegalStateException("数据库连接配置不完整");
+        String password = resolveSecret(text(config.get("secretReference")));
+        QueryPool pool = pool(url, user, password, config, Math.max(1, (int) Math.ceil(timeoutMs / 1000.0)), 2_000);
+        try (var jdbc = pool.dataSource.getConnection()) {
+            jdbc.setNetworkTimeout(java.util.concurrent.ForkJoinPool.commonPool(), Math.max(100, Math.min(120_000, timeoutMs)));
+            var metadata = jdbc.getMetaData();
+            String catalog = jdbc.getCatalog();
+            String schema = null;
+            try { schema = jdbc.getSchema(); } catch (java.sql.SQLException ignored) { }
+            List<Map<String, Object>> items = new ArrayList<>();
+            if ("METADATA_TABLES".equalsIgnoreCase(mode)) {
+                try (var result = metadata.getTables(catalog, schema, "%", new String[]{"TABLE", "VIEW"})) {
+                    while (result.next() && items.size() < 2_000) {
+                        Map<String, Object> item = new LinkedHashMap<>();
+                        item.put("name", result.getString("TABLE_NAME"));
+                        item.put("type", result.getString("TABLE_TYPE"));
+                        item.put("remarks", result.getString("REMARKS"));
+                        items.add(item);
+                    }
+                }
+                return Map.of("tables", items);
+            }
+            if (tableName == null || !tableName.matches("[A-Za-z_][A-Za-z0-9_$]{0,127}")) {
+                throw new IllegalArgumentException("数据表名称不合法");
+            }
+            boolean exists;
+            try (var result = metadata.getTables(catalog, schema, tableName, new String[]{"TABLE", "VIEW"})) {
+                exists = result.next();
+            }
+            if (!exists) throw new IllegalArgumentException("所选数据表不存在或不可访问");
+            try (var result = metadata.getColumns(catalog, schema, tableName, "%")) {
+                while (result.next()) {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("name", result.getString("COLUMN_NAME"));
+                    item.put("type", result.getString("TYPE_NAME"));
+                    item.put("nullable", result.getInt("NULLABLE") != java.sql.DatabaseMetaData.columnNoNulls);
+                    item.put("ordinal", result.getInt("ORDINAL_POSITION"));
+                    items.add(item);
+                }
+            }
+            return Map.of("table", tableName, "columns", items);
+        } catch (java.sql.SQLException error) {
+            throw new IllegalStateException("读取数据库元数据失败：" + error.getMessage(), error);
+        }
     }
 
     private QueryPool pool(String url, String user, String password, Map<String, Object> config,

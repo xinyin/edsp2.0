@@ -280,6 +280,13 @@ const sourceSettingsForm = ref({ providerId: 0, sourceCode: '', sourceName: '', 
 const sourceRuntimeForm = ref({ applicationName: '', runtimeUrl: '', serverPort: 8199 })
 const apiDialog = ref(false)
 const apiCreating = ref(false)
+const databaseTables = ref<{ name: string; type: string; remarks?: string }[]>([])
+const databaseColumns = ref<{ name: string; type: string; nullable: boolean; ordinal: number }[]>([])
+const databaseSelectedTable = ref('')
+const databaseSelectedFields = ref<string[]>([])
+const databaseFilterFields = ref<string[]>([])
+const databaseSchemaLoading = ref(false)
+const databaseQueryMode = ref<'TABLE' | 'SQL'>('TABLE')
 const apiMetadataDialog = ref(false)
 const apiMetadataSaving = ref(false)
 const apiMetadataForm = ref({ resourceApiCode: '', resourceApiName: '', httpMethod: 'POST' })
@@ -1802,7 +1809,65 @@ function initializeApiDialog(source: DataSourceSummary | undefined) {
   }
   vendorRequestExample.value = null
   vendorResponseExample.value = null
+  databaseTables.value = []
+  databaseColumns.value = []
+  databaseSelectedTable.value = ''
+  databaseSelectedFields.value = []
+  databaseFilterFields.value = []
+  databaseQueryMode.value = 'TABLE'
   apiDialog.value = true
+  if (source?.protocolType === 'LOCAL_SQL') void loadDatabaseTables(source.id)
+}
+
+async function loadDatabaseTables(sourceId: number) {
+  databaseSchemaLoading.value = true
+  try {
+    const result = await api.databaseTables(sourceId)
+    databaseTables.value = result.tables ?? []
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '读取数据库表失败')
+  } finally { databaseSchemaLoading.value = false }
+}
+
+async function loadDatabaseColumns(tableName: string) {
+  databaseSelectedTable.value = tableName
+  databaseSelectedFields.value = []
+  databaseFilterFields.value = []
+  databaseColumns.value = []
+  if (!tableName) return
+  databaseSchemaLoading.value = true
+  try {
+    const result = await api.databaseColumns(apiForm.value.dataSourceId, tableName)
+    databaseColumns.value = result.columns ?? []
+    databaseSelectedFields.value = databaseColumns.value.map(column => column.name)
+    updateDatabaseQuery()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '读取数据库字段失败')
+  } finally { databaseSchemaLoading.value = false }
+}
+
+function updateDatabaseQuery() {
+  if (!databaseSelectedTable.value || !databaseSelectedFields.value.length) {
+    apiForm.value.sqlTemplate = ''
+    apiForm.value.sqlParameters = '{}'
+    vendorRequestExample.value = {}
+    return
+  }
+  const databaseType = String(providers.value.find(item => item.id === selectedApiSource.value?.providerId)?.accessConfig?.databaseType ?? 'MYSQL')
+  const quote = (name: string) => databaseType === 'MYSQL' ? `\`${name}\`` : `"${name}"`
+  const parameters = Object.fromEntries(databaseFilterFields.value.map(name => {
+    const type = databaseColumns.value.find(column => column.name === name)?.type.toUpperCase() ?? ''
+    const parameterType = /BOOL|BIT/.test(type) ? 'BOOLEAN'
+      : /DATE/.test(type) ? (type.includes('TIME') ? 'DATETIME' : 'DATE')
+        : /TIMESTAMP|DATETIME/.test(type) ? 'DATETIME'
+        : /INT/.test(type) ? 'INTEGER'
+          : /DECIMAL|NUMERIC|NUMBER|FLOAT|DOUBLE|REAL/.test(type) ? 'NUMBER' : 'STRING'
+    return [name, parameterType]
+  }))
+  const filters = databaseFilterFields.value.map(name => `${quote(name)} = :${name}`)
+  apiForm.value.sqlTemplate = `SELECT ${databaseSelectedFields.value.map(quote).join(', ')}\nFROM ${quote(databaseSelectedTable.value)}${filters.length ? `\nWHERE ${filters.join(' AND ')}` : ''}`
+  apiForm.value.sqlParameters = JSON.stringify(parameters, null, 2)
+  vendorRequestExample.value = Object.fromEntries(databaseFilterFields.value.map(name => [name, '']))
 }
 
 function openApiDialogForSource(sourceId: number) {
@@ -1945,6 +2010,15 @@ async function createInterface() {
     ElMessage.warning('请完整填写资源 API 名称和资源 API 编码')
     return
   }
+  if (apiForm.value.executionMode === 'SQL' && databaseQueryMode.value === 'TABLE'
+      && (!databaseSelectedTable.value || !databaseSelectedFields.value.length)) {
+    ElMessage.warning('请选择数据表和至少一个返回字段')
+    return
+  }
+  if (apiForm.value.executionMode === 'SQL' && !apiForm.value.sqlTemplate.trim()) {
+    ElMessage.warning('请配置数据库查询语句')
+    return
+  }
   apiCreating.value = true
   let created: ResourceApiSummary
   try {
@@ -1958,6 +2032,20 @@ async function createInterface() {
       apiCreating.value = false
       return
     }
+    let requestExample = vendorRequestExample.value ?? {}
+    if (apiForm.value.executionMode === 'SQL') {
+      const parameterNames = [...new Set([...apiForm.value.sqlTemplate.matchAll(/:([A-Za-z_][A-Za-z0-9_]*)/g)].map(match => match[1]))]
+      const defaults: Record<string, unknown> = { STRING: '', NUMBER: 0, DECIMAL: 0, INTEGER: 0, INT: 0, LONG: 0,
+        BOOLEAN: false, BOOL: false, DATE: '2026-01-01', DATETIME: '2026-01-01T00:00:00' }
+      const sample: Record<string, unknown> = {}
+      parameterNames.forEach(name => {
+        const type = String(sqlParameters[name] ?? 'STRING').toUpperCase()
+        if (!(type in defaults)) throw new Error(`SQL 参数 ${name} 的类型不支持`)
+        sqlParameters[name] = type
+        sample[name] = defaults[type]
+      })
+      if (!Object.keys(requestExample).length) requestExample = sample
+    }
     created = await api.createResourceApi({
       dataSourceId: apiForm.value.dataSourceId,
       resourceApiCode: apiForm.value.interfaceCode,
@@ -1968,7 +2056,7 @@ async function createInterface() {
       upstreamUrl: apiForm.value.upstreamUrl,
       generateMock: apiForm.value.generateMock,
       timeoutMs: apiForm.value.timeoutMode === 'OVERRIDE' ? apiForm.value.timeoutMs : null,
-      requestExample: vendorRequestExample.value,
+      requestExample,
       responseExample: vendorResponseExample.value,
       executionMode: apiForm.value.executionMode,
       sqlTemplate: apiForm.value.sqlTemplate,
@@ -3595,7 +3683,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
 
   <el-drawer v-model="callTraceDrawer" size="78%" class="call-trace-drawer" destroy-on-close><template #header><div class="drawer-trace-title"><div><span>调用链路</span><strong>{{ callTrace?.summary.interfaceName || activeCallTraceRecord?.interfaceName || '调用链路详情' }}</strong><code>{{ callTrace?.summary.traceId || activeCallTraceRecord?.traceId || '-' }}</code></div><el-tag v-if="callTrace" :type="callTrace.summary.requestStatus==='SUCCESS'&&callTrace.summary.resultStatus!=='ERROR'?'success':'danger'" effect="dark">{{ callTrace.summary.requestStatus==='SUCCESS'&&callTrace.summary.resultStatus!=='ERROR'?'调用成功':'调用失败' }}</el-tag></div></template><div v-loading="callTraceLoading" class="persisted-trace"><template v-if="callTrace"><section class="trace-facts"><div><span>调用系统</span><strong>{{ callTrace.summary.clientName || '联调工作台' }}</strong></div><div><span>标准返回码</span><strong>{{ callTrace.summary.standardCode }}</strong></div><div><span>端到端耗时</span><strong>{{ callTrace.summary.durationMs }} ms</strong></div><div><span>调用时间</span><strong>{{ callTrace.summary.calledAt }}</strong></div></section><section class="persisted-trace-track"><template v-for="(node,index) in callTrace.nodes" :key="node.key"><button class="persisted-node" :class="[node.status.toLowerCase(),{active:selectedLogNodeKey===node.key}]" @click="selectedLogNodeKey=node.key"><span><CircleCheck v-if="node.status==='SUCCESS'"/><Warning v-else/></span><strong>{{ node.name }}</strong><small>{{ node.durationMs }} ms</small></button><div v-if="index<callTrace.nodes.length-1" class="trace-channel" :class="{failed:node.status!=='SUCCESS'}"><i></i></div></template></section><section v-if="logSelectedNode" class="persisted-node-detail"><header><div><span>{{ logSelectedNode.category }} / {{ logSelectedNode.key }}</span><strong>{{ logSelectedNode.name }}</strong><small>{{ logSelectedNode.detail }}</small></div><div><el-tag :type="logSelectedNode.status==='SUCCESS'?'success':'danger'">{{ traceStatusLabel(logSelectedNode.status) }}</el-tag><strong>{{ logSelectedNode.durationMs }} ms</strong></div></header><div><section><label>节点输入</label><CopyableBlock :value="formatJson(logSelectedNode.input)"><pre>{{ formatJson(logSelectedNode.input) }}</pre></CopyableBlock></section><section><label>节点输出</label><CopyableBlock :value="formatJson(logSelectedNode.output)"><pre>{{ formatJson(logSelectedNode.output) }}</pre></CopyableBlock></section></div></section></template><el-result v-else-if="callTraceError" icon="error" title="链路详情加载失败" :sub-title="callTraceError"><template #extra><el-button v-if="activeCallTraceRecord" type="primary" @click="openCallTrace(activeCallTraceRecord)">重新加载</el-button></template></el-result><el-empty v-else-if="!callTraceLoading" description="暂无可展示的链路详情"/></div></el-drawer>
 
-  <el-dialog v-model="sourceDialog" title="接入数据源" width="680px" class="source-wizard" :close-on-click-modal="false" :close-on-press-escape="!sourceSaving" :show-close="!sourceSaving" destroy-on-close><el-steps :active="sourceStep" finish-status="success" simple><el-step title="基本信息"/><el-step title="连接配置"/></el-steps><el-alert v-if="sourceError" :title="sourceError" type="error" :closable="false" show-icon/><div class="wizard-body" v-if="sourceStep===0"><el-form label-position="top"><div class="form-grid"><el-form-item label="资源提供商" required><el-select v-model="sourceForm.providerId"><el-option v-for="item in providers" :key="item.id" :label="item.providerName" :value="item.id"/></el-select></el-form-item><el-form-item label="数据源名称" required><el-input v-model="sourceForm.sourceName" placeholder="例如：企业工商信息" maxlength="100"/></el-form-item><el-form-item label="数据源编码" required><el-input v-model="sourceForm.sourceCode" placeholder="例如：ENTERPRISE_INFO" maxlength="64"/></el-form-item><el-form-item label="报文协议"><el-select v-model="sourceForm.protocolType"><el-option label="HTTP JSON" value="HTTP_JSON"/><el-option label="WebService" value="SOAP"/><el-option label="数据库" value="LOCAL_SQL"/></el-select></el-form-item></div></el-form></div><div class="wizard-body" v-else><el-form label-position="top"><el-alert v-if="!providers.find(item=>item.id===sourceForm.providerId)?.runtimeUrl" title="当前资源提供商尚未配置应用路由，数据源可以保存，但联调和上线前必须完成提供商路由配置。" type="warning" :closable="false"/><el-form-item label="数据源基础地址"><el-input v-model="sourceForm.endpoint" placeholder="https://provider.example.com"/><HelpTip title="数据源基础地址" content="资源接口默认继承此供应商基础地址，并拼接接口相对路径；个别接口可单独配置完整地址。"/></el-form-item><el-form-item label="数据源默认超时"><el-input-number v-model="sourceForm.defaultTimeoutMs" :min="100" :max="120000" :step="500"/><span class="form-unit">毫秒（ms）</span></el-form-item></el-form></div><template #footer><el-button :disabled="sourceSaving" @click="sourceDialog=false">取消</el-button><el-button :disabled="sourceSaving" v-if="sourceStep>0" @click="sourceStep--">上一步</el-button><el-button v-if="sourceStep<1" type="primary" @click="advanceSourceWizard">下一步</el-button><el-button v-else type="primary" :loading="sourceSaving" @click="createSource">创建并配置接口</el-button></template></el-dialog>
+  <el-dialog v-model="sourceDialog" title="接入数据源" width="680px" class="source-wizard" :close-on-click-modal="false" :close-on-press-escape="!sourceSaving" :show-close="!sourceSaving" destroy-on-close><el-steps :active="sourceStep" finish-status="success" simple><el-step title="基本信息"/><el-step title="连接配置"/></el-steps><el-alert v-if="sourceError" :title="sourceError" type="error" :closable="false" show-icon/><div class="wizard-body" v-if="sourceStep===0"><el-form label-position="top"><div class="form-grid"><el-form-item label="资源提供商" required><el-select v-model="sourceForm.providerId"><el-option v-for="item in providers" :key="item.id" :label="item.providerName" :value="item.id"/></el-select></el-form-item><el-form-item label="数据源名称" required><el-input v-model="sourceForm.sourceName" placeholder="例如：企业工商信息" maxlength="100"/></el-form-item><el-form-item label="数据源编码" required><el-input v-model="sourceForm.sourceCode" placeholder="例如：ENTERPRISE_INFO" maxlength="64"/></el-form-item><el-form-item label="报文协议"><el-select v-model="sourceForm.protocolType"><el-option label="HTTP JSON" value="HTTP_JSON"/><el-option label="WebService" value="SOAP"/><el-option label="数据库" value="LOCAL_SQL"/></el-select></el-form-item></div></el-form></div><div class="wizard-body" v-else><el-form label-position="top"><el-alert v-if="!providers.find(item=>item.id===sourceForm.providerId)?.runtimeUrl" title="当前资源提供商尚未配置应用路由，数据源可以保存，但联调和上线前必须完成提供商路由配置。" type="warning" :closable="false"/><el-form-item v-if="sourceForm.protocolType!=='LOCAL_SQL'" label="数据源基础地址"><el-input v-model="sourceForm.endpoint" placeholder="https://provider.example.com"/><HelpTip title="数据源基础地址" content="资源接口默认继承此供应商基础地址，并拼接接口相对路径；个别接口可单独配置完整地址。"/></el-form-item><el-form-item label="数据源默认超时"><el-input-number v-model="sourceForm.defaultTimeoutMs" :min="100" :max="120000" :step="500"/><span class="form-unit">毫秒（ms）</span></el-form-item></el-form></div><template #footer><el-button :disabled="sourceSaving" @click="sourceDialog=false">取消</el-button><el-button :disabled="sourceSaving" v-if="sourceStep>0" @click="sourceStep--">上一步</el-button><el-button v-if="sourceStep<1" type="primary" @click="advanceSourceWizard">下一步</el-button><el-button v-else type="primary" :loading="sourceSaving" @click="createSource">创建并配置接口</el-button></template></el-dialog>
   <el-dialog v-model="sourceSettingsDialog" title="编辑数据源" width="680px" :close-on-click-modal="false"><el-alert v-if="sourceSettingsError" :title="sourceSettingsError" type="error" :closable="false" show-icon/><el-form label-position="top" style="margin-top:18px"><div class="form-grid"><el-form-item label="资源提供商" required><el-select v-model="sourceSettingsForm.providerId" filterable><el-option v-for="item in providers" :key="item.id" :label="item.providerName" :value="item.id"/></el-select></el-form-item><el-form-item label="数据源名称" required><el-input v-model="sourceSettingsForm.sourceName" maxlength="100"/></el-form-item><el-form-item label="数据源编码"><el-input v-model="sourceSettingsForm.sourceCode" disabled/><HelpTip title="数据源编码" content="数据源唯一标识，创建后不可修改。配置应用路由统一在资源方管理中维护。"/></el-form-item><el-form-item label="协议类型" required><el-select v-model="sourceSettingsForm.protocolType"><el-option label="HTTP JSON" value="HTTP_JSON"/><el-option label="WebService" value="SOAP"/><el-option label="本地数据集" value="LOCAL_SQL"/></el-select></el-form-item></div><el-form-item v-if="sourceSettingsForm.protocolType!=='LOCAL_SQL'" label="数据源基础地址" required><el-input v-model="sourceSettingsForm.endpoint" placeholder="https://provider.example.com"/><HelpTip title="基础地址继承" content="选择继承数据源的资源接口使用此供应商地址。已发布服务继续使用发布快照，重新发布后才应用新配置。"/></el-form-item><el-form-item label="默认请求超时"><el-input-number v-model="sourceSettingsForm.defaultTimeoutMs" :min="100" :max="120000" :step="500" controls-position="right"/><span class="form-unit">毫秒（ms）</span></el-form-item><div class="dialog-context"><span>变更生效范围</span><HelpTip title="变更生效范围" content="目录归属和草稿配置立即生效；继承配置的接口建议重新测试。已发布服务保持原发布快照，重新发布后切换。"/></div></el-form><template #footer><el-button :disabled="sourceSettingsSaving" @click="sourceSettingsDialog=false">取消</el-button><el-button type="primary" :loading="sourceSettingsSaving" @click="saveSourceSettings">保存修改</el-button></template></el-dialog>
   <el-dialog v-model="sourceRuntimeDialog" v-loading="sourceRuntimeStatusLoading" title="资源提供商应用路由配置" width="680px" class="runtime-provision-dialog" :close-on-click-modal="!sourceRuntimeSaving"><div class="dialog-context"><span>{{ selectedProvider?.providerName }}</span><HelpTip title="配置应用路由" content="同一资源提供商下的数据源和接口共用独立处理应用。接入测试、编排测试及正式调用均经该应用访问资源提供商。"/></div><el-form label-position="top" style="margin-top:18px"><el-form-item required><template #label>处理应用标识<HelpTip title="处理应用标识" content="用于 Java 模块名、Spring 应用名和 Nacos Data ID，须与实际部署的应用一致。"/></template><el-input v-model="sourceRuntimeForm.applicationName" placeholder="jsnx-edsp-data-provider-example"/></el-form-item><div class="form-grid"><el-form-item required><template #label>应用访问地址<HelpTip title="应用访问地址" content="Gateway 和管理服务访问处理应用的基础地址，非供应商接口地址。单实例填写协议、主机和端口；采用 VIP 时填写 VIP 地址。"/></template><el-input v-model="sourceRuntimeForm.runtimeUrl" placeholder="http://127.0.0.1:8201"/></el-form-item><el-form-item required><template #label>应用监听端口<HelpTip title="应用监听端口" content="写入 Nacos 的 server.port，决定 Java 应用实际监听端口。直接访问时应与应用访问地址端口一致；有 VIP 转发时可以不同。"/></template><el-input-number v-model="sourceRuntimeForm.serverPort" :min="1" :max="65535" :step="1" controls-position="right"/></el-form-item></div></el-form><div class="provision-destination"><span>Java 工程生成目录</span><code>{{ provisionSettings?.outputRoot || '由 Admin 服务端配置决定' }}</code><HelpTip title="工程生成与部署" content="此操作保存路由、生成 Java 工程并同步 Nacos，不自动部署。生成代码仍需纳入 Git、打包并发布运行。"/></div><section v-if="sourceRuntimeResult" class="provision-result"><header><strong>{{ sourceRuntimeStatusLoaded ? '已保存的执行信息' : '本次执行结果' }}</strong><span>工程与配置中心状态</span></header><div class="provision-step"><i :class="sourceRuntimeResult.routeSave.status.toLowerCase()"></i><div><strong>路由持久化</strong><small>{{ sourceRuntimeResult.routeSave.message }}</small></div><b>{{ provisionStatusLabel(sourceRuntimeResult.routeSave.status) }}</b></div><div class="provision-step"><i :class="sourceRuntimeResult.generation.status.toLowerCase()"></i><div><strong>Java 工程</strong><small>{{ sourceRuntimeResult.generation.message }}</small><small v-if="sourceRuntimeResult.generation.packageName">{{ sourceRuntimeResult.generation.packageName }} · {{ sourceRuntimeResult.generation.generatedFiles.length }} 个生成文件</small><code v-if="sourceRuntimeResult.generation.outputDirectory">{{ sourceRuntimeResult.generation.outputDirectory }}</code></div><b>{{ provisionStatusLabel(sourceRuntimeResult.generation.status) }}</b></div><div class="provision-step"><i :class="sourceRuntimeResult.nacos.status.toLowerCase()"></i><div><strong>Nacos 配置</strong><small>{{ sourceRuntimeResult.nacos.dataId || '-' }} · Group {{ sourceRuntimeResult.nacos.group }} · Namespace {{ sourceRuntimeResult.nacos.namespace || 'public' }}</small><small>{{ sourceRuntimeResult.nacos.message }}</small></div><b>{{ provisionStatusLabel(sourceRuntimeResult.nacos.status) }}</b></div><div class="provision-step"><i :class="sourceRuntimeResult.routeRefresh.status.toLowerCase()"></i><div><strong>Gateway 路由刷新</strong><small>{{ sourceRuntimeResult.routeRefresh.message }}</small></div><b>{{ provisionStatusLabel(sourceRuntimeResult.routeRefresh.status) }}</b></div></section><template #footer><el-button v-if="sourceRuntimeResult?.generation.outputDirectory" @click="copyGeneratedPath">复制生成目录</el-button><el-button @click="sourceRuntimeDialog=false">{{ sourceRuntimeResult ? '关闭' : '取消' }}</el-button><el-button type="primary" :loading="sourceRuntimeSaving" @click="saveSourceRuntime">{{ hasProvisionedRuntime() ? '重新生成并同步' : '保存、生成并同步' }}</el-button></template></el-dialog>
   <el-dialog v-model="apiDialog" title="新增资源 API" width="660px">
@@ -3607,8 +3695,17 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
         <el-form-item label="资源 API 编码" required><el-input v-model="apiForm.interfaceCode"/></el-form-item>
       </div>
       <template v-if="apiForm.executionMode==='SQL'">
-        <el-form-item label="SQL 查询语句" required><CopyableBlock :value="apiForm.sqlTemplate"><el-input v-model="apiForm.sqlTemplate" type="textarea" :rows="9" resize="vertical" placeholder="SELECT id, name FROM user_info WHERE user_id = :userId"/></CopyableBlock></el-form-item>
-        <el-form-item label="请求参数 JSON"><CopyableBlock :value="apiForm.sqlParameters"><el-input v-model="apiForm.sqlParameters" type="textarea" :rows="5" resize="vertical" placeholder="{\n  &quot;userId&quot;: &quot;STRING&quot;\n}"/></CopyableBlock></el-form-item>
+        <el-segmented v-model="databaseQueryMode" :options="[{label:'选表查询',value:'TABLE'},{label:'编写 SQL',value:'SQL'}]"/>
+        <template v-if="databaseQueryMode==='TABLE'">
+          <el-form-item label="数据库表" required><el-select v-model="databaseSelectedTable" filterable :loading="databaseSchemaLoading" placeholder="选择需要查询的数据表" @change="loadDatabaseColumns"><el-option v-for="table in databaseTables" :key="table.name" :label="`${table.name} · ${table.type}`" :value="table.name"/></el-select><el-button text :icon="Refresh" :loading="databaseSchemaLoading" aria-label="刷新数据表" @click="loadDatabaseTables(apiForm.dataSourceId)"/></el-form-item>
+          <el-form-item label="返回字段" required><el-select v-model="databaseSelectedFields" multiple collapse-tags collapse-tags-tooltip filterable placeholder="选择服务需要返回的字段" @change="updateDatabaseQuery"><el-option v-for="column in databaseColumns" :key="column.name" :label="`${column.name} · ${column.type}`" :value="column.name"/></el-select></el-form-item>
+          <el-form-item label="查询条件字段"><el-select v-model="databaseFilterFields" multiple collapse-tags collapse-tags-tooltip filterable placeholder="可选；每个字段生成一个等值请求参数" @change="updateDatabaseQuery"><el-option v-for="column in databaseColumns" :key="column.name" :label="`${column.name} · ${column.type}`" :value="column.name"/></el-select></el-form-item>
+          <el-form-item label="生成的只读查询"><CopyableBlock :value="apiForm.sqlTemplate"><el-input :model-value="apiForm.sqlTemplate" type="textarea" :rows="5" readonly resize="vertical"/></CopyableBlock></el-form-item>
+        </template>
+        <template v-else>
+          <el-form-item label="SQL 查询语句" required><CopyableBlock :value="apiForm.sqlTemplate"><el-input v-model="apiForm.sqlTemplate" type="textarea" :rows="9" resize="vertical" placeholder="SELECT id, name FROM user_info WHERE user_id = :userId"/></CopyableBlock></el-form-item>
+          <el-form-item label="请求参数 JSON"><CopyableBlock :value="apiForm.sqlParameters"><el-input v-model="apiForm.sqlParameters" type="textarea" :rows="5" resize="vertical" placeholder="{\n  &quot;userId&quot;: &quot;STRING&quot;\n}"/></CopyableBlock></el-form-item>
+        </template>
       </template>
       <section v-else class="api-policy-section">
         <header><strong>上游连接策略</strong></header><el-segmented v-model="apiForm.configScope" :options="[{label:'继承数据源',value:'INHERIT'},{label:'单接口覆盖',value:'OVERRIDE'}]"/>

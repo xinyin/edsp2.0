@@ -586,7 +586,8 @@ public class InterfaceService {
             throw new IllegalArgumentException("供应商接口地址不能为空");
         }
         Map<String, Object> requestExample = request.requestExample() == null || request.requestExample().isEmpty()
-                ? Map.of("query_key", "DEMO-QUERY-001") : request.requestExample();
+                ? (isSqlExecution(executionMode) ? Map.of() : Map.of("query_key", "DEMO-QUERY-001"))
+                : request.requestExample();
         Map<String, Object> responseExample = request.responseExample() == null || request.responseExample().isEmpty()
                 ? Map.of("result", Map.of("code", "0000", "message", "success"), "data", Map.of())
                 : request.responseExample();
@@ -614,6 +615,53 @@ public class InterfaceService {
                 configured == null ? "DATA_SOURCE" : "RESOURCE_API",
                 valueOr((String) row.get("execution_mode"), "HTTP"),
                 Objects.toString(row.get("sql_template"), ""), readStringMap(row.get("sql_parameters")));
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> databaseMetadata(long dataSourceId, String tableName) {
+        Map<String, Object> source = jdbc.queryForMap("""
+                SELECT ds.source_code,ds.protocol_type,ds.default_timeout_ms,p.provider_code,p.access_mode,p.access_config,p.runtime_url
+                FROM data_source ds JOIN data_provider p ON p.id=ds.provider_id WHERE ds.id=?
+                """, dataSourceId);
+        if (!"LOCAL_SQL".equalsIgnoreCase(Objects.toString(source.get("protocol_type"), ""))) {
+            throw new IllegalArgumentException("该数据源不是数据库资源");
+        }
+        if (!"DATABASE".equalsIgnoreCase(Objects.toString(source.get("access_mode"), ""))) {
+            throw new IllegalArgumentException("资源提供商未配置数据库接入方式");
+        }
+        String endpoint = trimTrailingSlash(Objects.toString(source.get("runtime_url"), ""));
+        if (endpoint.isBlank()) throw new IllegalStateException("资源提供商尚未配置处理应用访问地址");
+        int timeout = source.get("default_timeout_ms") instanceof Number number
+                ? Math.max(100, Math.min(120_000, number.intValue())) : 10_000;
+        String mode = tableName == null || tableName.isBlank() ? "METADATA_TABLES" : "METADATA_COLUMNS";
+        Map<String, Object> connection = new LinkedHashMap<>();
+        connection.put("providerCode", source.get("provider_code"));
+        connection.put("accessMode", source.get("access_mode"));
+        connection.put("accessConfig", source.get("access_config") == null ? Map.of()
+                : json.readMap(String.valueOf(source.get("access_config"))));
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("traceId", "DB-METADATA-" + java.util.UUID.randomUUID().toString().replace("-", ""));
+        payload.put("providerCode", source.get("provider_code"));
+        payload.put("dataSourceCode", source.get("source_code"));
+        payload.put("interfaceCode", "DATABASE_METADATA");
+        payload.put("upstreamUrl", tableName == null ? "" : tableName);
+        payload.put("upstreamHttpMethod", "POST");
+        payload.put("providerConnection", connection);
+        payload.put("executionMode", mode);
+        payload.put("timeoutMs", timeout);
+        payload.put("requestBody", Map.of());
+        try {
+            Map<String, Object> result = restClient(timeout + 2_000).post()
+                    .uri(endpoint + "/internal/adapter/execute").body(payload).retrieve().body(Map.class);
+            if (result == null || Boolean.FALSE.equals(result.get("success"))) {
+                throw new IllegalStateException(result == null ? "处理应用未返回元数据" : describeUpstreamError(result));
+            }
+            Object response = result.get("upstreamResponse");
+            if (!(response instanceof Map<?, ?> metadata)) throw new IllegalStateException("处理应用返回的元数据格式无效");
+            return (Map<String, Object>) metadata;
+        } catch (Exception error) {
+            throw new IllegalStateException("通过资源提供商处理应用读取数据库元数据失败：" + error.getMessage(), error);
+        }
     }
 
     @Transactional

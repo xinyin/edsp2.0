@@ -304,6 +304,16 @@ test('数据源编码不限制首字符，但拦截空格和特殊字符', () =>
   assert.match(s.sourceError.value, /空格或特殊字符/)
 })
 
+test('数据库资源可经提供商应用读取表字段，并支持选表或手写 SQL', () => {
+  assert.match(appText, /loadDatabaseTables\(source\.id\)/)
+  assert.match(appText, /api\.databaseColumns\(apiForm\.value\.dataSourceId, tableName\)/)
+  assert.match(appText, /label:'选表查询'/)
+  assert.match(appText, /label:'编写 SQL'/)
+  assert.match(appText, /WHERE \$\{filters\.join\(' AND '\)\}/)
+  assert.match(apiText, /\/api\/data-sources\/\$\{sourceId\}\/database-tables/)
+  assert.match(apiText, /\/api\/data-sources\/\$\{sourceId\}\/database-columns/)
+})
+
 test('已创建的资源 API 可从独立入口修改名称、编码和请求方式', async () => {
   let request
   const updated = {

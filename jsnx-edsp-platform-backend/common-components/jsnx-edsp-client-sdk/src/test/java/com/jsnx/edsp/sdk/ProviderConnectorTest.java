@@ -46,6 +46,27 @@ class ProviderConnectorTest {
     }
 
     @Test
+    void databaseMetadataRequestsAreDispatchedInsideTheProviderApplication() {
+        ProviderConnector connector = new ProviderConnector() {
+            public String accessMode() { return "DATABASE"; }
+            public Map<String, Object> execute(Map<String, Object> connection, String method, String endpoint,
+                    Map<String, Object> request, String traceId, int timeoutMs) {
+                assertThat(connection.get("resourceQuery")).isEqualTo(Map.of(
+                        "executionMode", "METADATA_TABLES", "sqlTemplate", ""));
+                assertThat(connection.get("accessConfig")).isEqualTo(Map.of("jdbcUrl", "jdbc:test"));
+                return Map.of("tables", List.of(Map.of("name", "USER_INFO", "type", "TABLE")));
+            }
+        };
+        UpstreamClient client = new UpstreamClient(new ObjectMapper(), List.of(connector));
+        Map<String, Object> result = DraftAdapterExecutor.executeForProvider("BANK", Map.of(
+                "providerCode", "BANK", "dataSourceCode", "BANK_DB", "executionMode", "METADATA_TABLES",
+                "providerConnection", Map.of("accessMode", "DATABASE", "accessConfig", Map.of("jdbcUrl", "jdbc:test")),
+                "timeoutMs", 3000), client);
+        assertThat(result.get("success")).isEqualTo(true);
+        assertThat(result.get("upstreamResponse")).isEqualTo(Map.of("tables", List.of(Map.of("name", "USER_INFO", "type", "TABLE"))));
+    }
+
+    @Test
     void httpGetSendsQueryParametersInsteadOfJsonBody() throws Exception {
         AtomicReference<String> captured = new AtomicReference<>();
         AtomicReference<String> trace = new AtomicReference<>();
