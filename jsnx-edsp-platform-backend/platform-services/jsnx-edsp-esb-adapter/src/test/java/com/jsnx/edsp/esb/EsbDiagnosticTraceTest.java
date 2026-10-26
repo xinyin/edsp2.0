@@ -36,7 +36,7 @@ class EsbDiagnosticTraceTest {
         @SuppressWarnings("unchecked")
         KafkaTemplate<String, String> kafka = mock(KafkaTemplate.class, withSettings().mockMaker("mock-maker-subclass"));
         var adapter = new EsbMessageAdapter(json, new EsbXmlProtocol("QM", "150", "平台"), builder,
-                kafka, "http://gateway", "http://admin", "reply", "TEST", 3000, 8000, "internal-secret");
+                kafka, "http://gateway", "http://admin", "reply", 3000, 8000, "internal-secret");
         String xml = "<Service><Service_Header><service_sn>TRACE-001</service_sn><service_id>API_001</service_id>"
                 + "<requester_id>EDSP_TEST_TOOL</requester_id><service_time>20261014105000</service_time><version_id>01</version_id></Service_Header>"
                 + "<Service_Body><request><query_key>001</query_key></request></Service_Body></Service>";

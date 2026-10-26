@@ -170,10 +170,9 @@ public class ApiController {
             @RequestParam(required = false) Long dataSourceId,
             @RequestParam(defaultValue = "ALL") String runStatus,
             @RequestParam(defaultValue = "ALL") String authorizationStatus,
-            @RequestParam(defaultValue = "ALL") String environment,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return service.releaseServices(keyword, providerId, dataSourceId, runStatus, authorizationStatus, environment, page, size);
+        return service.releaseServices(keyword, providerId, dataSourceId, runStatus, authorizationStatus, page, size);
     }
 
     @DeleteMapping("/interfaces/{id}")
@@ -306,9 +305,8 @@ public class ApiController {
     @GetMapping("/internal/authorizations/check")
     public Map<String, Object> authorize(@RequestParam String clientCode,
                                          @RequestParam String servicePath,
-                                         @RequestParam(required = false) String apiCode,
-                                         @RequestParam(defaultValue = "TEST") String environment) {
-        return service.authorize(clientCode, servicePath, apiCode, environment);
+                                         @RequestParam(required = false) String apiCode) {
+        return service.authorize(clientCode, servicePath, apiCode);
     }
 
     @GetMapping("/internal/interfaces/resolve")

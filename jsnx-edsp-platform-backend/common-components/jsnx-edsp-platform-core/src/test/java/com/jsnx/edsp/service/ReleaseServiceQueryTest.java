@@ -14,7 +14,7 @@ import static org.mockito.Mockito.*;
 
 class ReleaseServiceQueryTest {
     @Test
-    void filtersByActiveRouteAndCurrentEnvironmentAuthorization() {
+    void filtersByActiveRouteAndAuthorization() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
         InterfaceService service = new InterfaceService(jdbc, new JsonSupport(mapper), mapper,
@@ -22,10 +22,10 @@ class ReleaseServiceQueryTest {
         when(jdbc.queryForObject(anyString(), eq(Long.class), any(Object[].class))).thenReturn(0L);
         when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class))).thenReturn(List.of());
 
-        service.releaseServices("risk", 4L, 9L, "RUNNING", "AUTHORIZED", "PROD", 2, 50);
+        service.releaseServices("risk", 4L, 9L, "RUNNING", "AUTHORIZED", 2, 50);
 
         verify(jdbc).queryForObject(argThat(sql -> sql.contains("EXISTS (SELECT 1 FROM published_route")
-                        && sql.contains("ea.environment")), eq(Long.class), any(Object[].class));
+                        && sql.contains("ea.status='ACTIVE'") && !sql.contains("ea.environment")), eq(Long.class), any(Object[].class));
         verify(jdbc).query(argThat(sql -> sql.contains("release_run_status")
                         && sql.contains("COUNT(DISTINCT ea.client_id)")
                         && sql.contains("LIMIT ?,?")), any(RowMapper.class), any(Object[].class));
@@ -39,7 +39,7 @@ class ReleaseServiceQueryTest {
                 new PublishedPlanRegistry(), new MockEnvironment());
 
         assertThatThrownBy(() -> service.releaseServices(null, null, null,
-                "PUBLISHED", "ALL", "ALL", 1, 20))
+                "PUBLISHED", "ALL", 1, 20))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("运行状态");
         verifyNoInteractions(jdbc);

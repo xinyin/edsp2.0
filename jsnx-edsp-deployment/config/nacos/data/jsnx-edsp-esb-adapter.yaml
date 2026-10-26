@@ -44,7 +44,6 @@ edsp:
     caller-keys-json: '${ESB_MQ_CALLER_KEYS_JSON:{}}'
   esb.request-topic: "${ESB_REQUEST_TOPIC:edsp.esb.request}"
   esb.response-topic: "${ESB_RESPONSE_TOPIC:edsp.esb.response}"
-  esb.environment: "${ESB_ENVIRONMENT:TEST}"
   esb.reply-qmgr: "${ESB_REPLY_QMGR:QMG4GW06}"
   esb.response-timeout: "${ESB_RESPONSE_TIMEOUT:150}"
   esb.service-name: "${ESB_SERVICE_NAME:外部数据平台}"

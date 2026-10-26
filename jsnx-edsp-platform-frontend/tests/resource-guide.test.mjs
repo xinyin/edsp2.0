@@ -808,7 +808,7 @@ test('全局概览优先展示业务指标，不呈现环境、实例和数据�
   assert.match(overview, /已发布 API/)
   assert.match(overview, /有效服务授权/)
   assert.doesNotMatch(overview, /运行环境|运行实例|数据源登记状态|数据源实例/)
-  assert.match(appText, /v-if="activeMenu !== 'overview'" type="info" effect="plain">TEST 环境/)
+  assert.doesNotMatch(appText, /TEST 环境|授权环境|releaseFilters\.environment/)
 })
 test('服务发布列表由后端分页筛选，详情保持独立抽屉', () => {
   assert.match(apiText, /\/api\/release-services\?\$\{params\}/)

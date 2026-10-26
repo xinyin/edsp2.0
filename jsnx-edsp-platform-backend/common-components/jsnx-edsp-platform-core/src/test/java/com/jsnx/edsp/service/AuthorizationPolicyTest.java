@@ -51,7 +51,7 @@ class AuthorizationPolicyTest {
     @Test
     void allowsAuthorizationWhileAReleasedVersionServesAndANewerDraftIsEdited() {
         AuthorizationRecord record = new AuthorizationRecord(1, CLIENT_ID, "信贷系统", INTERFACE_ID,
-                "企业查询", "ENTERPRISE_QUERY", "TEST", 10_000,
+                "企业查询", "ENTERPRISE_QUERY", 10_000,
                 LocalDate.of(2026, 1, 1), LocalDate.of(2027, 1, 1), "ACTIVE", "管理员");
         when(jdbc.query(anyString(), any(RowMapper.class))).thenReturn(List.of(record));
 
@@ -60,7 +60,7 @@ class AuthorizationPolicyTest {
 
         assertThat(result).isEqualTo(record);
         verify(jdbc).update(contains("INSERT INTO api_authorization"), eq(CLIENT_ID), eq(INTERFACE_ID),
-                eq("TEST"), eq(10_000), eq(LocalDate.of(2026, 1, 1)),
+                eq(10_000), eq(LocalDate.of(2026, 1, 1)),
                 eq(LocalDate.of(2027, 1, 1)), eq("管理员"));
     }
 
@@ -92,7 +92,7 @@ class AuthorizationPolicyTest {
                 "interface_code", "ENTERPRISE_QUERY",
                 "daily_quota", 50_000);
         when(jdbc.queryForList(anyString(), eq("CORE_SYSTEM"), eq("/lhzx/v1/enterprise/query-01"),
-                eq("ENTERPRISE_QUERY"), eq("ENTERPRISE_QUERY"), eq("ENTERPRISE_QUERY"), eq("TEST")))
+                eq("ENTERPRISE_QUERY"), eq("ENTERPRISE_QUERY"), eq("ENTERPRISE_QUERY")))
                 .thenReturn(List.of(authorization));
         when(jdbc.queryForObject(contains("SELECT COUNT(*) FROM usage_record"), eq(Integer.class),
                 eq(CLIENT_ID), eq(INTERFACE_ID))).thenReturn(12);
@@ -105,7 +105,7 @@ class AuthorizationPolicyTest {
                 .containsEntry("usedToday", 12);
         verify(jdbc).queryForList(contains("pr.interface_code=?"), eq("CORE_SYSTEM"),
                 eq("/lhzx/v1/enterprise/query-01"), eq("ENTERPRISE_QUERY"),
-                eq("ENTERPRISE_QUERY"), eq("ENTERPRISE_QUERY"), eq("TEST"));
+                eq("ENTERPRISE_QUERY"), eq("ENTERPRISE_QUERY"));
     }
 
     @Test
@@ -114,15 +114,15 @@ class AuthorizationPolicyTest {
         when(jdbc.queryForList(contains("SELECT id FROM api_interface"), eq(Long.class),
                 eq(INTERFACE_ID), eq(secondInterfaceId))).thenReturn(List.of(INTERFACE_ID, secondInterfaceId));
         AuthorizationRecord first = new AuthorizationRecord(1, CLIENT_ID, "信贷系统", INTERFACE_ID,
-                "企业查询", "ENTERPRISE_QUERY", "TEST", 50_000,
+                "企业查询", "ENTERPRISE_QUERY", 50_000,
                 LocalDate.of(2026, 1, 1), LocalDate.of(2027, 1, 1), "ACTIVE", "管理员");
         AuthorizationRecord second = new AuthorizationRecord(2, CLIENT_ID, "信贷系统", secondInterfaceId,
-                "企业风险查询", "ENTERPRISE_RISK_QUERY", "TEST", 50_000,
+                "企业风险查询", "ENTERPRISE_RISK_QUERY", 50_000,
                 LocalDate.of(2026, 1, 1), LocalDate.of(2027, 1, 1), "ACTIVE", "管理员");
         when(jdbc.query(anyString(), any(RowMapper.class))).thenReturn(List.of(first, second));
 
         List<AuthorizationRecord> result = service.createAuthorizations(new BatchAuthorizationRequest(
-                CLIENT_ID, List.of(INTERFACE_ID, secondInterfaceId), "TEST", 50_000,
+                CLIENT_ID, List.of(INTERFACE_ID, secondInterfaceId), 50_000,
                 LocalDate.of(2026, 1, 1), LocalDate.of(2027, 1, 1), "管理员"));
 
         assertThat(result).extracting(AuthorizationRecord::interfaceId)
@@ -131,7 +131,7 @@ class AuthorizationPolicyTest {
     }
 
     private CreateAuthorizationRequest request(LocalDate validFrom, LocalDate validTo) {
-        return new CreateAuthorizationRequest(CLIENT_ID, INTERFACE_ID, "test", 10_000,
+        return new CreateAuthorizationRequest(CLIENT_ID, INTERFACE_ID, 10_000,
                 validFrom, validTo, "管理员");
     }
 

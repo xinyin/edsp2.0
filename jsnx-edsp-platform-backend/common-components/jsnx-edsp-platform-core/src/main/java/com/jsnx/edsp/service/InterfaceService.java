@@ -310,6 +310,41 @@ public class InterfaceService {
         if (responsePolicyColumns == null || responsePolicyColumns == 0) {
             jdbc.execute("ALTER TABLE api_interface ADD COLUMN response_policy JSON NULL AFTER vendor_code_path");
         }
+        migrateAuthorizationEnvironment();
+        if (!columnMissing("data_source", "environment")) {
+            jdbc.execute("ALTER TABLE data_source DROP COLUMN environment");
+        }
+    }
+
+    void migrateAuthorizationEnvironment() {
+        Integer indexCount = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM information_schema.statistics
+                WHERE table_schema=DATABASE() AND table_name='api_authorization' AND index_name='uk_client_interface'
+                """, Integer.class);
+        if (!columnMissing("api_authorization", "environment")) {
+            Long conflicts = jdbc.queryForObject("""
+                    SELECT COUNT(*) FROM (
+                        SELECT client_id,interface_id FROM api_authorization
+                        GROUP BY client_id,interface_id HAVING COUNT(*) > 1
+                    ) duplicate_grants
+                    """, Long.class);
+            if (conflicts != null && conflicts > 0) {
+                throw new IllegalStateException("存在同一调用系统和 API 的多环境授权，请先人工合并后再升级");
+            }
+            if (indexCount == null || indexCount == 0) {
+                jdbc.execute("ALTER TABLE api_authorization ADD UNIQUE KEY uk_client_interface (client_id,interface_id)");
+            }
+            Integer legacyIndexCount = jdbc.queryForObject("""
+                    SELECT COUNT(*) FROM information_schema.statistics
+                    WHERE table_schema=DATABASE() AND table_name='api_authorization' AND index_name='uk_client_interface_env'
+                    """, Integer.class);
+            if (legacyIndexCount != null && legacyIndexCount > 0) {
+                jdbc.execute("ALTER TABLE api_authorization DROP INDEX uk_client_interface_env");
+            }
+            jdbc.execute("ALTER TABLE api_authorization DROP COLUMN environment");
+        } else if (indexCount == null || indexCount == 0) {
+            jdbc.execute("ALTER TABLE api_authorization ADD UNIQUE KEY uk_client_interface (client_id,interface_id)");
+        }
     }
 
     private void ensureProviderRoutingColumns() {
@@ -581,11 +616,11 @@ public class InterfaceService {
         int defaultTimeoutMs = validTimeout(request.defaultTimeoutMs(), 3000);
         jdbc.update("""
                 INSERT INTO data_source(provider_id,source_code,source_name,application_name,protocol_type,
-                runtime_url,server_port,endpoint_url,default_timeout_ms,environment,status,instance_count,config_version)
-                VALUES(?,?,?,?,?,?,?,?, ?,?,'TRIAL',?,1)
+                runtime_url,server_port,endpoint_url,default_timeout_ms,status,instance_count,config_version)
+                VALUES(?,?,?,?,?,?,?,?,?,'TRIAL',?,1)
                 """, request.providerId(), request.sourceCode(), request.sourceName(), applicationName,
                 request.protocolType(), runtimeUrl, serverPort, trimTrailingSlash(request.endpoint()), defaultTimeoutMs,
-                request.environment(), Math.max(1, request.instanceCount()));
+                Math.max(1, request.instanceCount()));
         long id = Objects.requireNonNull(jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class));
         return dataSources().stream().filter(item -> item.id() == id).findFirst().orElseThrow();
     }
@@ -859,7 +894,7 @@ public class InterfaceService {
                 """, (rs, rowNum) -> new DataSourceSummary(
                 rs.getLong("id"), rs.getLong("provider_id"), rs.getString("provider_name"), rs.getString("source_code"),
                 rs.getString("source_name"), rs.getString("provider_application_name"), rs.getString("provider_runtime_url"), rs.getInt("provider_server_port"), rs.getString("protocol_type"),
-                rs.getString("endpoint_url"), rs.getInt("default_timeout_ms"), rs.getString("environment"),
+                rs.getString("endpoint_url"), rs.getInt("default_timeout_ms"),
                 rs.getString("status"), rs.getInt("instance_count"),
                 rs.getInt("config_version"), rs.getInt("interface_count")));
     }
@@ -872,27 +907,21 @@ public class InterfaceService {
 
     public ReleaseServicePage releaseServices(String keyword, Long providerId, Long dataSourceId,
                                                String runStatus, String authorizationStatus,
-                                               String environment, int page, int size) {
+                                               int page, int size) {
         int safePage = Math.max(1, page);
         int safeSize = Math.max(1, Math.min(100, size));
         String normalizedRunStatus = valueOr(runStatus, "ALL").trim().toUpperCase(Locale.ROOT);
         String normalizedAuthorizationStatus = valueOr(authorizationStatus, "ALL").trim().toUpperCase(Locale.ROOT);
-        String normalizedEnvironment = valueOr(environment, "ALL").trim().toUpperCase(Locale.ROOT);
         if (!Set.of("ALL", "UNPUBLISHED", "RUNNING", "OFFLINE").contains(normalizedRunStatus)) {
             throw new IllegalArgumentException("不支持的服务运行状态");
         }
         if (!Set.of("ALL", "AUTHORIZED", "UNAUTHORIZED").contains(normalizedAuthorizationStatus)) {
             throw new IllegalArgumentException("不支持的服务授权状态");
         }
-        if (!Set.of("ALL", "TEST", "PROD").contains(normalizedEnvironment)) {
-            throw new IllegalArgumentException("不支持的授权环境");
-        }
-
         String effectiveAuthorization = """
                 EXISTS (SELECT 1 FROM api_authorization ea JOIN api_client ec ON ec.id=ea.client_id
                         WHERE ea.interface_id=ai.id AND ea.status='ACTIVE' AND ec.status='ACTIVE'
-                          AND CURRENT_DATE BETWEEN ea.valid_from AND ea.valid_to
-                          AND (?='ALL' OR ea.environment=?))
+                          AND CURRENT_DATE BETWEEN ea.valid_from AND ea.valid_to)
                 """;
         StringBuilder where = new StringBuilder(" WHERE ai.status<>'DELETED'");
         List<Object> args = new ArrayList<>();
@@ -913,20 +942,9 @@ public class InterfaceService {
 
         String joins = " FROM api_interface ai JOIN data_source ds ON ds.id=ai.data_source_id JOIN data_provider p ON p.id=ds.provider_id ";
         List<Object> queryArgs = new ArrayList<>(args);
-        if ("AUTHORIZED".equals(normalizedAuthorizationStatus) || "UNAUTHORIZED".equals(normalizedAuthorizationStatus)) {
-            queryArgs.add(normalizedEnvironment);
-            queryArgs.add(normalizedEnvironment);
-        }
         Long total = jdbc.queryForObject("SELECT COUNT(*)" + joins + where, Long.class, queryArgs.toArray());
 
-        List<Object> rowArgs = new ArrayList<>();
-        rowArgs.add(normalizedEnvironment);
-        rowArgs.add(normalizedEnvironment);
-        rowArgs.addAll(args);
-        if ("AUTHORIZED".equals(normalizedAuthorizationStatus) || "UNAUTHORIZED".equals(normalizedAuthorizationStatus)) {
-            rowArgs.add(normalizedEnvironment);
-            rowArgs.add(normalizedEnvironment);
-        }
+        List<Object> rowArgs = new ArrayList<>(args);
         rowArgs.add((safePage - 1) * safeSize);
         rowArgs.add(safeSize);
         String rowSql = """
@@ -937,8 +955,7 @@ public class InterfaceService {
                             ELSE 'OFFLINE' END release_run_status,
                        (SELECT COUNT(DISTINCT ea.client_id) FROM api_authorization ea JOIN api_client ec ON ec.id=ea.client_id
                         WHERE ea.interface_id=ai.id AND ea.status='ACTIVE' AND ec.status='ACTIVE'
-                          AND CURRENT_DATE BETWEEN ea.valid_from AND ea.valid_to
-                          AND (?='ALL' OR ea.environment=?)) active_authorization_client_count,
+                          AND CURRENT_DATE BETWEEN ea.valid_from AND ea.valid_to) active_authorization_client_count,
                        COALESCE((SELECT MAX(rr.released_at) FROM release_record rr WHERE rr.interface_id=ai.id),
                                 (SELECT MAX(pr.published_at) FROM published_route pr WHERE pr.interface_id=ai.id)) latest_published_at
                 FROM api_interface ai JOIN data_source ds ON ds.id=ai.data_source_id
@@ -1871,7 +1888,7 @@ public class InterfaceService {
     }
 
     public Map<String, Object> invokeAuthorized(String servicePath, String clientCode,
-                                                String environment, Map<String, Object> request) {
+                                                Map<String, Object> request) {
         Map<String, Object> route = jdbc.queryForMap("""
                 SELECT pr.interface_id id,i.status,i.published_version
                 FROM published_route pr JOIN api_interface i ON i.id=pr.interface_id
@@ -1887,9 +1904,9 @@ public class InterfaceService {
         if (!"ACTIVE".equals(client.get("status"))) throw new IllegalStateException("调用系统已停用");
         long clientId = ((Number) client.get("id")).longValue();
         List<Map<String, Object>> grants = jdbc.queryForList("""
-                SELECT daily_quota FROM api_authorization WHERE client_id=? AND interface_id=? AND environment=?
+                SELECT daily_quota FROM api_authorization WHERE client_id=? AND interface_id=?
                 AND status='ACTIVE' AND CURDATE() BETWEEN valid_from AND valid_to
-                """, clientId, interfaceId, valueOr(environment, "TEST"));
+                """, clientId, interfaceId);
         if (grants.isEmpty()) throw new IllegalStateException("当前调用系统未获得该 API 的有效授权");
         long todayCalls = Optional.ofNullable(jdbc.queryForObject("""
                 SELECT COUNT(*) FROM usage_record WHERE client_id=? AND interface_id=? AND called_at>=CURDATE()
@@ -2208,7 +2225,7 @@ public class InterfaceService {
                 """, (rs, rowNum) -> new AuthorizationRecord(
                 rs.getLong("id"), rs.getLong("client_id"), rs.getString("client_name"),
                 rs.getLong("interface_id"), rs.getString("interface_name"), rs.getString("interface_code"),
-                rs.getString("environment"), rs.getInt("daily_quota"), rs.getDate("valid_from").toLocalDate(),
+                rs.getInt("daily_quota"), rs.getDate("valid_from").toLocalDate(),
                 rs.getDate("valid_to").toLocalDate(), rs.getString("status"), rs.getString("approved_by")));
     }
 
@@ -2222,15 +2239,10 @@ public class InterfaceService {
     }
 
     public Map<String, Object> authorize(String clientCode, String servicePath) {
-        return authorize(clientCode, servicePath, null, "TEST");
+        return authorize(clientCode, servicePath, null);
     }
 
     public Map<String, Object> authorize(String clientCode, String servicePath, String apiCode) {
-        return authorize(clientCode, servicePath, apiCode, "TEST");
-    }
-
-    public Map<String, Object> authorize(String clientCode, String servicePath, String apiCode, String environment) {
-        String effectiveEnvironment = valueOr(environment, "TEST").trim().toUpperCase(Locale.ROOT);
         List<Map<String, Object>> matches = jdbc.queryForList("""
                 SELECT c.id client_id,c.client_code,i.id interface_id,i.interface_code,a.daily_quota
                 FROM api_client c
@@ -2241,12 +2253,12 @@ public class InterfaceService {
                   AND pr.service_path=?
                   AND (? IS NULL OR ? = '' OR pr.interface_code=?)
                   AND i.status NOT IN ('OFFLINE','DELETED')
-                  AND a.environment=? AND a.status='ACTIVE'
+                  AND a.status='ACTIVE'
                   AND CURRENT_DATE BETWEEN a.valid_from AND a.valid_to
-                """, clientCode, servicePath, apiCode, apiCode, apiCode, effectiveEnvironment);
+                """, clientCode, servicePath, apiCode, apiCode, apiCode);
         if (matches.isEmpty()) {
             return Map.of("authorized", false, "reason",
-                    authorizationRejectionReason(clientCode, servicePath, apiCode, effectiveEnvironment));
+                    authorizationRejectionReason(clientCode, servicePath, apiCode));
         }
         Map<String, Object> match = matches.get(0);
         int usedToday = Optional.ofNullable(jdbc.queryForObject("""
@@ -2264,7 +2276,7 @@ public class InterfaceService {
     }
 
     private String authorizationRejectionReason(String clientCode, String servicePath,
-                                                String apiCode, String environment) {
+                                                String apiCode) {
         List<Map<String, Object>> clients = jdbc.queryForList(
                 "SELECT id,status FROM api_client WHERE client_code=?", clientCode);
         if (clients.isEmpty()) return "调用系统编码未登记：" + clientCode;
@@ -2285,19 +2297,11 @@ public class InterfaceService {
         }
 
         List<Map<String, Object>> grants = jdbc.queryForList("""
-                SELECT environment,status,valid_from,valid_to FROM api_authorization
+                SELECT status,valid_from,valid_to FROM api_authorization
                 WHERE client_id=? AND interface_id=? ORDER BY id DESC
                 """, client.get("id"), api.get("id"));
         if (grants.isEmpty()) return "调用系统未获得该 API 授权";
-        List<Map<String, Object>> environmentGrants = grants.stream()
-                .filter(grant -> environment.equalsIgnoreCase(String.valueOf(grant.get("environment"))))
-                .toList();
-        if (environmentGrants.isEmpty()) {
-            String configured = grants.stream().map(grant -> String.valueOf(grant.get("environment")))
-                    .distinct().sorted().collect(java.util.stream.Collectors.joining("/"));
-            return "授权环境不匹配：当前请求 " + environment + "，已配置 " + configured;
-        }
-        Map<String, Object> grant = environmentGrants.get(0);
+        Map<String, Object> grant = grants.get(0);
         if (!"ACTIVE".equals(String.valueOf(grant.get("status")))) return "该 API 授权已停用";
         LocalDate today = LocalDate.now();
         LocalDate validFrom = ((java.sql.Date) grant.get("valid_from")).toLocalDate();
@@ -2325,20 +2329,15 @@ public class InterfaceService {
                 || Set.of("OFFLINE", "DELETED").contains(String.valueOf(api.get("status")))) {
             throw new IllegalStateException("只有已发布且在线的 API 才能授权");
         }
-        String environment = valueOr(request.environment(), "TEST").trim().toUpperCase(Locale.ROOT);
-        if (!Set.of("TEST", "PROD").contains(environment)) {
-            throw new IllegalArgumentException("环境只支持 TEST 或 PROD");
-        }
         jdbc.update("""
-                INSERT INTO api_authorization(client_id,interface_id,environment,daily_quota,valid_from,valid_to,status,approved_by)
-                VALUES(?,?,?,?,?,?,'ACTIVE',?)
+                INSERT INTO api_authorization(client_id,interface_id,daily_quota,valid_from,valid_to,status,approved_by)
+                VALUES(?,?,?,?,?,'ACTIVE',?)
                 ON DUPLICATE KEY UPDATE daily_quota=VALUES(daily_quota),valid_from=VALUES(valid_from),
                 valid_to=VALUES(valid_to),status='ACTIVE',approved_by=VALUES(approved_by)
-                """, request.clientId(), request.interfaceId(), environment, request.dailyQuota(),
+                """, request.clientId(), request.interfaceId(), request.dailyQuota(),
                 request.validFrom(), request.validTo(), request.approvedBy());
         return authorizations().stream()
-                .filter(item -> item.clientId() == request.clientId() && item.interfaceId() == request.interfaceId()
-                        && item.environment().equals(environment))
+                .filter(item -> item.clientId() == request.clientId() && item.interfaceId() == request.interfaceId())
                 .findFirst().orElseThrow();
     }
 
@@ -2350,10 +2349,6 @@ public class InterfaceService {
         if (request.dailyQuota() <= 0) throw new IllegalArgumentException("日调用配额必须大于 0");
         if (request.validFrom().isAfter(request.validTo())) {
             throw new IllegalArgumentException("生效日期不能晚于失效日期");
-        }
-        String environment = valueOr(request.environment(), "TEST").trim().toUpperCase(Locale.ROOT);
-        if (!Set.of("TEST", "PROD").contains(environment)) {
-            throw new IllegalArgumentException("环境只支持 TEST 或 PROD");
         }
         Map<String, Object> client = jdbc.queryForMap(
                 "SELECT status FROM api_client WHERE id=?", request.clientId());
@@ -2375,18 +2370,17 @@ public class InterfaceService {
             throw new IllegalStateException("以下 API 未发布或已下线，无法授权：" + invalidIds);
         }
         String sql = """
-                INSERT INTO api_authorization(client_id,interface_id,environment,daily_quota,valid_from,valid_to,status,approved_by)
-                VALUES(?,?,?,?,?,?,'ACTIVE',?)
+                INSERT INTO api_authorization(client_id,interface_id,daily_quota,valid_from,valid_to,status,approved_by)
+                VALUES(?,?,?,?,?,'ACTIVE',?)
                 ON DUPLICATE KEY UPDATE daily_quota=VALUES(daily_quota),valid_from=VALUES(valid_from),
                 valid_to=VALUES(valid_to),status='ACTIVE',approved_by=VALUES(approved_by)
                 """;
         List<Object[]> batch = interfaceIds.stream().map(interfaceId -> new Object[]{
-                request.clientId(), interfaceId, environment, request.dailyQuota(),
+                request.clientId(), interfaceId, request.dailyQuota(),
                 request.validFrom(), request.validTo(), request.approvedBy()
         }).toList();
         jdbc.batchUpdate(sql, batch);
         return authorizations().stream().filter(item -> item.clientId() == request.clientId()
-                && item.environment().equals(environment)
                 && interfaceIds.contains(item.interfaceId())).toList();
     }
 

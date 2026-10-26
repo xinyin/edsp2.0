@@ -263,16 +263,16 @@ VALUES
  JSON_ARRAY('DATASOURCE_VIEW','API_VIEW','AUDIT_VIEW'),'ACTIVE',NULL)
 ON DUPLICATE KEY UPDATE display_name=VALUES(display_name),role_code=VALUES(role_code),permissions=VALUES(permissions),status=VALUES(status);
 
-INSERT INTO data_source (id, provider_id, source_code, source_name, application_name, runtime_url, server_port, protocol_type, endpoint_url, default_timeout_ms, environment, status, instance_count, config_version)
+INSERT INTO data_source (id, provider_id, source_code, source_name, application_name, runtime_url, server_port, protocol_type, endpoint_url, default_timeout_ms, status, instance_count, config_version)
 VALUES
-    (1, 1, 'ENTERPRISE', '企业工商数据源', 'jsnx-edsp-data-enterprise', 'http://127.0.0.1:8181', 8181, 'HTTP_JSON', 'http://127.0.0.1:8090', 3000, 'TEST', 'ACTIVE', 2, 3),
-    (2, 1, 'CREDIT', '征信报告数据源', 'jsnx-edsp-data-credit', 'http://127.0.0.1:8182', 8182, 'HTTP_JSON', 'http://127.0.0.1:8090', 5000, 'TEST', 'ACTIVE', 2, 1)
+    (1, 1, 'ENTERPRISE', '企业工商数据源', 'jsnx-edsp-data-enterprise', 'http://127.0.0.1:8181', 8181, 'HTTP_JSON', 'http://127.0.0.1:8090', 3000, 'ACTIVE', 2, 3),
+    (2, 1, 'CREDIT', '征信报告数据源', 'jsnx-edsp-data-credit', 'http://127.0.0.1:8182', 8182, 'HTTP_JSON', 'http://127.0.0.1:8090', 5000, 'ACTIVE', 2, 1)
 ON DUPLICATE KEY UPDATE source_code = VALUES(source_code), source_name = VALUES(source_name),
     application_name = VALUES(application_name), runtime_url=VALUES(runtime_url), server_port=VALUES(server_port), endpoint_url=VALUES(endpoint_url),
     default_timeout_ms=VALUES(default_timeout_ms);
 
-INSERT INTO data_source (id, provider_id, source_code, source_name, application_name, runtime_url, server_port, protocol_type, endpoint_url, default_timeout_ms, environment, status, instance_count, config_version)
-VALUES (3, 1, 'ANTIFRAUD', '百融反欺诈数据源', 'jsnx-edsp-data-antifraud', 'http://127.0.0.1:8183', 8183, 'HTTP_JSON', 'http://127.0.0.1:8090', 4000, 'TEST', 'ACTIVE', 2, 1)
+INSERT INTO data_source (id, provider_id, source_code, source_name, application_name, runtime_url, server_port, protocol_type, endpoint_url, default_timeout_ms, status, instance_count, config_version)
+VALUES (3, 1, 'ANTIFRAUD', '百融反欺诈数据源', 'jsnx-edsp-data-antifraud', 'http://127.0.0.1:8183', 8183, 'HTTP_JSON', 'http://127.0.0.1:8090', 4000, 'ACTIVE', 2, 1)
 ON DUPLICATE KEY UPDATE source_name=VALUES(source_name), application_name=VALUES(application_name),
 runtime_url=VALUES(runtime_url), server_port=VALUES(server_port), endpoint_url=VALUES(endpoint_url), default_timeout_ms=VALUES(default_timeout_ms);
 
@@ -454,16 +454,16 @@ VALUES
     (2, 'MOBILE_BANK', '手机银行系统', '320000', '省联社电子银行部', '王强', 'ACTIVE')
 ON DUPLICATE KEY UPDATE client_name = VALUES(client_name), institution_name = VALUES(institution_name);
 
-INSERT INTO api_authorization (client_id, interface_id, environment, daily_quota, valid_from, valid_to, status, approved_by)
-VALUES (1, 1, 'TEST', 50000, '2026-01-01', '2027-12-31', 'ACTIVE', '平台管理员')
+INSERT INTO api_authorization (client_id, interface_id, daily_quota, valid_from, valid_to, status, approved_by)
+VALUES (1, 1, 50000, '2026-01-01', '2027-12-31', 'ACTIVE', '平台管理员')
 ON DUPLICATE KEY UPDATE daily_quota = VALUES(daily_quota), status = VALUES(status);
 
-INSERT INTO api_authorization (client_id, interface_id, environment, daily_quota, valid_from, valid_to, status, approved_by)
-VALUES (1, 3, 'TEST', 50000, '2026-01-01', '2027-12-31', 'ACTIVE', '平台管理员')
+INSERT INTO api_authorization (client_id, interface_id, daily_quota, valid_from, valid_to, status, approved_by)
+VALUES (1, 3, 50000, '2026-01-01', '2027-12-31', 'ACTIVE', '平台管理员')
 ON DUPLICATE KEY UPDATE daily_quota = VALUES(daily_quota), status = VALUES(status);
 
-INSERT INTO api_authorization (client_id, interface_id, environment, daily_quota, valid_from, valid_to, status, approved_by)
-VALUES (1, 2, 'TEST', 50000, '2026-01-01', '2027-12-31', 'ACTIVE', '平台管理员')
+INSERT INTO api_authorization (client_id, interface_id, daily_quota, valid_from, valid_to, status, approved_by)
+VALUES (1, 2, 50000, '2026-01-01', '2027-12-31', 'ACTIVE', '平台管理员')
 ON DUPLICATE KEY UPDATE daily_quota = VALUES(daily_quota), status = VALUES(status);
 
 INSERT INTO billing_rule (interface_id, billing_mode, unit_price, currency, hit_billable, miss_billable, effective_date, status)

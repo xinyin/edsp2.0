@@ -54,9 +54,6 @@ public class ExternalApiAuthFilter implements GlobalFilter, Ordered {
 
         String clientCode = exchange.getRequest().getHeaders().getFirst("X-App-Id");
         String apiKey = exchange.getRequest().getHeaders().getFirst("X-Api-Key");
-        String requestedEnvironment = exchange.getRequest().getHeaders().getFirst("X-Environment");
-        String environment = requestedEnvironment == null || requestedEnvironment.isBlank()
-                ? "TEST" : requestedEnvironment;
         if (clientCode == null || clientCode.isBlank() || !bootstrapApiKey.equals(apiKey)) {
             return reject(exchange, HttpStatus.UNAUTHORIZED, "EDSP-AUTH-401", "调用方认证失败");
         }
@@ -73,7 +70,6 @@ public class ExternalApiAuthFilter implements GlobalFilter, Ordered {
         return admin.get().uri(uriBuilder -> uriBuilder.path("/api/internal/authorizations/check")
                         .queryParam("clientCode", clientCode)
                         .queryParam("servicePath", servicePath)
-                        .queryParam("environment", environment)
                         .queryParamIfPresent("apiCode", java.util.Optional.ofNullable(exchange.getRequest().getHeaders().getFirst("X-Api-Code")))
                         .build())
                 .retrieve().bodyToMono(Map.class).materialize()

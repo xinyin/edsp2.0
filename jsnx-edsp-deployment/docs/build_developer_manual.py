@@ -317,8 +317,8 @@ def build():
     heading(doc, "7 主请求执行链")
     numbered(doc, "调用系统向 ESB 发送 Service XML，至少携带 service_sn、service_id、requester_id、service_time、version_id 和 Service_Body/request。")
     numbered(doc, "ESB Adapter 将 XML 解析为内部 JSON；以 service_id 作为平台标准服务编码，通过 Admin 解析已发布的服务路径。")
-    numbered(doc, "Adapter 向 Gateway 发送请求，并设置 X-Api-Code、X-App-Id、X-Api-Key、X-Environment 和 Trace 头。")
-    numbered(doc, "Gateway 校验本地凭证，再向 Admin 检查调用系统、接口、环境、有效期和日配额授权。")
+    numbered(doc, "Adapter 向 Gateway 发送请求，并设置 X-Api-Code、X-App-Id、X-Api-Key 和 Trace 头。")
+    numbered(doc, "Gateway 校验本地凭证，再向 Admin 检查调用系统、接口、有效期和日配额授权。")
     numbered(doc, "Gateway 用 X-Api-Code + HTTP Method + URL Path 在本地不可变路由表中精确匹配。")
     numbered(doc, "Gateway 转发到 runtime_url/internal/adapter/published，并附带 X-Route-Version 与 X-Data-Application。")
     numbered(doc, "数据应用选择与 Gateway 版本一致的 PlanSnapshot，完成请求映射和安全处理。")
@@ -369,7 +369,7 @@ def build():
         ("资源 API", "供应商方法、路径、请求/响应样例", "保存为 READY，可真实联调"),
         ("标准服务", "interface_code、对外路径、标准契约、映射、安全与码值", "配置校验通过"),
         ("发布", "release_plan_snapshot 与 published_route", "Gateway 和数据应用获得新版本"),
-        ("授权", "client + authorization", "环境、有效期和配额均满足"),
+        ("授权", "client + authorization", "有效期和配额均满足"),
     ], [1.1, 3.25, 2.4], 8)
 
     heading(doc, "12 配置化接口开发：逐步操作")
@@ -469,7 +469,7 @@ def build():
         ("线上入口验收", "XML→ESB→Gateway→线上计划", "发布与授权后", "必须已上线且已授权"),
     ], [1.25, 2.35, 1.5, 1.65], 8)
     p(doc, "Postman 直接调用 Gateway 时，URL 必须等于已发布 service_path，HTTP 方法必须一致，X-Api-Code 必须等于已发布接口编码。任意一项不一致都会 404。")
-    code(doc, "POST http://127.0.0.1:8080/api/v1/lhzx-query-01/01\nContent-Type: application/json\nX-App-Id: POSTMAN_TEST\nX-Api-Key: demo-secret-key\nX-Api-Code: LHZX_QUERY_01_SERVICE_01\nX-Environment: TEST\nX-Trace-Id: POSTMAN-LHZX-001\n\n{\n  \"query_key\": \"DEMO-001\",\n  \"query_reason\": \"业务查询\"\n}")
+    code(doc, "POST http://127.0.0.1:8080/api/v1/lhzx-query-01/01\nContent-Type: application/json\nX-App-Id: POSTMAN_TEST\nX-Api-Key: demo-secret-key\nX-Api-Code: LHZX_QUERY_01_SERVICE_01\nX-Trace-Id: POSTMAN-LHZX-001\n\n{\n  \"query_key\": \"DEMO-001\",\n  \"query_reason\": \"业务查询\"\n}")
     p(doc, "若从 Adapter 测试，则 POST /esb/queue/request、Content-Type 为 application/xml，并使用 XML body。当前本地请求-响应队列等待 10 秒，Admin/Gateway 下游超时均被限制在此时间内。")
 
     heading(doc, "19 发布、版本、下线与授权")
@@ -482,7 +482,7 @@ def build():
         ("下线", "保留可编辑", "删除", "保留历史", "停止线上入口"),
         ("恢复历史", "不等于覆盖草稿", "按选择快照恢复", "新增生命周期记录", "新请求切回选中契约"),
     ], [0.9, 1.2, 1.15, 2.15, 1.35], 8)
-    p(doc, "接口上线后，在 API 访问授权中先维护调用系统 api_client，再按机构/系统、环境、有效期和日配额批量授权。Gateway 的固定 demo-secret-key 仅代表本地凭证校验，生产必须替换为行内 IAM/密钥管理机制。")
+    p(doc, "接口上线后，在 API 访问授权中先维护调用系统 api_client，再按机构/系统、有效期和日配额批量授权。Gateway 的固定 demo-secret-key 仅代表本地凭证校验，生产必须替换为行内 IAM/密钥管理机制。")
 
     heading(doc, "20 生产部署与扩容")
     p(doc, "本项目不依赖 Docker 或 Kubernetes。每个服务以普通 JVM 部署到行内服务器，使用 F5/VIP 暴露稳定地址。新增实例由发布平台/运维脚本启动，再加入 VIP 池；页面中的 instance_count 只是元数据，不会自动创建进程。")
@@ -518,7 +518,7 @@ def build():
     heading(doc, "23 常见故障排查")
     table(doc, ["现象", "优先检查", "处理"], [
         ("Gateway 404", "apiCode、Method、Path 与 published_route", "三项必须同时匹配；刷新路由并检查重复"),
-        ("Gateway 403", "api_client、api_authorization、环境、有效期、日配额", "补授权，不要绕过过滤器"),
+        ("Gateway 403", "api_client、api_authorization、有效期、日配额", "补授权，不要绕过过滤器"),
         ("Gateway 503 未登记地址", "data_source.runtime_url", "登记目标应用 F5/VIP 并确认健康"),
         ("授权中心暂不可用", "Admin 健康与 Gateway→Admin 网络", "恢复 Admin；当前鉴权不是完全自治"),
         ("执行计划版本不一致", "published_route.route_version 与发布快照", "刷新对应应用；禁止强行跑旧计划"),
@@ -546,7 +546,7 @@ def build():
         ("release_record", "发布历史", "区分每次上线版本"),
         ("interface_lifecycle_record", "上线、下线、恢复等生命周期", "审计入口"),
         ("api_client", "调用系统", "授权外键来源"),
-        ("api_authorization", "API 授权、环境、有效期与配额", "Gateway 实时校验"),
+        ("api_authorization", "API 授权、有效期与配额", "Gateway 实时校验"),
         ("billing_rule / usage_record", "计量规则与调用明细", "异步日志不等于最终结算"),
         ("api_call_node_log", "链路节点入出参与状态", "必须脱敏"),
     ], [1.7, 2.6, 2.45], 7.6)

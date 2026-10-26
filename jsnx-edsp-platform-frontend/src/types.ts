@@ -20,7 +20,7 @@ export interface ProviderSummary { id: number; providerCode: string; providerNam
 export interface DatabaseConnectionTestResult { success: boolean; message: string; durationMs: number; databaseProduct: string | null }
 export interface ProviderAccount { id: number; providerId: number; providerName?: string; username: string; displayName: string; mobile?: string; email?: string; roleCode: string; permissions: string[]; status: string; lastLoginAt?: string; createdAt?: string }
 export interface ClientApp { id: number; clientCode: string; clientName: string; institutionCode: string; institutionName: string; ownerName?: string; status: string }
-export interface AuthorizationRecord { id: number; clientId: number; clientName: string; interfaceId: number; interfaceName: string; interfaceCode: string; environment: string; dailyQuota: number; validFrom: string; validTo: string; status: string; approvedBy?: string }
+export interface AuthorizationRecord { id: number; clientId: number; clientName: string; interfaceId: number; interfaceName: string; interfaceCode: string; dailyQuota: number; validFrom: string; validTo: string; status: string; approvedBy?: string }
 export interface BillingRule { id: number; interfaceId: number; interfaceName: string; interfaceCode: string; billingMode: string; unitPrice: number; currency: string; hitBillable: boolean; missBillable: boolean; effectiveDate: string; status: string }
 export interface BillingSummary { totalCalls: number; billableCalls: number; totalAmount: number; hitCalls: number; missCalls: number; errorCalls: number }
 export interface UsageRecord { id: number; traceId: string; clientName?: string; interfaceName: string; interfaceCode: string; resultStatus: string; standardCode: string; billable: boolean; unitPrice: number; amount: number; durationMs: number; upstreamDurationMs: number; gatewayDurationMs: number; requestStatus: string; nodeName: string; calledAt: string }
@@ -43,7 +43,6 @@ export interface DataSourceSummary {
   protocolType: string
   endpointUrl?: string
   defaultTimeoutMs?: number
-  environment: string
   status: string
   instanceCount: number
   configVersion: number

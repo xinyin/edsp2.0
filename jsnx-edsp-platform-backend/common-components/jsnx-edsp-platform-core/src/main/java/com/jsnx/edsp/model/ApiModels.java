@@ -18,7 +18,7 @@ public final class ApiModels {
 
     public record DataSourceSummary(
             long id, long providerId, String providerName, String sourceCode, String sourceName,
-            String applicationName, String runtimeUrl, int serverPort, String protocolType, String endpointUrl, int defaultTimeoutMs, String environment,
+            String applicationName, String runtimeUrl, int serverPort, String protocolType, String endpointUrl, int defaultTimeoutMs,
             String status, int instanceCount, int configVersion, int interfaceCount) {}
 
     public record InterfaceSummary(
@@ -232,7 +232,7 @@ public final class ApiModels {
             @NotBlank @Pattern(regexp = "[A-Za-z0-9_-]+", message = "数据源编码不能包含空格或特殊字符") String sourceCode,
             @NotBlank String sourceName,
             @NotBlank String protocolType, String endpoint, Integer defaultTimeoutMs,
-            @NotBlank String environment, int instanceCount) {}
+            int instanceCount) {}
 
     public record SaveDataSourceSettingsRequest(
             @NotNull Long providerId, @NotBlank String sourceName,
@@ -290,15 +290,15 @@ public final class ApiModels {
 
     public record AuthorizationRecord(
             long id, long clientId, String clientName, long interfaceId, String interfaceName,
-            String interfaceCode, String environment, int dailyQuota, LocalDate validFrom,
+            String interfaceCode, int dailyQuota, LocalDate validFrom,
             LocalDate validTo, String status, String approvedBy) {}
 
     public record CreateAuthorizationRequest(
-            long clientId, long interfaceId, @NotBlank String environment, int dailyQuota,
+            long clientId, long interfaceId, int dailyQuota,
             @NotNull LocalDate validFrom, @NotNull LocalDate validTo, String approvedBy) {}
 
     public record BatchAuthorizationRequest(
-            long clientId, @NotEmpty List<Long> interfaceIds, @NotBlank String environment, int dailyQuota,
+            long clientId, @NotEmpty List<Long> interfaceIds, int dailyQuota,
             @NotNull LocalDate validFrom, @NotNull LocalDate validTo, String approvedBy) {}
 
     public record BillingRule(

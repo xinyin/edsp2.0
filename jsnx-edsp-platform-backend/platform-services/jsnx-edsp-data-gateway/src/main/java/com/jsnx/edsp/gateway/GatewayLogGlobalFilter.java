@@ -47,7 +47,6 @@ public class GatewayLogGlobalFilter implements GlobalFilter, Ordered {
         fields.put("appId", appId);
         fields.put("orgCode", exchange.getRequest().getHeaders().getFirst("X-Org-Code"));
         fields.put("sourceSysCode", exchange.getRequest().getHeaders().getFirst("X-Source-Sys-Code"));
-        fields.put("environment", exchange.getRequest().getHeaders().getFirst("X-Environment"));
         fields.put("apiCode", valueOr(exchange.getAttribute("edsp.route.apiCode"),
                 exchange.getRequest().getHeaders().getFirst("X-Api-Code")));
         fields.put("providerCode", exchange.getRequest().getHeaders().getFirst("X-Provider-Code"));

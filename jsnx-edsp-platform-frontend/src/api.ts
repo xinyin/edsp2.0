@@ -120,7 +120,7 @@ export const api = {
   verifyResourceApi: (id: number) => request<TestResult>(`/api/resource-apis/${id}/verify`, { method: 'POST' }),
   createPlatformService: (body: Record<string, unknown>) => request<InterfaceSummary>('/api/platform-services', { method: 'POST', body: JSON.stringify(body) }),
   interfaces: (sourceId?: number) => request<InterfaceSummary[]>(sourceId ? `/api/interfaces?dataSourceId=${sourceId}` : '/api/interfaces', undefined, () => sourceId ? mock.interfaces.filter(item => item.dataSourceId === sourceId) : mock.interfaces),
-  releaseServices: (filters: { keyword?: string; providerId?: number; dataSourceId?: number; runStatus?: string; authorizationStatus?: string; environment?: string; page?: number; size?: number }) => {
+  releaseServices: (filters: { keyword?: string; providerId?: number; dataSourceId?: number; runStatus?: string; authorizationStatus?: string; page?: number; size?: number }) => {
     const params = new URLSearchParams()
     Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== null && value !== '') params.set(key, String(value)) })
     return request<ReleaseServicePage>(`/api/release-services?${params}`)

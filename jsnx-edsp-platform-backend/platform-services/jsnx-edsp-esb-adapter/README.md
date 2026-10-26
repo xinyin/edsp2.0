@@ -25,7 +25,6 @@ Data ID 为 `jsnx-edsp-esb-adapter.yaml`，Group、Namespace 分别由部署时�
 | `username`、`password` | MQ 连接身份；通过部署环境变量/密钥管理注入，不提交明文 |
 | `tls-cipher-suite`、`tls-peer-name` | TLS 套件及服务端证书主体约束（启用 TLS 时） |
 | `edsp.esb.ibm-mq.caller-keys-json` | `requester_id` 到平台调用方 API Key 的映射；密钥值从安全配置注入 |
-| `edsp.esb.environment` | Gateway 授权环境，投产时明确设为 `PROD` |
 
 旧系统配置已确认是双活：`rq` 为平台获取请求消息的队列，`sq` 为平台发送响应消息的队列。因此两套 `request-queue` 均对应旧系统的 `rq`（截图中为 `IBM.SERVICE.REQUEST.OUT.MSDSP`），两套 `response-queue` 均对应 `sq`（截图中为 `IBM.SERVICE.RESPONSE.IN`）。相同队列名位于不同队列管理器，互不共用连接。每个监听容器用自己的 MQ 连接和事务会话完成消费与响应发送。单边 MQ 故障时另一边可继续处理本侧流量，但不能自动接管故障侧队列积压；ESB 上游应负责入口分流或故障切换。
 
@@ -60,7 +59,7 @@ Accept: application/xml
 
 正常请求返回 `application/xml`。联调页面使用 `?diagnostic=true` 获取 JSON 诊断对象，其中同时包含 `standardResponse` 和最终 `xmlResponse`。
 
-Gateway 授权环境由 `edsp.esb.environment` 配置，默认 `TEST`；生产环境应在 Nacos 中明确设置为 `PROD`，不从业务请求报文接受环境覆盖。
+Gateway 按调用系统、API、有效期和日配额校验授权，不需要环境请求头或额外的环境授权配置。
 
 生产请求至少包含：
 

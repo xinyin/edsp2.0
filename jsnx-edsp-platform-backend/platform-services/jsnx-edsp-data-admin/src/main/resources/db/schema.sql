@@ -60,7 +60,6 @@ CREATE TABLE IF NOT EXISTS data_source (
     protocol_type VARCHAR(32) NOT NULL DEFAULT 'HTTP_JSON',
     endpoint_url VARCHAR(500),
     default_timeout_ms INT NOT NULL DEFAULT 3000,
-    environment VARCHAR(16) NOT NULL DEFAULT 'TEST',
     status VARCHAR(16) NOT NULL DEFAULT 'ACTIVE',
     instance_count INT NOT NULL DEFAULT 2,
     config_version INT NOT NULL DEFAULT 1,
@@ -309,14 +308,13 @@ CREATE TABLE IF NOT EXISTS api_authorization (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     client_id BIGINT NOT NULL,
     interface_id BIGINT NOT NULL,
-    environment VARCHAR(16) NOT NULL DEFAULT 'TEST',
     daily_quota INT NOT NULL DEFAULT 10000,
     valid_from DATE NOT NULL,
     valid_to DATE NOT NULL,
     status VARCHAR(16) NOT NULL DEFAULT 'ACTIVE',
     approved_by VARCHAR(64),
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_client_interface_env (client_id, interface_id, environment),
+    UNIQUE KEY uk_client_interface (client_id, interface_id),
     CONSTRAINT fk_auth_client FOREIGN KEY (client_id) REFERENCES api_client(id),
     CONSTRAINT fk_auth_interface FOREIGN KEY (interface_id) REFERENCES api_interface(id)
 );

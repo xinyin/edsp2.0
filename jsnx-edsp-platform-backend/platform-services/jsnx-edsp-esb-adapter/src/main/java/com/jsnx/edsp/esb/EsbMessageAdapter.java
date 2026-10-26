@@ -24,7 +24,6 @@ public class EsbMessageAdapter {
     private final String responseTopic;
     private final Duration adminTimeout;
     private final Duration gatewayTimeout;
-    private final String environment;
     private final String internalTestKey;
 
     public EsbMessageAdapter(ObjectMapper json, EsbXmlProtocol xmlProtocol,
@@ -32,11 +31,10 @@ public class EsbMessageAdapter {
                              @Value("${edsp.gateway-uri:http://127.0.0.1:8080}") String gatewayUri,
                              @Value("${edsp.admin-uri:http://127.0.0.1:8081}") String adminUri,
                              @Value("${edsp.esb.response-topic:edsp.esb.response}") String responseTopic,
-                             @Value("${edsp.esb.environment:TEST}") String environment,
                              @Value("${edsp.esb.admin-timeout-ms:3000}") long adminTimeoutMs,
                              @Value("${edsp.esb.gateway-timeout-ms:8000}") long gatewayTimeoutMs,
                              @Value("${edsp.test-tool.internal-key:demo-internal-test-key}") String internalTestKey) {
-        this.json=json; this.xmlProtocol=xmlProtocol; this.gateway=builder.baseUrl(gatewayUri).build(); this.admin=builder.baseUrl(adminUri).build(); this.kafka=kafka; this.responseTopic=responseTopic; this.environment=environment;
+        this.json=json; this.xmlProtocol=xmlProtocol; this.gateway=builder.baseUrl(gatewayUri).build(); this.admin=builder.baseUrl(adminUri).build(); this.kafka=kafka; this.responseTopic=responseTopic;
         this.adminTimeout = Duration.ofMillis(Math.max(500, adminTimeoutMs));
         this.gatewayTimeout = Duration.ofMillis(Math.max(1000, gatewayTimeoutMs));
         this.internalTestKey = internalTestKey;
@@ -78,7 +76,6 @@ public class EsbMessageAdapter {
                     .header("X-App-Id",appId).header("X-Api-Key",apiKey)
                     .header("X-Trace-Id", effectiveTraceId)
                     .header("X-Api-Code", apiCode == null ? "" : apiCode)
-                    .header("X-Environment", environment)
                     .header("X-Entry-Channel", "ESB");
             if (diagnostic) {
                 gatewayRequest = gatewayRequest

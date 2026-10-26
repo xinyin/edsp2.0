@@ -171,7 +171,7 @@ modules=[
 ('上游能力接入','维护资源 API 的地址、方法、请求响应样例和超时；实际调用上游验证','草稿可保存；只有 READY 资源可用于标准服务开发'),
 ('标准服务开发','引用资源 API，定义对外接口编码、路径、标准请求、映射、返回码、安全策略','请求与响应独立配置，无映射时该方向透传'),
 ('服务发布','配置校验、直接上线、历史快照、下线、恢复线上版本和归档','链路测试可选；上线与下线均保留历史'),
-('API 访问授权','维护机构与调用系统，对接口进行单项或批量授权，配置环境、有效期和日配额','凭证校验与 API 授权不同；两项均通过才能调用'),
+('API 访问授权','维护机构与调用系统，对接口进行单项或批量授权，配置有效期和日配额','凭证校验与 API 授权不同；两项均通过才能调用'),
 ('计量管理','维护接口单价、命中计量条件，查询明细、金额和结果分布','现有异步日志可丢失，不是金融级最终结算账'),
 ('链路追踪','按调用记录和 Trace ID 查看成功失败、节点入出参和状态','全链路节点测量仍有模拟值，见详设边界'),
 ('运行监控','调用量、成功失败、耗时趋势、节点概况与告警展示','不是主机监控或全功能 APM')]
@@ -223,17 +223,17 @@ def manual():
     table(d,['操作','结果'],[('首次反复保存','current_version 为 1，published_version 为空'),('首次上线','线上 V1，生成发布快照与路由'),('修改已上线服务并保存','形成 V2 草稿，线上仍 V1'),('继续保存同一草稿','V2 不因保存次数增加'),('下线','停止线上流量，仍可编辑草稿'),('恢复线上 V1','恢复旧快照，不发布 V2 草稿'),('上线草稿 V2','通过配置校验后发布 V2'),('删除或归档','未发布草稿可删除；有历史的接口先下线再归档，日志与发布记录保留')],[1.65,5.35])
     p(d,'服务发布页面查看当前草稿与已发布版本。没有链路测试记录不阻止上线，但静态配置校验失败仍应修复。历史审批功能不是当前主流程的前置条件。')
     h(d,'6 调用系统与批量授权')
-    p(d,'进入 API 访问授权，先建立调用系统及法人机构信息，再选择接口设置环境、起止日期和日配额。批量操作前使用数据源和搜索筛选，核对已选集合及数量，再保存。确认调用请求的 X-App-Id 与 client_code 完全一致，environment 与授权环境一致。')
+    p(d,'进入 API 访问授权，先建立调用系统及法人机构信息，再选择接口设置起止日期和日配额。批量操作前使用数据源和搜索筛选，核对已选集合及数量，再保存。确认调用请求的 X-App-Id 与 client_code 完全一致。')
     p(d,'配置调用系统不等于完成凭证发放。当前 Gateway 开发凭证为配置项 edsp.auth.bootstrap-api-key；正式环境需对接独立的调用方凭证体系。下线后授权记录保留，但无法调用；恢复线上后有效授权可继续使用。')
     h(d,'7 Postman 完整链路验收')
     p(d,'先完成上线、运行地址登记及授权，再使用 POST http://127.0.0.1:8084/esb/queue/request。每次调用使用不同 Trace ID，避免 usage_record 唯一键将多次调用合并。')
-    table(d,['请求头','填写内容'],[('Content-Type','application/xml'),('X-App-Id','已授权的 client_code'),('X-Api-Key','当前环境配置的调用凭证'),('X-Trace-Id','POSTMAN-20261009-0001，每次递增或使用 UUID')],[1.6,5.4])
+    table(d,['请求头','填写内容'],[('Content-Type','application/xml'),('X-App-Id','已授权的 client_code'),('X-Api-Key','当前配置的调用凭证'),('X-Trace-Id','POSTMAN-20261009-0001，每次递增或使用 UUID')],[1.6,5.4])
     p(d,'请求示例，替换 apiCode 为已上线的标准服务编码，body 使用该服务标准请求字段：')
     p(d,'<Service>\n  <Service_Header>\n    <service_sn>TRACE-001</service_sn>\n    <service_id>COMPANY_QUERY_SERVICE</service_id>\n    <requester_id>LOAN_APPROVAL</requester_id>\n    <service_time>20261012140000</service_time>\n    <version_id>01</version_id>\n  </Service_Header>\n  <Service_Body>\n    <request><companyCode>DEMO-001</companyCode></request>\n  </Service_Body>\n</Service>')
     p(d,'预期响应结构：{"code":"EXT-SUCCESS","message":"查询成功","resultStatus":"HIT","traceId":"...","data":{...}}。实际标准码和 data 以已发布配置为准；未命中应检查 MISS，不能仅检查 HTTP 状态。')
     h(d,'8 调用追踪与计量核对');p(d,'在链路追踪按 Trace ID 查记录，点击节点查看输入输出。依次确认 ESB 解析参数、Gateway 目标、实际供应商请求和响应转换结果。日志异步入库，短时查不到可稍后刷新；传输故障允许丢日志，不保证每笔都有完整节点。计量管理按接口规则显示单价和金额，最终结算需可靠数据渠道。')
     h(d,'9 常见问题')
-    table(d,['现象','检查顺序'],[('保存按钮不可用','确认当前资源与编辑内容已加载，检查必填字段和网络错误；已下线不应禁止保存'),('供应商 400 缺少字段','先看实际上游请求，再对比已保存资源契约；确认请求映射方向'),('Gateway 403','调用系统、接口、环境、有效期、启用状态和日配额'),('Gateway 503 无运行地址','data_source.runtime_url 与实际应用端口、application_name 归属'),('ESB 等待超时','查看 Adapter、Gateway、上游耗时；外层超时应覆盖内层与处理余量'),('路由不存在','确认上线及 published_route；检查 code、HTTP 方法和路径一致性'),('上线提示缺字段','同步上游契约，检查映射后的实际字段及默认值；测试不替代静态校验'),('页面已变但接口仍旧','确认重载了对应后端 JAR；页面热更新不会重启 Java'),('新配置未生效','确认保存后已上线；查看 route_version、发布快照和数据应用选中版本')],[1.65,5.35])
+    table(d,['现象','检查顺序'],[('保存按钮不可用','确认当前资源与编辑内容已加载，检查必填字段和网络错误；已下线不应禁止保存'),('供应商 400 缺少字段','先看实际上游请求，再对比已保存资源契约；确认请求映射方向'),('Gateway 403','调用系统、接口、有效期、启用状态和日配额'),('Gateway 503 无运行地址','data_source.runtime_url 与实际应用端口、application_name 归属'),('ESB 等待超时','查看 Adapter、Gateway、上游耗时；外层超时应覆盖内层与处理余量'),('路由不存在','确认上线及 published_route；检查 code、HTTP 方法和路径一致性'),('上线提示缺字段','同步上游契约，检查映射后的实际字段及默认值；测试不替代静态校验'),('页面已变但接口仍旧','确认重载了对应后端 JAR；页面热更新不会重启 Java'),('新配置未生效','确认保存后已上线；查看 route_version、发布快照和数据应用选中版本')],[1.65,5.35])
     save(d,'02 使用手册')
 
 TABLES={
@@ -245,7 +245,7 @@ TABLES={
 'vendor_mock_config':('内置模拟配置','历史内置模拟上游；独立供应商不依赖此表'), 'release_record':('发布记录','版本发布结果与操作者'),
 'release_plan_snapshot':('发布执行计划','持久化不可变执行快照'), 'release_approval':('发布审批','保留审批扩展流程'),
 'interface_lifecycle_record':('生命周期记录','上线、下线、恢复及归档操作审计'), 'api_client':('调用系统','系统编码与法人机构'),
-'api_authorization':('API 授权','系统与接口在指定环境的授权及配额'), 'billing_rule':('计量规则','接口单价与计量配置'),
+'api_authorization':('API 授权','系统与接口的授权、有效期及配额'), 'billing_rule':('计量规则','接口单价与计量配置'),
 'usage_record':('调用计量明细','按 Trace ID 归集调用结果与金额'), 'api_call_node_log':('节点日志','按 Trace ID 保存节点状态和入出参'),
 'demo_async_event':('本地异步事件','HTTP 模拟 Kafka 接收的事件原文'),
 'vendor_data_source':('供应商数据源','独立供应商的资源目录'), 'vendor_api_definition':('供应商 API 定义','模拟接口契约与返回模板'),
@@ -289,7 +289,6 @@ runtime_url=数据应用运行地址或生产 VIP
 protocol_type=协议类型标记
 endpoint_url=供应商基础地址
 default_timeout_ms=数据源默认超时 毫秒
-environment=环境编码 与授权环境匹配
 instance_count=实例数配置元数据 不创建实际进程
 config_version=数据源配置修订号
 data_source_id=所属数据源主键
@@ -440,7 +439,7 @@ def design():
     p(d,'PlanMappingSupport 按方向执行映射；空集合复制原对象。启用规则后输出新对象，仅写入已配置目标路径。默认值在读取值缺失或空串时使用；枚举、常量、大小写、日期、加密和签名基于 transform_type 与 transform_config。数组及嵌套能力须以 FieldTransformSupport 的路径语法为准。')
     p(d,'LocalPlanRuntime 从 vendor_code_path 提取原始码并匹配 response_code_mapping。未匹配默认 ERROR。当前仅 HIT 分支执行响应映射，MISS / ERROR 的标准数据为空。安全算法由 SecurityAlgorithmRegistry 注册表和 Java SPI 提供；密钥引用在执行应用环境中解析，发布计划不应存明文密钥。')
     h(d,'7 授权与计量设计')
-    p(d,'api_authorization 使用 client_id、interface_id、environment 联合唯一键，每条记录包含有效期、状态和日配额。当前 Gateway 每次向 Admin 查询授权，存在同步控制面依赖。当前配额基于已落库记录统计，异步延迟和丢失可能使配额不精确；生产应采用原子配额策略。')
+    p(d,'api_authorization 使用 client_id、interface_id 联合唯一键，每条记录包含有效期、状态和日配额。当前 Gateway 每次向 Admin 查询授权，存在同步控制面依赖。当前配额基于已落库记录统计，异步延迟和丢失可能使配额不精确；生产应采用原子配额策略。')
     p(d,'观测服务 consumeCall 根据接口查询单价，以事件 billable 标记计算 amount，并以 trace_id 唯一键写 usage_record。当前此路径未完整执行规则生效日期和所有计量模式；日志丢失、重复 Trace ID、单价变更时点会影响结算准确性。正式账务应独立建立可靠投递、幂等、规则版本及对账机制。')
     h(d,'8 日志与故障边界')
     p(d,'Gateway 日志通过 log-core 有界队列发送，故障允许丢弃并计数。数据应用 DemoEventClient 当前采用单线程无界任务队列，虽然异步异常不回传业务，但持续故障下可能积压内存；生产必须改成有界队列、限长报文、超时和丢弃计数。')
@@ -488,7 +487,7 @@ def design():
     p(d,'1 在 data-applications 创建独立 Spring Boot 模块，使用 JDK 17，引入 contracts、client-sdk 及实际必要组件；配置唯一应用名和端口。2 注册数据源，填写与进程一致的 application_name 和 runtime_url。3 实现供应商特殊算法或协议的扩展，通用字段转换采用配置。4 接入资源 API 并建立标准服务。5 单元、契约、草稿和入口测试后上线并授权。6 以普通 JVM 部署，多实例通过行内 VIP 对外。')
     p(d,'配置变更通过发布快照动态生效；Java 算法变更通过构建、版本化发布与滚动更新完成。核心组件缺陷应按受影响依赖范围升级、灰度及回滚，不能承诺只更新一处就让已加载旧 JAR 的 50 个进程自动修复。')
     h(d,'13 验收与生产化清单')
-    table(d,['验收项','判定标准'],[('契约转换','透传、嵌套、数组、必填、枚举、日期和错误输入分别有契约样例'),('热发布','并发请求验证新旧版本不混用；刷新通知丢失后可收敛'),('生命周期','下线可开发；恢复旧版不带草稿；归档保留历史'),('授权','未授权、过期、错误环境、停用和超配额均被拒绝'),('故障隔离','供应商慢响应不拖垮其他应用；共享 Admin 故障影响明确'),('日志压力','长报文、队列满、观测不可用时进程内存有上界'),('真实追踪','每个节点真实起止时间与状态，日志去敏，失败链可追溯'),('数据治理','迁移脚本、备份恢复、归档周期及权限审计'),('容量','按峰值与慢上游并发压测，不以日均吞吐代替 SLA'),('安全','移除固定登录和共享示例凭证，接入 IAM 与密钥系统，内部接口鉴权')],[1.3,5.7])
+    table(d,['验收项','判定标准'],[('契约转换','透传、嵌套、数组、必填、枚举、日期和错误输入分别有契约样例'),('热发布','并发请求验证新旧版本不混用；刷新通知丢失后可收敛'),('生命周期','下线可开发；恢复旧版不带草稿；归档保留历史'),('授权','未授权、过期、停用和超配额均被拒绝'),('故障隔离','供应商慢响应不拖垮其他应用；共享 Admin 故障影响明确'),('日志压力','长报文、队列满、观测不可用时进程内存有上界'),('真实追踪','每个节点真实起止时间与状态，日志去敏，失败链可追溯'),('数据治理','迁移脚本、备份恢复、归档周期及权限审计'),('容量','按峰值与慢上游并发压测，不以日均吞吐代替 SLA'),('安全','移除固定登录和共享示例凭证，接入 IAM 与密钥系统，内部接口鉴权')],[1.3,5.7])
     h(d,'14 实现定位')
     for f in ['platform-services/jsnx-edsp-data-admin/src/main/java/com/jsnx/edsp/web/ApiController.java','common-components/jsnx-edsp-platform-core/src/main/java/com/jsnx/edsp/service/InterfaceService.java','platform-services/jsnx-edsp-data-gateway/src/main/java/com/jsnx/edsp/gateway/PublishedRouteRegistry.java','common-components/jsnx-edsp-client-sdk/src/main/java/com/jsnx/edsp/sdk/LocalPlanRuntime.java','common-components/jsnx-edsp-client-sdk/src/main/java/com/jsnx/edsp/sdk/StandardDataApplicationExecutor.java','platform-services/jsnx-edsp-data-observability/src/main/java/com/jsnx/edsp/observability/DemoEventIngestionService.java']:p(d,f)
     save(d,'03 详细设计与数据库设计')
