@@ -382,6 +382,8 @@ test('登录页使用提供的银行品牌版式，并保留真实登录表单',
   assert.ok(logo.length > 0)
   assert.match(loginStyles, /\.bank-login-shell\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1\.14fr\) minmax\(0, 1fr\)/)
   assert.match(loginStyles, /@media \(max-width: 600px\)/)
+  assert.match(loginStyles, /\.bank-login-field \.el-input__inner:-webkit-autofill/)
+  assert.match(loginStyles, /-webkit-text-fill-color: var\(--login-text\);/)
   assert.doesNotMatch(appText, /登录平台|EXTERNAL DATA SERVICE PLATFORM/)
   assert.match(appText, /const loginForm = ref\(\{ username: '', password: '' \}\)/)
   assert.match(appText, /for="login-username"[\s\S]*autocomplete="username"[\s\S]*for="login-password"[\s\S]*autocomplete="current-password"/)

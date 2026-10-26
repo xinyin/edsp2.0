@@ -2,6 +2,7 @@
   --login-text: #eef3fb;
   --login-secondary: #9caecb;
   --login-muted: #7185a5;
+  --login-input-bg: #17243b;
   min-height: 100vh;
   min-height: 100dvh;
   width: 100%;
@@ -99,12 +100,20 @@
   min-height: 50px;
   padding: 0 15px;
   border-radius: 9px;
-  background: rgba(255, 255, 255, .045);
+  background: var(--login-input-bg);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, .13) inset;
 }
 .bank-login-field .el-input__wrapper:hover { box-shadow: 0 0 0 1px rgba(133, 171, 232, .55) inset; }
 .bank-login-field .el-input__wrapper.is-focus { box-shadow: 0 0 0 2px #4d85ff inset; }
-.bank-login-field .el-input__inner { color: var(--login-text); font-size: 14px; }
+.bank-login-field .el-input__inner { color: var(--login-text); background: transparent; font-size: 14px; }
+.bank-login-field .el-input__inner:-webkit-autofill,
+.bank-login-field .el-input__inner:-webkit-autofill:hover,
+.bank-login-field .el-input__inner:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--login-text);
+  caret-color: var(--login-text);
+  box-shadow: 0 0 0 1000px var(--login-input-bg) inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
 .bank-login-field .el-input__inner::placeholder { color: #8395b0; }
 .bank-login-field .el-input__prefix,
 .bank-login-field .el-input__suffix { color: var(--login-muted); }
