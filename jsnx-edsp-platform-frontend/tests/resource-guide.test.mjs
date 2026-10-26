@@ -358,6 +358,20 @@ test('授权清单同时按调用系统与接口关键词过滤，单页最多20
   assert.equal(s.filteredAuthorizations.value[0].id, 44)
 })
 
+test('进入授权页时重新读取服务目录，包含缓存建立后发布的 API', async () => {
+  let loads = 0
+  const published = { id: 13, dataSourceId: 1, interfaceCode: 'NEW_SERVICE', interfaceName: '新服务',
+    servicePath: '/api/v1/new', status: 'PUBLISHED', publishedVersion: 1 }
+  const s = harness({ interfaces: async () => ++loads === 1 ? [] : [published] })
+
+  await s.navigate('billing')
+  assert.equal(s.allInterfaces.value.length, 0)
+  await s.navigate('authorization')
+
+  assert.equal(loads, 2)
+  assert.equal(s.allInterfaces.value[0].id, 13)
+})
+
 test('请求映射与响应整报文封装独立配置；关闭安全策略可跳过', () => {
   const steps = guide.buildResourceGuide({ ...baseGuide, mappings: [mapping('REQUEST')] })
   assert.equal(steps[1].done, true)

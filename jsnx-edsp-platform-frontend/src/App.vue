@@ -1252,7 +1252,9 @@ async function navigate(menu: string) {
   const originatingResourceApiId = activeMenu.value === 'resource' ? selectedInterfaceId.value : undefined
   activeMenu.value = menu
   if (menu === 'overview') void refreshOverview()
-  if (['resource', 'service-development', 'authorization', 'billing'].includes(menu)) {
+  if (menu === 'authorization') {
+    await loadPlatformInterfaceCatalog()
+  } else if (['resource', 'service-development', 'billing'].includes(menu)) {
     if (!interfaceCatalogLoaded.value) await loadPlatformInterfaceCatalog()
   }
   if (menu === 'authorization') {
