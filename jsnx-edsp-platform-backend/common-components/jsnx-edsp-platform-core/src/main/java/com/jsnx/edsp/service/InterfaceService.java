@@ -832,7 +832,7 @@ public class InterfaceService {
                     upstream_url,upstream_path,config_scope,dispatch_mode,request_schema,response_schema,request_example,
                     upstream_request_example,upstream_response_example,standard_response_example,upstream_request_headers,timeout_ms,retry_count,
                     execution_mode,sql_template,sql_parameters,upstream_status,status,current_version)
-                VALUES(?,?,?,?,?, ?,?,?,?,'DIRECT',?,?,?,?,?,?,?,?,?,?,?,0,'READY','DRAFT',1)
+                VALUES(?,?,?,?,?,?,?,?,?,'DIRECT',?,?,?,?,?,?,?,?,0,?,?,?,'READY','DRAFT',1)
                 """, resource.summary().id(), resource.summary().dataSourceId(), request.serviceCode().trim().toUpperCase(Locale.ROOT),
                 request.serviceName().trim(), servicePath, request.httpMethod().toUpperCase(Locale.ROOT), resource.summary().upstreamUrl(),
                 resource.summary().upstreamPath(), resource.summary().configScope(),
@@ -3106,9 +3106,8 @@ public class InterfaceService {
         return (rs, rowNum) -> {
             String scope = valueOr(rs.getString("config_scope"), "OVERRIDE");
             String upstreamPath = rs.getString("upstream_path");
-            String effectiveUrl = "INHERIT".equals(scope)
-                    ? joinUrl(rs.getString("endpoint_url"), upstreamPath)
-                    : rs.getString("upstream_url");
+            String effectiveUrl = effectiveUpstreamUrl(scope, rs.getString("execution_mode"),
+                    rs.getString("endpoint_url"), upstreamPath, rs.getString("upstream_url"));
             Integer configuredTimeout = (Integer) rs.getObject("timeout_ms");
             int effectiveTimeout = configuredTimeout == null ? rs.getInt("default_timeout_ms") : configuredTimeout;
             return new InterfaceSummary(rs.getLong("id"), rs.getLong("data_source_id"),
@@ -3145,8 +3144,8 @@ public class InterfaceService {
         return (rs, rowNum) -> {
             String scope = valueOr(rs.getString("config_scope"), "OVERRIDE");
             String path = rs.getString("upstream_path");
-            String effectiveUrl = "INHERIT".equals(scope)
-                    ? joinUrl(rs.getString("source_endpoint_url"), path) : rs.getString("upstream_url");
+            String effectiveUrl = effectiveUpstreamUrl(scope, rs.getString("execution_mode"),
+                    rs.getString("source_endpoint_url"), path, rs.getString("upstream_url"));
             Integer configured = (Integer) rs.getObject("timeout_ms");
             int timeout = configured == null ? rs.getInt("default_timeout_ms") : configured;
             Timestamp verified = rs.getTimestamp("verified_at");
@@ -3346,6 +3345,11 @@ public class InterfaceService {
         if (baseUrl == null || baseUrl.isBlank()) return path;
         if (path == null || path.isBlank()) return trimTrailingSlash(baseUrl);
         return trimTrailingSlash(baseUrl) + normalizePath(path);
+    }
+
+    String effectiveUpstreamUrl(String scope, String executionMode, String baseUrl, String path, String storedUrl) {
+        return "INHERIT".equals(scope) && !isSqlExecution(executionMode)
+                ? joinUrl(baseUrl, path) : storedUrl;
     }
 
     private RowMapper<ReleaseApproval> approvalMapper() {

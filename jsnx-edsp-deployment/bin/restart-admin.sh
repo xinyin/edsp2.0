@@ -50,7 +50,7 @@ fi
 
 echo "构建 Core 和 Admin（不解析其他数据应用）..."
 mvn -q -f "$BACKEND_DIR/common-components/jsnx-edsp-platform-core/pom.xml" install -DskipTests
-mvn -q -f "$MODULE_DIR/pom.xml" package -DskipTests
+mvn -q -f "$MODULE_DIR/pom.xml" clean package -DskipTests
 [[ -f "$JAR" ]] || { echo "未找到 Admin JAR" >&2; exit 1; }
 
 if [[ -n "$old_pid" ]]; then

@@ -65,6 +65,32 @@ class ResourceServiceBoundaryTest {
     }
 
     @Test
+    void databaseResourceKeepsItsStoredRouteWhenInheritingConnectionSettings() throws Exception {
+        assertThat(service.effectiveUpstreamUrl("INHERIT", "SQL", null, null, "jdbc://COMPANY_QUERY"))
+                .isEqualTo("jdbc://COMPANY_QUERY");
+        assertThat(service.effectiveUpstreamUrl("INHERIT", "HTTP", "https://provider.example", "/query", "old"))
+                .isEqualTo("https://provider.example/query");
+
+        when(jdbc.queryForObject(anyString(), org.mockito.ArgumentMatchers.<RowMapper<ResourceApiSummary>>any(), eq(7L)))
+                .thenReturn(new ResourceApiSummary(7, 3, "COMPANY_QUERY", "企业工商信息查询接口01", "POST",
+                        "jdbc://COMPANY_QUERY", null, "INHERIT", 3000, "READY", 2,
+                        null, LocalDateTime.now(), 0));
+        when(jdbc.queryForMap(anyString(), eq(7L))).thenReturn(Map.of(
+                "request_example", "{}", "response_example", "{}", "request_headers", "{}",
+                "execution_mode", "SQL", "sql_template", "SELECT name FROM company WHERE id = :id",
+                "sql_parameters", "{\"id\":\"STRING\"}"));
+
+        service.createPlatformService(new CreatePlatformServiceRequest(7, "company_service", "工商查询服务",
+                "/api/v1/company/01", "POST"));
+
+        ArgumentCaptor<Object[]> args = ArgumentCaptor.forClass(Object[].class);
+        verify(jdbc).update(argThat(sql -> sql.contains("INSERT INTO api_interface")
+                && sql.contains("?,?,?,?,?,?,?,?,0,?,?,?,'READY','DRAFT',1")), args.capture());
+        assertThat(args.getValue()[6]).isEqualTo("jdbc://COMPANY_QUERY");
+        assertThat(args.getValue()[17]).isEqualTo("SQL");
+    }
+
+    @Test
     void unsavedResourceCannotCreateService() {
         resourceStatus("DRAFT");
         assertThatThrownBy(() -> service.createPlatformService(
