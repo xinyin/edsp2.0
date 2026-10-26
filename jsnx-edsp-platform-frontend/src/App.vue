@@ -761,7 +761,7 @@ const pendingApprovals = computed(() => approvals.value.filter(item => item.stat
 const logSelectedNode = computed(() => callTrace.value?.nodes.find(node => node.key === selectedLogNodeKey.value) ?? callTrace.value?.nodes[0])
 const failedCallCount = computed(() => callLogs.value.filter(item => item.requestStatus !== 'SUCCESS' || item.resultStatus === 'ERROR').length)
 const overviewSuccessRate = computed(() => monitorSummary.value.totalCalls > 0 ? monitorSummary.value.successRate : 100)
-const overviewMaxCalls = computed(() => Math.max(1, ...monitorPoints.value.map(item => item.calls)))
+const overviewMaxCalls = computed(() => Math.max(0, ...monitorPoints.value.map(item => item.calls)))
 const overviewResultTotal = computed(() => Math.max(1, billingSummary.value.hitCalls + billingSummary.value.missCalls + billingSummary.value.errorCalls))
 const overviewResultMix = computed(() => [
   { key: 'hit', label: '成功命中', value: billingSummary.value.hitCalls, color: '#718d7e' },
@@ -802,7 +802,7 @@ const activeMonitorPointIndex = ref<number | null>(null)
 const activeMonitorNodeKey = ref('VENDOR')
 const selectedMonitorAlertIndex = ref(0)
 const monitorRecordFilter = ref<'ALL' | 'ERROR' | 'SLOW'>('ALL')
-const monitorTimeline = computed(() => [...monitorPoints.value].reverse())
+const monitorTimeline = computed(() => monitorPoints.value.filter(point => point.calls > 0))
 const activeMonitorPoint = computed(() => activeMonitorPointIndex.value == null ? null : monitorTimeline.value[activeMonitorPointIndex.value])
 const monitorPlatformDuration = computed(() => Math.max(2, monitorSummary.value.avgDurationMs - monitorSummary.value.avgUpstreamDurationMs))
 const monitorTopologyNodes = computed(() => {
@@ -959,6 +959,17 @@ async function loadAll() {
     if (!selectedProviderId.value && providerData.length) { selectedProviderId.value = providerData[0].id; await loadProviderAccounts() }
     if (loadCatalog) await loadInterfaces(false)
   } finally { loading.value = false }
+}
+
+async function refreshOverview() {
+  const [dashboardData, monitor, points, billing, usage] = await Promise.all([
+    api.dashboard(), api.monitorSummary(), api.monitorPoints(), api.billingSummary(), api.usageRecords()
+  ])
+  dashboard.value = dashboardData
+  monitorSummary.value = monitor
+  monitorPoints.value = points
+  billingSummary.value = billing
+  usageRecords.value = usage
 }
 
 async function loadSecurityAlgorithms() {
@@ -1240,6 +1251,7 @@ async function navigate(menu: string) {
   if (['resource', 'service-development'].includes(activeMenu.value) && !await confirmDiscardUnsaved()) return
   const originatingResourceApiId = activeMenu.value === 'resource' ? selectedInterfaceId.value : undefined
   activeMenu.value = menu
+  if (menu === 'overview') void refreshOverview()
   if (['resource', 'service-development', 'authorization', 'billing'].includes(menu)) {
     if (!interfaceCatalogLoaded.value) await loadPlatformInterfaceCatalog()
   }
@@ -1297,7 +1309,8 @@ async function refreshCurrentWorkspace() {
   if (guideBusy.value || testRunning.value || connectionSaving.value) return
   if (['resource', 'service-development'].includes(activeMenu.value) && !await confirmDiscardUnsaved()) return
   try {
-    if (activeMenu.value === 'discovery') await loadResourceDirectory()
+    if (activeMenu.value === 'overview') await refreshOverview()
+    else if (activeMenu.value === 'discovery') await loadResourceDirectory()
     else if (activeMenu.value === 'documents') await loadResourceDocuments()
     else if (activeMenu.value === 'reports') await loadUsageReport()
     else if (activeMenu.value === 'monitor') await refreshMonitor()
@@ -3216,15 +3229,15 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
 
           <section class="cockpit-analytics">
             <div class="cockpit-panel trend-panel">
-              <header><div><span aria-hidden="true" class="decorative-eyebrow"></span><strong>平台调用趋势</strong></div><div class="chart-legend"><i class="success"></i>成功<i class="error"></i>异常</div></header>
+              <header><div><span aria-hidden="true" class="decorative-eyebrow"></span><strong>平台调用趋势 · 近 24 小时</strong></div><div class="chart-legend"><i class="success"></i>成功<i class="error"></i>异常</div></header>
               <div class="traffic-chart" :class="{ inspecting: activeTrendIndex !== null }">
                 <div class="chart-grid"><i></i><i></i><i></i><i></i></div>
                 <button v-for="(point,index) in monitorPoints" :key="point.timeLabel" type="button" class="traffic-column" :class="{ active: activeTrendIndex === index }" :aria-label="`${point.timeLabel}，调用 ${point.calls} 次，异常 ${point.errorCalls} 次`" @mouseenter="activeTrendIndex=index" @mouseleave="activeTrendIndex=null" @focus="activeTrendIndex=index" @blur="activeTrendIndex=null">
-                  <div class="traffic-stack" :style="{ height: `${Math.max(8, point.calls / overviewMaxCalls * 100)}%` }"><i class="error" :style="{ height: `${point.calls ? point.errorCalls / point.calls * 100 : 0}%` }"></i></div>
-                  <span>{{ point.timeLabel }}</span>
+                  <div v-if="point.calls" class="traffic-stack" :style="{ height: `${Math.max(8, point.calls / Math.max(1, overviewMaxCalls) * 100)}%` }"><i class="error" :style="{ height: `${point.errorCalls / point.calls * 100}%` }"></i></div>
+                  <span v-if="index % 4 === 0 || index === monitorPoints.length - 1">{{ point.timeLabel }}</span>
                 </button>
                 <div v-if="activeTrendPoint" class="chart-tooltip" :style="{ left: `${((activeTrendIndex ?? 0) + .5) / Math.max(1, monitorPoints.length) * 100}%`, transform: activeTrendIndex === 0 ? 'translateX(0)' : activeTrendIndex === monitorPoints.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)' }"><header><strong>{{ activeTrendPoint.timeLabel }}</strong><span>{{ activeTrendPoint.calls }} 次调用</span></header><div><span>成功<b>{{ activeTrendPoint.successCalls }}</b></span><span>异常<b class="error">{{ activeTrendPoint.errorCalls }}</b></span><span>平均耗时<b>{{ activeTrendPoint.avgDurationMs }} ms</b></span><span>上游耗时<b>{{ activeTrendPoint.avgUpstreamDurationMs }} ms</b></span></div></div>
-                <div v-if="!monitorPoints.length" class="chart-empty">暂无趋势数据</div>
+                <div v-if="!monitorPoints.some(point => point.calls > 0)" class="chart-empty">近 24 小时暂无调用</div>
               </div>
               <footer><span>峰值调用<b>{{ overviewMaxCalls }}</b></span><span>平均响应<b>{{ monitorSummary.avgDurationMs }} ms</b></span><span>API 数量<b>{{ dashboard.interfaceCount }}</b></span></footer>
             </div>

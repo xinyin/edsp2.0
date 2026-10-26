@@ -35,6 +35,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.Duration;
+import java.time.format.DateTimeFormatter;
 import java.net.URI;
 import java.util.*;
 
@@ -2504,16 +2505,36 @@ public class InterfaceService {
     }
 
     public List<MonitorPoint> monitorPoints() {
-        return jdbc.query("""
-                SELECT DATE_FORMAT(called_at,'%H:%i') time_label,COUNT(*) calls,
+        String currentHour = jdbc.queryForObject("SELECT DATE_FORMAT(NOW(),'%Y-%m-%d %H:00:00')", String.class);
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT DATE_FORMAT(called_at,'%Y-%m-%d %H:00:00') hour_bucket,COUNT(*) calls,
                 SUM(request_status='SUCCESS') success_calls,SUM(request_status<>'SUCCESS') error_calls,
                 ROUND(AVG(duration_ms)) avg_duration_ms,ROUND(AVG(upstream_duration_ms)) avg_upstream_duration_ms
-                FROM usage_record WHERE called_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
-                GROUP BY DATE_FORMAT(called_at,'%Y-%m-%d %H:%i'),DATE_FORMAT(called_at,'%H:%i')
-                ORDER BY MIN(called_at) DESC LIMIT 12
-                """, (rs, rowNum) -> new MonitorPoint(rs.getString("time_label"), rs.getLong("calls"),
-                rs.getLong("success_calls"), rs.getLong("error_calls"), rs.getLong("avg_duration_ms"),
-                rs.getLong("avg_upstream_duration_ms")));
+                FROM usage_record
+                WHERE called_at >= DATE_SUB(DATE_FORMAT(NOW(),'%Y-%m-%d %H:00:00'), INTERVAL 23 HOUR)
+                  AND called_at < DATE_ADD(DATE_FORMAT(NOW(),'%Y-%m-%d %H:00:00'), INTERVAL 1 HOUR)
+                GROUP BY hour_bucket
+                ORDER BY hour_bucket
+                """);
+        return fillMonitorHours(LocalDateTime.parse(currentHour, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")), rows);
+    }
+
+    static List<MonitorPoint> fillMonitorHours(LocalDateTime currentHour, List<Map<String, Object>> rows) {
+        Map<String, Map<String, Object>> byHour = new HashMap<>();
+        rows.forEach(row -> byHour.put(String.valueOf(row.get("hour_bucket")), row));
+        DateTimeFormatter bucketFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        DateTimeFormatter labelFormat = DateTimeFormatter.ofPattern("HH:mm");
+        List<MonitorPoint> points = new ArrayList<>(24);
+        for (int offset = 23; offset >= 0; offset--) {
+            LocalDateTime hour = currentHour.minusHours(offset);
+            Map<String, Object> row = byHour.get(hour.format(bucketFormat));
+            points.add(row == null ? new MonitorPoint(hour.format(labelFormat), 0, 0, 0, 0, 0)
+                    : new MonitorPoint(hour.format(labelFormat), ((Number) row.get("calls")).longValue(),
+                    ((Number) row.get("success_calls")).longValue(), ((Number) row.get("error_calls")).longValue(),
+                    ((Number) row.get("avg_duration_ms")).longValue(),
+                    ((Number) row.get("avg_upstream_duration_ms")).longValue()));
+        }
+        return points;
     }
 
     public List<MonitorAlert> monitorAlerts() {
