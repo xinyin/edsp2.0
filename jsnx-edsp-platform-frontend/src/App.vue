@@ -204,6 +204,8 @@ const publishedInterfaceDetail = ref<InterfaceDetail | null>(null)
 const highlightedVersion = ref<number | null>(null)
 const releaseInterfaceId = ref(0)
 const releaseDetail = ref<InterfaceDetail | null>(null)
+const releaseDetailSource = computed(() => sources.value.find(source => source.id === releaseDetail.value?.summary.dataSourceId))
+const releaseDetailProvider = computed(() => providers.value.find(provider => provider.id === releaseDetailSource.value?.providerId))
 const releaseVersions = ref<InterfaceVersionHistory[]>([])
 const releaseLoading = ref(false)
 let releaseRequestSequence = 0
@@ -3371,7 +3373,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                 <el-table-column label="运行状态" width="105"><template #default="{row}"><el-tag size="small" :type="row.runStatus==='OFFLINE'?'danger':row.runStatus==='RUNNING'?'success':'info'">{{ releaseRunStatusLabel(row.runStatus) }}</el-tag></template></el-table-column>
                 <el-table-column label="有效授权调用系统数" min-width="150"><template #default="{row}">{{ releaseServiceAuthLabel(row) }}</template></el-table-column>
                 <el-table-column label="最近发布时间" min-width="155"><template #default="{row}">{{ row.latestPublishedAt ? formatDateTime(row.latestPublishedAt) : '-' }}</template></el-table-column>
-                <el-table-column label="操作" min-width="190" fixed="right"><template #default="{row}"><div class="release-row-actions"><el-button text type="primary" @click.stop="selectReleaseInterface(row.service.id)">详情</el-button><el-button v-if="row.service.status!=='PENDING_APPROVAL' && row.service.currentVersion!==row.service.publishedVersion" text type="primary" @click.stop="submitReleaseFromManagement(row.service)">发布</el-button><el-button v-else-if="row.runStatus==='OFFLINE'" text type="primary" @click.stop="onlineRelease(row.service)">上线</el-button><el-button v-else-if="row.runStatus==='RUNNING'" text type="warning" @click.stop="offlineRelease(row.service)">下线</el-button><el-dropdown trigger="click" @command="(command:string)=>handleReleaseRowCommand(command,row)" @click.stop><el-button text aria-label="更多操作">更多</el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="published" :disabled="row.service.publishedVersion==null">查看已发布接口</el-dropdown-item><el-dropdown-item command="authorize" :disabled="row.runStatus!=='RUNNING'">访问授权</el-dropdown-item><el-dropdown-item command="archive" :disabled="!(row.runStatus==='OFFLINE' && row.service.publishedVersion!=null) && !(row.service.status==='DRAFT' && row.service.publishedVersion==null)">归档删除</el-dropdown-item></el-dropdown-menu></template></el-dropdown></div></template></el-table-column>
+                <el-table-column label="操作" min-width="190" fixed="right" align="center" header-align="center"><template #default="{row}"><div class="release-row-actions"><el-button text type="primary" @click.stop="selectReleaseInterface(row.service.id)">详情</el-button><el-button v-if="row.service.status!=='PENDING_APPROVAL' && row.service.currentVersion!==row.service.publishedVersion" text type="primary" @click.stop="submitReleaseFromManagement(row.service)">发布</el-button><el-button v-else-if="row.runStatus==='OFFLINE'" text type="primary" @click.stop="onlineRelease(row.service)">上线</el-button><el-button v-else-if="row.runStatus==='RUNNING'" text type="warning" @click.stop="offlineRelease(row.service)">下线</el-button><el-dropdown trigger="click" @command="(command:string)=>handleReleaseRowCommand(command,row)" @click.stop><el-button text aria-label="更多操作">更多</el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="published" :disabled="row.service.publishedVersion==null">查看已发布接口</el-dropdown-item><el-dropdown-item command="authorize" :disabled="row.runStatus!=='RUNNING'">访问授权</el-dropdown-item><el-dropdown-item command="archive" :disabled="!(row.runStatus==='OFFLINE' && row.service.publishedVersion!=null) && !(row.service.status==='DRAFT' && row.service.publishedVersion==null)">归档删除</el-dropdown-item></el-dropdown-menu></template></el-dropdown></div></template></el-table-column>
               </el-table>
               <el-pagination v-model:current-page="releaseServicePage" v-model:page-size="releaseServiceSize" :total="releaseServiceTotal" :page-sizes="[20,50,100]" layout="total, sizes, prev, pager, next" background @current-change="loadReleaseServices()" @size-change="loadReleaseServices(true)"/>
             </section>
@@ -3379,21 +3381,33 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
           <el-drawer v-model="releaseDetailDrawer" title="服务发布详情" size="min(960px, 92vw)" class="release-detail-drawer">
             <div v-if="releaseDetail" class="release-console-main" :class="{'is-refreshing':releaseLoading}" aria-live="polite">
               <section class="release-command plain-panel">
-                <div class="release-command-title"><span class="release-command-icon"><Promotion/></span><div><small aria-hidden="true" class="decorative-eyebrow"></small><h2>{{ releaseDetail.summary.interfaceName }}</h2><p><code>{{ releaseDetail.summary.interfaceCode }}</code><i></i>{{ releaseDetail.summary.servicePath }}</p></div></div>
+                <div class="release-command-title"><span class="release-command-icon"><Promotion/></span><div><small aria-hidden="true" class="decorative-eyebrow"></small><h2>{{ releaseDetail.summary.interfaceName }}</h2><p><code>{{ releaseDetail.summary.interfaceCode }}</code></p></div></div>
                 <div class="release-state"><span>当前草稿<strong>V{{ releaseDetail.summary.currentVersion }}</strong></span><b></b><span>{{ releaseDetail.summary.status==='OFFLINE' ? '最近上线' : '线上生效' }}<strong>{{ releaseDetail.summary.publishedVersion == null ? '-' : 'V'+releaseDetail.summary.publishedVersion }}</strong></span><el-tag effect="plain" :type="releaseDetail.summary.status==='OFFLINE'?'danger':releaseDetail.summary.status==='PENDING_APPROVAL'?'warning':releaseDetail.summary.publishedVersion!=null?'success':'info'">{{ releaseDetail.summary.status==='OFFLINE'?'已下线':releaseDetail.summary.status==='PENDING_APPROVAL'?'审批中':releaseDetail.summary.publishedVersion!=null?'运行中':'未上线' }}</el-tag></div>
+              </section>
+              <section class="release-config-summary plain-panel">
+                <header><h3>当前开发配置</h3><span>V{{ releaseDetail.summary.currentVersion }}</span></header>
+                <dl>
+                  <div class="release-config-route"><dt>内部 HTTP 服务路径</dt><dd><el-tag size="small" effect="plain" type="info">{{ releaseDetail.summary.httpMethod }}</el-tag><code>{{ releaseDetail.summary.servicePath }}</code><el-button text :icon="DocumentCopy" aria-label="复制服务路径" title="复制服务路径" @click="copyApiValue(releaseDetail.summary.servicePath)"/></dd></div>
+                  <div><dt>资源提供商</dt><dd>{{ releaseDetailProvider?.providerName || releaseDetailSource?.providerName || '-' }}</dd></div>
+                  <div><dt>数据源</dt><dd>{{ releaseDetailSource?.sourceName || '-' }}</dd></div>
+                  <div><dt>来源资源 API</dt><dd>{{ releaseDetail.summary.resourceApiName || '-' }}<code v-if="releaseDetail.summary.resourceApiCode">{{ releaseDetail.summary.resourceApiCode }}</code></dd></div>
+                  <div><dt>处理应用</dt><dd>{{ releaseDetailProvider?.applicationName || releaseDetailSource?.applicationName || '未配置' }}</dd></div>
+                  <div><dt>上游接口路径 / 地址</dt><dd><code>{{ releaseDetail.summary.upstreamPath || releaseDetail.summary.upstreamUrl || '-' }}</code></dd></div>
+                  <div><dt>调用超时</dt><dd>{{ releaseDetail.timeoutMs }} ms</dd></div>
+                </dl>
               </section>
               <div v-if="!sources.find(source=>source.id===releaseDetail?.summary.dataSourceId)?.runtimeUrl" class="release-routing-warning" role="status"><div><strong>发布前需配置应用路由</strong><span>当前资源提供商尚未配置 Gateway 可访问的处理应用地址，完成配置后可继续发布。</span></div><el-button @click="editReleaseRuntime">前往资源方管理</el-button></div>
               <section id="interface-version-history" class="version-history-panel plain-panel">
                 <header><div><h3>接口版本历史</h3></div><el-tag type="info">{{ releaseVersions.length }} 个版本</el-tag></header>
                 <el-alert v-if="releaseVersions.some(item => !item.historyComplete)" title="检测到旧版本记录不完整" type="warning" :closable="false" description="接口主表保留了已发布版本号，但旧审批单、发布记录或执行计划快照缺失；版本仍保留并阻止未经下线的删除。"/>
-                <el-table :data="releaseVersions" border scrollbar-always-on :row-class-name="versionRowClass">
+                <el-table :data="releaseVersions" border :row-class-name="versionRowClass">
                   <el-table-column label="版本" width="92"><template #default="{row}"><strong>V{{ row.version }}</strong></template></el-table-column>
-                  <el-table-column label="状态" width="190"><template #default="{row}"><el-tag :type="versionTagType(row)">{{ versionStatusText(row) }}</el-tag><small v-if="row.active" class="version-active-label">流量使用中</small></template></el-table-column>
-                  <el-table-column label="发布说明" min-width="220"><template #default="{row}">{{ row.releaseNote || (row.historyComplete ? '未填写' : '旧数据未保留') }}</template></el-table-column>
-                  <el-table-column label="申请 / 审批" min-width="170"><template #default="{row}"><span>{{ row.applicant || '-' }}</span><small class="version-cell-sub">{{ row.reviewedBy || row.releasedBy || '-' }}</small></template></el-table-column>
-                  <el-table-column label="时间" width="180"><template #default="{row}">{{ row.releasedAt || row.reviewedAt || row.submittedAt || '-' }}</template></el-table-column>
-                  <el-table-column label="计划快照" width="110"><template #default="{row}"><el-tag size="small" :type="row.snapshotAvailable?'success':'info'">{{ row.snapshotAvailable?'已留存':'无快照' }}</el-tag></template></el-table-column>
-                  <el-table-column label="操作" width="90"><template #default="{row}"><el-button text type="primary" @click="showVersionDetail(row)">查看</el-button></template></el-table-column>
+                  <el-table-column label="状态" width="150"><template #default="{row}"><el-tag :type="versionTagType(row)">{{ versionStatusText(row) }}</el-tag><small v-if="row.active" class="version-active-label">流量使用中</small></template></el-table-column>
+                  <el-table-column label="发布说明" min-width="170" show-overflow-tooltip><template #default="{row}">{{ row.releaseNote || (row.historyComplete ? '未填写' : '旧数据未保留') }}</template></el-table-column>
+                  <el-table-column label="申请 / 审批" min-width="135"><template #default="{row}"><span>{{ row.applicant || '-' }}</span><small class="version-cell-sub">{{ row.reviewedBy || row.releasedBy || '-' }}</small></template></el-table-column>
+                  <el-table-column label="时间" width="150"><template #default="{row}">{{ row.releasedAt || row.reviewedAt || row.submittedAt || '-' }}</template></el-table-column>
+                  <el-table-column label="计划快照" width="100"><template #default="{row}"><el-tag size="small" :type="row.snapshotAvailable?'success':'info'">{{ row.snapshotAvailable?'已留存':'无快照' }}</el-tag></template></el-table-column>
+                  <el-table-column label="操作" width="70" align="center" header-align="center"><template #default="{row}"><el-button text type="primary" @click="showVersionDetail(row)">查看</el-button></template></el-table-column>
                 </el-table>
               </section>
             </div>

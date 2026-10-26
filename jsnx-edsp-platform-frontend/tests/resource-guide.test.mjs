@@ -804,6 +804,15 @@ test('服务发布列表由后端分页筛选，详情保持独立抽屉', () =>
   assert.match(appText, /v-model="releaseDetailDrawer" title="服务发布详情"/)
   assert.match(appText, /loadCatalog = \['resource', 'service-development', 'authorization', 'billing'\]\.includes\(activeMenu\.value\)/)
 })
+test('服务发布详情展示当前路由和资源归属，列表操作列居中', () => {
+  assert.match(appText, /<section class="release-config-summary plain-panel">[\s\S]*?当前开发配置[\s\S]*?内部 HTTP 服务路径/)
+  assert.match(appText, /releaseDetail\.summary\.httpMethod[\s\S]*?releaseDetail\.summary\.servicePath/)
+  assert.match(appText, /releaseDetailProvider\?\.providerName[\s\S]*?releaseDetailSource\?\.sourceName/)
+  assert.match(appText, /releaseDetail\.summary\.resourceApiName[\s\S]*?releaseDetailProvider\?\.applicationName/)
+  assert.match(appText, /releaseDetail\.summary\.upstreamPath \|\| releaseDetail\.summary\.upstreamUrl/)
+  assert.match(appText, /label="操作" min-width="190" fixed="right" align="center" header-align="center"/)
+  assert.match(consoleThemeText, /\.release-row-actions \{[^}]*justify-content: center;[^}]*width: 100%/)
+})
 test('生效配置和日志检索在窄工作区使用自适应布局', () => {
   assert.match(consoleThemeText, /\.api-preview-panel dl \{[^}]*minmax\(280px,\.38fr\)/)
   assert.match(consoleThemeText, /@container \(max-width: 740px\)[\s\S]*?\.api-preview-panel dl \{ grid-template-columns: minmax\(0,1fr\); \}/)

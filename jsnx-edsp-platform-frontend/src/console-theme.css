@@ -829,7 +829,28 @@ button:focus-visible { outline: 2px solid #6ca8ec; outline-offset: 2px; }
 .release-console-list .release-service-filters > .el-button { width: auto; justify-self: start; }
 .release-console-list .release-quick-views { min-width: 0; overflow-x: auto; }
 .release-console-list .release-services-table { min-width: 0; }
-.release-row-actions { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
+.release-row-actions { display: flex; align-items: center; justify-content: center; gap: 2px; width: 100%; white-space: nowrap; }
+.release-config-summary { padding: 0 20px 8px; }
+.release-config-summary > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 0 11px; border-bottom: 1px solid var(--border); }
+.release-config-summary h3 { margin: 0; color: var(--text-primary); font-size: 13px; font-weight: 600; }
+.release-config-summary > header span { color: var(--muted); font-size: 12px; }
+.release-config-summary dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; margin: 0; }
+.release-config-summary dl > div { min-width: 0; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.release-config-summary dl > div:nth-last-child(-n+2) { border-bottom: 0; }
+.release-config-summary .release-config-route { grid-column: 1 / -1; }
+.release-config-summary dt { margin-bottom: 5px; color: var(--muted); font-size: 11px; }
+.release-config-summary dd { margin: 0; color: var(--text-regular); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.release-config-summary dd code { font-size: 12px; overflow-wrap: anywhere; }
+.release-config-summary dd code:not(:first-child) { display: block; margin-top: 3px; color: var(--muted); }
+.release-config-route dd { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.release-config-route dd code:not(:first-child) { display: inline; margin: 0; color: var(--text-regular); }
+.release-config-route .el-button { min-width: 28px; margin: 0; }
+.release-detail-drawer .version-history-panel { margin: 0; padding: 16px 20px; border-top: 0; }
+.release-detail-drawer .version-history-panel > header h3 { margin: 0; font-size: 14px; }
+.release-detail-drawer .version-history-panel .el-table { width: 100%; font-size: 12px; }
+.release-detail-drawer .version-history-panel .el-table .cell { padding: 0 8px; line-height: 1.45; }
+.release-detail-drawer .version-history-panel .el-table th.el-table__cell,
+.release-detail-drawer .version-history-panel .el-table td.el-table__cell { padding: 7px 0; }
 .release-row-actions .el-button { margin: 0; padding: 4px 5px; font-size: 12px; }
 .release-row-actions .el-dropdown { display: inline-flex; }
 @media (max-width: 1450px) {
@@ -842,7 +863,10 @@ button:focus-visible { outline: 2px solid #6ca8ec; outline-offset: 2px; }
   .release-console-list .release-service-filters > .el-input,
   .release-console-list .release-service-filters > .el-button { grid-column: 1 / -1; }
 }
-@media (max-width: 760px) { .service-configuration-facts { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 760px) {
+  .service-configuration-facts, .release-config-summary dl { grid-template-columns: minmax(0, 1fr); }
+  .release-config-summary dl > div:nth-last-child(2) { border-bottom: 1px solid var(--border); }
+}
 .internal-service-route { margin: 0 0 12px; }
 .internal-service-route summary { display: flex; align-items: center; gap: 6px; list-style-position: inside; }
 
