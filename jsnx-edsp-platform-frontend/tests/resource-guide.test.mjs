@@ -827,6 +827,17 @@ test('服务发布详情展示当前路由和资源归属，列表操作列居�
   assert.match(appText, /label="操作" min-width="190" fixed="right" align="center" header-align="center"/)
   assert.match(consoleThemeText, /\.release-row-actions \{[^}]*justify-content: center;[^}]*width: 100%/)
 })
+test('服务发布操作列不触发行点击，详情重新读取最新开发版本', () => {
+  assert.match(appText, /function handleReleaseServiceRowClick\(row: ReleaseServiceRow, column: \{ label\?: string \}\) \{\s*if \(column\.label !== '操作'\) void selectReleaseInterface\(row\.service\.id\)/)
+  assert.match(appText, /class="release-row-actions" @click\.stop/)
+  assert.match(appText, /@row-click="handleReleaseServiceRowClick"/)
+  assert.match(appText, /async function selectReleaseInterface\(interfaceId: number\) \{\s*releaseDetailDrawer\.value = true\s*highlightedVersion\.value = null\s*await loadReleaseManagement\(interfaceId\)/)
+  assert.match(appText, /releaseLoading\.value = true\s*releaseDetail\.value = null\s*releaseVersions\.value = \[\]/)
+  assert.match(appText, /label="开发版本"[^\n]*row\.service\.currentVersion/)
+  assert.match(appText, /label="线上版本"[^\n]*row\.service\.publishedVersion/)
+  assert.match(appText, /开发版本 V\{\{ releaseDetail\.summary\.currentVersion \}\} 尚未发布/)
+  assert.match(appText, /以下请求与响应样例来自当前开发配置，不代表已发布版本/)
+})
 test('生效配置和日志检索在窄工作区使用自适应布局', () => {
   assert.match(consoleThemeText, /\.api-preview-panel dl \{[^}]*minmax\(280px,\.38fr\)/)
   assert.match(consoleThemeText, /@container \(max-width: 740px\)[\s\S]*?\.api-preview-panel dl \{ grid-template-columns: minmax\(0,1fr\); \}/)
