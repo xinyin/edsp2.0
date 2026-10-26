@@ -58,7 +58,7 @@ fi
 CHECK_ONLY=1 "$DEPLOY_DIR/bin/sync-config-to-nacos.sh"
 mkdir -p "$RUN_DIR" "$LOG_DIR"
 
-for required_command in mysql mvn lsof curl; do
+for required_command in mysql mvn lsof curl python3; do
   command -v "$required_command" >/dev/null 2>&1 || {
     echo "未找到命令：${required_command}，请先安装并加入 PATH。" >&2
     exit 1
@@ -98,34 +98,42 @@ wait_for_port() {
   echo "$name 启动失败，请检查 $LOG_DIR/$name.log" >&2
   return 1
 }
+spawn_process() {
+  local directory="$1" port="$2" log_file="$3" pid_file="$4"
+  shift 4
+  python3 - "$directory" "$port" "$log_file" "$JAVA_HOME" "$@" <<'PY' > "$pid_file"
+import os
+import subprocess
+import sys
+
+directory, port, log_file, java_home = sys.argv[1:5]
+command = sys.argv[5:]
+environment = os.environ.copy()
+environment["JAVA_HOME"] = java_home
+environment["SERVER_PORT"] = port
+with open(log_file, "wb") as log:
+    process = subprocess.Popen(
+        command, cwd=directory, env=environment,
+        stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    print(process.pid)
+PY
+}
 start_service() {
   local name="$1" port="$2" module="$3" jar="$4"
   if port_is_open "$port"; then echo "$name 已在 $port 运行，跳过"; return; fi
   rm -f "$RUN_DIR/$name.pid"
-  (
-    cd "$SERVICES_DIR/$module"
-    nohup env -u SERVER_PORT JAVA_HOME="$JAVA_HOME" SERVER_PORT="$port" \
-      NACOS_SERVER_ADDR="$NACOS_SERVER_ADDR" NACOS_USERNAME="${NACOS_USERNAME:-}" NACOS_PASSWORD="${NACOS_PASSWORD:-}" \
-      NACOS_CONFIG_USERNAME="${NACOS_CONFIG_USERNAME:-}" NACOS_CONFIG_PASSWORD="${NACOS_CONFIG_PASSWORD:-}" \
-      NACOS_DISCOVERY_USERNAME="${NACOS_DISCOVERY_USERNAME:-}" NACOS_DISCOVERY_PASSWORD="${NACOS_DISCOVERY_PASSWORD:-}" \
-      "$JAVA_HOME/bin/java" -jar "target/$jar" >"$LOG_DIR/$name.log" 2>&1 &
-    echo $! >"$RUN_DIR/$name.pid"
-  )
+  spawn_process "$SERVICES_DIR/$module" "$port" "$LOG_DIR/$name.log" "$RUN_DIR/$name.pid" \
+    "$JAVA_HOME/bin/java" -jar "target/$jar"
   wait_for_port "$port" "$name"
 }
 start_application() {
   local name="$1" port="$2" module="$3" jar="$4"
   if port_is_open "$port"; then echo "$name 已在 $port 运行，跳过"; return; fi
   rm -f "$RUN_DIR/$name.pid"
-  (
-    cd "$APPLICATIONS_DIR/$module"
-    nohup env -u SERVER_PORT JAVA_HOME="$JAVA_HOME" SERVER_PORT="$port" \
-      NACOS_SERVER_ADDR="$NACOS_SERVER_ADDR" NACOS_USERNAME="${NACOS_USERNAME:-}" NACOS_PASSWORD="${NACOS_PASSWORD:-}" \
-      NACOS_CONFIG_USERNAME="${NACOS_CONFIG_USERNAME:-}" NACOS_CONFIG_PASSWORD="${NACOS_CONFIG_PASSWORD:-}" \
-      NACOS_DISCOVERY_USERNAME="${NACOS_DISCOVERY_USERNAME:-}" NACOS_DISCOVERY_PASSWORD="${NACOS_DISCOVERY_PASSWORD:-}" \
-      "$JAVA_HOME/bin/java" -jar "target/$jar" >"$LOG_DIR/$name.log" 2>&1 &
-    echo $! >"$RUN_DIR/$name.pid"
-  )
+  spawn_process "$APPLICATIONS_DIR/$module" "$port" "$LOG_DIR/$name.log" "$RUN_DIR/$name.pid" \
+    "$JAVA_HOME/bin/java" -jar "target/$jar"
   wait_for_port "$port" "$name"
 }
 
@@ -209,7 +217,8 @@ if port_is_open 5173; then
 fi
 if ! port_is_open 5173; then
   [[ -d "$PLATFORM_WEB/node_modules" ]] || (cd "$PLATFORM_WEB" && npm install)
-  (cd "$PLATFORM_WEB" && nohup ./node_modules/.bin/vite --host 127.0.0.1 >"$LOG_DIR/frontend.log" 2>&1 & echo $! >"$RUN_DIR/frontend.pid")
+  spawn_process "$PLATFORM_WEB" 5173 "$LOG_DIR/frontend.log" "$RUN_DIR/frontend.pid" \
+    ./node_modules/.bin/vite --host 127.0.0.1
   wait_for_port 5173 frontend
   frontend_is_healthy || {
     echo "平台前端端口已监听，但首页未返回当前 Demo 页面，请检查 $LOG_DIR/frontend.log" >&2
