@@ -28,7 +28,7 @@ export function buildResourceGuide(input: { upstreamUrl: string; servicePath: st
   return [
     { key: 'overview', index: '01', title: '定义接口', hint: '路径与上游连接', done: isHttpEndpoint(input.upstreamUrl) && !!input.servicePath.trim(), state: '连接配置' },
     { key: 'request', index: '02', title: '字段标准化', hint: passThrough ? '请求无映射 · 响应整报文' : `请求 ${requestRows.length ? requestCount : '无映射'} · 响应 ${wholeBody ? '整报文' : responseRows.length ? responseCount : '无映射'}`, done: passThrough || mappingsComplete, state: passThrough ? '无需字段转换' : mappingsComplete ? '按方向转换' : '存在未完成字段' },
-    { key: 'codes', index: '03', title: '统一返回码', hint: input.responsePolicy?.codeMode === 'HTTP_SUCCESS' ? '按 HTTP 成功判定' : `${input.responseCodes.length} 条结果码规则`, done: codesReady, state: '结果与计费语义' },
+    { key: 'codes', index: '03', title: '统一返回码', hint: input.responsePolicy?.codeMode === 'HTTP_SUCCESS' ? '按 HTTP 成功判定' : `${input.responseCodes.length} 条结果码规则`, done: codesReady, state: '结果与对账口径' },
     { key: 'security', index: '04', title: '安全策略', hint: input.securityEnabled ? '已配置 · 待联调核对' : '可选 · 默认不启用', done: true, state: input.securityEnabled ? '策略已保存' : '无需配置可跳过' },
     { key: 'test', index: '05', title: '链路测试', hint: input.orchestrationVerified ? '当前服务编排测试通过' : '可选 · 真实调用上游', done: true, state: input.orchestrationVerified ? '已完成辅助测试' : '不影响发布' },
     { key: 'release', index: '06', title: '服务发布', hint: published ? '当前版本已发布' : '校验 → 发布 → 授权', done: published, state: '发布后生效' }

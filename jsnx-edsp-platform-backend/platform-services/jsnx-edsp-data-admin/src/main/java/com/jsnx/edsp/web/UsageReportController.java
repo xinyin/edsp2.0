@@ -37,7 +37,6 @@ public class UsageReportController {
             "successCount", "SUM(CASE WHEN u.request_status='SUCCESS' AND u.result_status<>'ERROR' THEN 1 ELSE 0 END)",
             "failureCount", "SUM(CASE WHEN u.request_status<>'SUCCESS' OR u.result_status='ERROR' THEN 1 ELSE 0 END)",
             "billableCount", "SUM(CASE WHEN u.billable=1 THEN 1 ELSE 0 END)",
-            "amount", "COALESCE(SUM(u.amount),0)",
             "averageDurationMs", "ROUND(AVG(u.duration_ms),2)",
             "upstreamDurationMs", "ROUND(AVG(u.upstream_duration_ms),2)");
     private static final Map<String, String> LABELS = Map.ofEntries(
@@ -45,10 +44,10 @@ public class UsageReportController {
             Map.entry("DATA_SOURCE", "数据源"), Map.entry("API", "服务 API"),
             Map.entry("CLIENT", "调用系统"), Map.entry("RESULT", "结果状态"),
             Map.entry("callCount", "调用量"), Map.entry("successCount", "成功量"),
-            Map.entry("failureCount", "失败量"), Map.entry("billableCount", "计费量"),
-            Map.entry("amount", "金额"), Map.entry("averageDurationMs", "平均耗时(ms)"),
+            Map.entry("failureCount", "失败量"), Map.entry("billableCount", "纳入对账量"),
+            Map.entry("averageDurationMs", "平均耗时(ms)"),
             Map.entry("upstreamDurationMs", "上游平均耗时(ms)"));
-    private static final String DEFAULT_METRICS = "callCount,successCount,failureCount,billableCount,amount,averageDurationMs";
+    private static final String DEFAULT_METRICS = "callCount,successCount,failureCount,billableCount,averageDurationMs";
     private final JdbcTemplate jdbc;
 
     public UsageReportController(JdbcTemplate jdbc) { this.jdbc = jdbc; }

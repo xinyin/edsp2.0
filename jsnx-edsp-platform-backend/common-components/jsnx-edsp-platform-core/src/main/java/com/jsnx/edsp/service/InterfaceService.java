@@ -1807,12 +1807,12 @@ public class InterfaceService {
         boolean billed = recordUsage(interfaceId, clientId, traceId, code, totalDurationMs, upstreamDurationMs,
                 Math.max(1, totalDurationMs - upstreamDurationMs));
         long billingDurationMs = elapsedMs(billingStarted);
-        String billingDetail = billed ? "已生成可计费用量明细" : "已记录用量，本次不计费";
-        steps.add(new ExecutionStep("计量计费", "通过", billingDetail, billingDurationMs));
-        traceNodes.add(new TraceNode("BILLING", "计量计费", "PLATFORM", "SUCCESS", billingDetail,
+        String billingDetail = billed ? "已记录调用量，纳入线下对账" : "已记录调用量，本次不纳入线下对账";
+        steps.add(new ExecutionStep("调用计量", "通过", billingDetail, billingDurationMs));
+        traceNodes.add(new TraceNode("BILLING", "调用计量", "PLATFORM", "SUCCESS", billingDetail,
                 billingDurationMs,
                 Map.of("traceId", traceId, "resultStatus", code.resultStatus(), "durationMs", totalDurationMs),
-                Map.of("recorded", true, "billable", billed, "standardCode", code.standardCode())));
+                Map.of("recorded", true, "includedInReconciliation", billed, "standardCode", code.standardCode())));
         recordTraceNodes(traceId, traceNodes);
         if (preRelease && Set.of("HIT", "MISS").contains(code.resultStatus())) {
             if (!Objects.equals(checksum(detail), checksum(interfaceDetail(interfaceId)))) {
@@ -1835,7 +1835,7 @@ public class InterfaceService {
                 new String[]{"DATA_SOURCE", "资源提供商处理应用", "ADAPTER"},
                 new String[]{"VENDOR", "上游供应商", "EXTERNAL"},
                 new String[]{"RESPONSE_MAPPING", "响应标准化", "PLATFORM"},
-                new String[]{"BILLING", "计量计费", "PLATFORM"});
+                new String[]{"BILLING", "调用计量", "PLATFORM"});
         Set<String> completedKeys = completed.stream().map(TraceNode::key).collect(java.util.stream.Collectors.toSet());
         int failedIndex = failedNodeIndex(completedKeys);
         String[] failed = pipeline.get(failedIndex);
@@ -1857,8 +1857,8 @@ public class InterfaceService {
                 .mapToLong(TraceNode::durationMs).max().orElse(0);
         jdbc.update("""
                 INSERT INTO usage_record(trace_id,client_id,interface_id,result_status,standard_code,billable,
-                unit_price,amount,duration_ms,upstream_duration_ms,gateway_duration_ms,request_status,node_name)
-                VALUES(?,?,?,'ERROR','EXT-PLATFORM-ERROR',0,0,0,?,?,?,'FAILED',?)
+                duration_ms,upstream_duration_ms,gateway_duration_ms,request_status,node_name)
+                VALUES(?,?,?,'ERROR','EXT-PLATFORM-ERROR',0,?,?,?,'FAILED',?)
                 ON DUPLICATE KEY UPDATE result_status='ERROR',standard_code='EXT-PLATFORM-ERROR',
                 request_status='FAILED',duration_ms=VALUES(duration_ms),node_name=VALUES(node_name)
                 """, traceId, clientId, interfaceId, totalDuration, upstreamDuration,
@@ -1970,8 +1970,8 @@ public class InterfaceService {
         Long clientId = clientIds.isEmpty() ? null : clientIds.get(0);
         jdbc.update("""
                 INSERT INTO usage_record(trace_id,client_id,interface_id,result_status,standard_code,billable,
-                unit_price,amount,duration_ms,upstream_duration_ms,gateway_duration_ms,request_status,node_name)
-                VALUES(?,?,?,'ERROR','EDSP-AUTH-403',0,0,0,1,0,1,'FAILED','统一 Gateway')
+                duration_ms,upstream_duration_ms,gateway_duration_ms,request_status,node_name)
+                VALUES(?,?,?,'ERROR','EDSP-AUTH-403',0,1,0,1,'FAILED','统一 Gateway')
                 """, traceId, clientId, interfaceIds.get(0));
         List<TraceNode> nodes = new ArrayList<>();
         nodes.add(new TraceNode("DOWNSTREAM", "下游调用系统", "CLIENT", "SUCCESS",
@@ -1986,7 +1986,7 @@ public class InterfaceService {
                 new String[]{"DATA_SOURCE", "资源提供商处理应用", "ADAPTER"},
                 new String[]{"VENDOR", "上游供应商", "EXTERNAL"},
                 new String[]{"RESPONSE_MAPPING", "响应标准化", "PLATFORM"},
-                new String[]{"BILLING", "计量计费", "PLATFORM"})) {
+                new String[]{"BILLING", "调用计量", "PLATFORM"})) {
             nodes.add(new TraceNode(node[0], node[1], node[2], "SKIPPED",
                     "因 Gateway 校验失败，本节点未执行", 0, Map.of("traceId", traceId), Map.of()));
         }
@@ -2012,7 +2012,7 @@ public class InterfaceService {
         long durationMs = elapsedMs(callStarted);
         steps.add(new ExecutionStep("上游连通性调用", "通过", detail.summary().upstreamUrl(), durationMs));
         traceNodes.add(new TraceNode("VENDOR", "上游供应商", "EXTERNAL", "SUCCESS",
-                "真实 HTTP 请求已完成，本模式不执行平台标准化和计费", durationMs, invocation, upstreamResponse));
+                "真实 HTTP 请求已完成，本模式不执行平台标准化和调用计量", durationMs, invocation, upstreamResponse));
         return new TestResult(upstreamRequest, upstreamResponse, upstreamResponse, steps, traceNodes);
     }
 
@@ -2172,18 +2172,17 @@ public class InterfaceService {
     private boolean recordUsage(long interfaceId, Long clientId, String traceId, ResponseCodeMapping code,
                                 long durationMs, long upstreamDurationMs, long gatewayDurationMs) {
         List<Map<String, Object>> rules = jdbc.queryForList(
-                "SELECT unit_price,hit_billable,miss_billable FROM billing_rule WHERE interface_id=? AND status='ACTIVE'", interfaceId);
-        BigDecimal unitPrice = rules.isEmpty() ? BigDecimal.ZERO : (BigDecimal) rules.get(0).get("unit_price");
+                "SELECT hit_billable,miss_billable FROM billing_rule WHERE interface_id=? AND status='ACTIVE'", interfaceId);
         boolean resultBillable = "HIT".equals(code.resultStatus())
                 ? !rules.isEmpty() && Boolean.TRUE.equals(rules.get(0).get("hit_billable"))
                 : "MISS".equals(code.resultStatus()) && !rules.isEmpty() && Boolean.TRUE.equals(rules.get(0).get("miss_billable"));
         boolean billable = code.billable() && resultBillable;
         jdbc.update("""
-                INSERT INTO usage_record(trace_id,client_id,interface_id,result_status,standard_code,billable,unit_price,amount,
+                INSERT INTO usage_record(trace_id,client_id,interface_id,result_status,standard_code,billable,
                 duration_ms,upstream_duration_ms,gateway_duration_ms,request_status,node_name)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,'SUCCESS','jsnx-edsp-data-source-demo-01')
+                VALUES(?,?,?,?,?,?,?,?,?,'SUCCESS','jsnx-edsp-data-source-demo-01')
                 """, traceId, clientId, interfaceId, code.resultStatus(), code.standardCode(), billable,
-                unitPrice, billable ? unitPrice : BigDecimal.ZERO, durationMs, upstreamDurationMs, gatewayDurationMs);
+                durationMs, upstreamDurationMs, gatewayDurationMs);
         return billable;
     }
 
@@ -2390,8 +2389,8 @@ public class InterfaceService {
                 JOIN api_interface i ON i.id=b.interface_id ORDER BY b.id
                 """, (rs, rowNum) -> new BillingRule(
                 rs.getLong("id"), rs.getLong("interface_id"), rs.getString("interface_name"),
-                rs.getString("interface_code"), rs.getString("billing_mode"), rs.getBigDecimal("unit_price"),
-                rs.getString("currency"), rs.getBoolean("hit_billable"), rs.getBoolean("miss_billable"),
+                rs.getString("interface_code"),
+                rs.getBoolean("hit_billable"), rs.getBoolean("miss_billable"),
                 rs.getDate("effective_date").toLocalDate(), rs.getString("status")));
     }
 
@@ -2399,11 +2398,11 @@ public class InterfaceService {
     public BillingRule saveBillingRule(SaveBillingRuleRequest request) {
         lockEditableInterface(request.interfaceId());
         jdbc.update("""
-                INSERT INTO billing_rule(interface_id,billing_mode,unit_price,currency,hit_billable,miss_billable,effective_date,status)
-                VALUES(?,?,?,'CNY',?,?,?,'ACTIVE') ON DUPLICATE KEY UPDATE billing_mode=VALUES(billing_mode),
-                unit_price=VALUES(unit_price),hit_billable=VALUES(hit_billable),miss_billable=VALUES(miss_billable),
+                INSERT INTO billing_rule(interface_id,hit_billable,miss_billable,effective_date,status)
+                VALUES(?,?,?,?,'ACTIVE') ON DUPLICATE KEY UPDATE
+                hit_billable=VALUES(hit_billable),miss_billable=VALUES(miss_billable),
                 effective_date=VALUES(effective_date),status='ACTIVE'
-                """, request.interfaceId(), request.billingMode(), request.unitPrice(), request.hitBillable(),
+                """, request.interfaceId(), request.hitBillable(),
                 request.missBillable(), request.effectiveDate());
         return billingRules().stream().filter(item -> item.interfaceId() == request.interfaceId()).findFirst().orElseThrow();
     }
@@ -2411,12 +2410,11 @@ public class InterfaceService {
     public BillingSummary billingSummary() {
         return jdbc.queryForObject("""
                 SELECT COUNT(*) total_calls,COALESCE(SUM(billable),0) billable_calls,
-                COALESCE(SUM(amount),0) total_amount,
                 COALESCE(SUM(result_status='HIT'),0) hit_calls,
                 COALESCE(SUM(result_status='MISS'),0) miss_calls,
                 COALESCE(SUM(result_status='ERROR'),0) error_calls FROM usage_record
                 """, (rs, rowNum) -> new BillingSummary(rs.getLong("total_calls"), rs.getLong("billable_calls"),
-                rs.getBigDecimal("total_amount"), rs.getLong("hit_calls"), rs.getLong("miss_calls"), rs.getLong("error_calls")));
+                rs.getLong("hit_calls"), rs.getLong("miss_calls"), rs.getLong("error_calls")));
     }
 
     public List<UsageRecord> usageRecords() {
@@ -2480,7 +2478,7 @@ public class InterfaceService {
         return (rs, rowNum) -> new UsageRecord(rs.getLong("id"), rs.getString("trace_id"),
                 rs.getString("client_name"), rs.getString("interface_name"), rs.getString("interface_code"),
                 rs.getString("result_status"), rs.getString("standard_code"), rs.getBoolean("billable"),
-                rs.getBigDecimal("unit_price"), rs.getBigDecimal("amount"), rs.getInt("duration_ms"),
+                rs.getInt("duration_ms"),
                 rs.getInt("upstream_duration_ms"), rs.getInt("gateway_duration_ms"), rs.getString("request_status"),
                 rs.getString("node_name"), rs.getTimestamp("called_at").toLocalDateTime());
     }

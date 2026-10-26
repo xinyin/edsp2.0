@@ -114,7 +114,7 @@ export function runMockTest(request: Record<string, unknown>, response: Record<s
       { key: 'DATA_SOURCE', name: '资源提供商处理应用', category: 'ADAPTER', status: 'SUCCESS', detail: '提供商处理应用执行协议转换', durationMs: 1, input: upstreamRequest, output: { endpoint: 'vendor/api', body: upstreamRequest } },
       { key: 'VENDOR', name: '上游供应商', category: 'EXTERNAL', status: 'SUCCESS', detail: '供应商响应完成', durationMs: 80, input: upstreamRequest, output: response },
       { key: 'RESPONSE_MAPPING', name: '响应标准化', category: 'PLATFORM', status: 'SUCCESS', detail: '字段与返回码标准化', durationMs: 7, input: response, output: standardResponse },
-      { key: 'BILLING', name: '计量计费', category: 'PLATFORM', status: 'SUCCESS', detail: '调用明细已记录', durationMs: 1, input: { traceId: standardResponse.traceId }, output: { recorded: true, billable: true } }
+      { key: 'BILLING', name: '调用计量', category: 'PLATFORM', status: 'SUCCESS', detail: '调用量已记录', durationMs: 1, input: { traceId: standardResponse.traceId }, output: { recorded: true, includedInReconciliation: true } }
     ]
   }
 }

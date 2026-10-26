@@ -927,7 +927,7 @@ test('全平台使用统一的深色导航、浅色工作区和收敛字号体�
   assert.match(consoleThemeText, /Unified type scale: 18 page title, 14 section title, 13 body, 11-12 support/)
   assert.match(consoleThemeText, /\.main-content \{ font-size: 13px; \}/)
   assert.match(consoleThemeText, /\.page-heading h1,[\s\S]*?\.compact-page-heading h1 \{ font-size: 18px; \}/)
-  assert.match(consoleThemeText, /\.billing-metrics \.amount \{ color: var\(--text-primary\); background: #fff; \}/)
+  assert.doesNotMatch(consoleThemeText, /\.billing-metrics \.amount/)
 })
 test('银行控制台采用 v2 深色侧栏、浅色工作区和品牌蓝', () => {
   assert.match(consoleThemeText, /--nav: #16294e;/)

@@ -43,6 +43,7 @@ class UsageReportControllerTest {
     void rejectsUnknownOrDuplicateDimensionsAndOversizedRanges() {
         assertThrows(ResponseStatusException.class, () -> controller.report(authenticated(), "UNKNOWN", "callCount", from, to));
         assertThrows(ResponseStatusException.class, () -> controller.report(authenticated(), "API,API", "callCount", from, to));
+        assertThrows(ResponseStatusException.class, () -> controller.report(authenticated(), "DAY", "amount", from, to));
         assertThrows(ResponseStatusException.class, () -> controller.report(authenticated(), "DAY", "SUM(u.amount)", from, to));
         assertThrows(ResponseStatusException.class, () -> controller.report(authenticated(), "DAY", "callCount", LocalDate.parse("2024-01-01"), to));
         verifyNoInteractions(jdbc);

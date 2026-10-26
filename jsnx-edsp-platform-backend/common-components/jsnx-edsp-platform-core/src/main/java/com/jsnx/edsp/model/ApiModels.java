@@ -303,21 +303,20 @@ public final class ApiModels {
 
     public record BillingRule(
             long id, long interfaceId, String interfaceName, String interfaceCode,
-            String billingMode, BigDecimal unitPrice, String currency,
             boolean hitBillable, boolean missBillable, LocalDate effectiveDate, String status) {}
 
     public record SaveBillingRuleRequest(
-            long interfaceId, @NotBlank String billingMode, @NotNull BigDecimal unitPrice,
+            long interfaceId,
             boolean hitBillable, boolean missBillable, @NotNull LocalDate effectiveDate) {}
 
     public record BillingSummary(
-            long totalCalls, long billableCalls, BigDecimal totalAmount,
+            long totalCalls, long billableCalls,
             long hitCalls, long missCalls, long errorCalls) {}
 
     public record UsageRecord(
             long id, String traceId, String clientName, String interfaceName,
             String interfaceCode, String resultStatus, String standardCode,
-            boolean billable, BigDecimal unitPrice, BigDecimal amount, int durationMs,
+            boolean billable, int durationMs,
             int upstreamDurationMs, int gatewayDurationMs, String requestStatus,
             String nodeName, LocalDateTime calledAt) {}
 

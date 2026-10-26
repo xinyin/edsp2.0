@@ -381,9 +381,9 @@ WHERE NOT EXISTS (SELECT 1 FROM field_mapping WHERE interface_id=3 AND mapping_d
 INSERT INTO response_code_mapping(interface_id,vendor_code,standard_code,result_status,retryable,billable)
 VALUES (3,'0000','EXT-SUCCESS','HIT',0,1),(3,'1001','EXT-NO-DATA','MISS',0,0),(3,'9999','EXT-VENDOR-ERROR','ERROR',1,0)
 ON DUPLICATE KEY UPDATE standard_code=VALUES(standard_code),result_status=VALUES(result_status),billable=VALUES(billable);
-INSERT INTO billing_rule(interface_id,billing_mode,unit_price,currency,hit_billable,miss_billable,effective_date,status)
-VALUES (3,'SUCCESS_COUNT',0.5000,'CNY',1,0,'2026-01-01','ACTIVE')
-ON DUPLICATE KEY UPDATE unit_price=VALUES(unit_price),status='ACTIVE';
+INSERT INTO billing_rule(interface_id,hit_billable,miss_billable,effective_date,status)
+VALUES (3,1,0,'2026-01-01','ACTIVE')
+ON DUPLICATE KEY UPDATE hit_billable=VALUES(hit_billable),miss_billable=VALUES(miss_billable),status='ACTIVE';
 
 INSERT INTO api_security_policy(interface_id, enabled, encrypt_mode, signature_mode, request_fields,
 encryption_key_reference, signing_key_reference, signature_field, description)
@@ -466,17 +466,17 @@ INSERT INTO api_authorization (client_id, interface_id, daily_quota, valid_from,
 VALUES (1, 2, 50000, '2026-01-01', '2027-12-31', 'ACTIVE', '平台管理员')
 ON DUPLICATE KEY UPDATE daily_quota = VALUES(daily_quota), status = VALUES(status);
 
-INSERT INTO billing_rule (interface_id, billing_mode, unit_price, currency, hit_billable, miss_billable, effective_date, status)
-VALUES (1, 'SUCCESS_COUNT', 0.3500, 'CNY', 1, 0, '2026-01-01', 'ACTIVE')
-ON DUPLICATE KEY UPDATE unit_price = VALUES(unit_price), status = VALUES(status);
+INSERT INTO billing_rule (interface_id, hit_billable, miss_billable, effective_date, status)
+VALUES (1, 1, 0, '2026-01-01', 'ACTIVE')
+ON DUPLICATE KEY UPDATE hit_billable = VALUES(hit_billable), miss_billable = VALUES(miss_billable), status = VALUES(status);
 
-INSERT INTO billing_rule (interface_id, billing_mode, unit_price, currency, hit_billable, miss_billable, effective_date, status)
-VALUES (2, 'SUCCESS_COUNT', 0.8000, 'CNY', 1, 0, '2026-01-01', 'ACTIVE')
-ON DUPLICATE KEY UPDATE unit_price = VALUES(unit_price), status = VALUES(status);
+INSERT INTO billing_rule (interface_id, hit_billable, miss_billable, effective_date, status)
+VALUES (2, 1, 0, '2026-01-01', 'ACTIVE')
+ON DUPLICATE KEY UPDATE hit_billable = VALUES(hit_billable), miss_billable = VALUES(miss_billable), status = VALUES(status);
 
-INSERT INTO usage_record (trace_id, client_id, interface_id, result_status, standard_code, billable, unit_price, amount, called_at)
+INSERT INTO usage_record (trace_id, client_id, interface_id, result_status, standard_code, billable, called_at)
 VALUES
-    ('DEMO202607230001', 1, 1, 'HIT', 'EXT-SUCCESS', 1, 0.3500, 0.3500, '2026-07-23 10:15:00'),
-    ('DEMO202607230002', 1, 1, 'MISS', 'EXT-NO-DATA', 0, 0.3500, 0.0000, '2026-07-23 10:16:00'),
-    ('DEMO202607240001', 1, 1, 'HIT', 'EXT-SUCCESS', 1, 0.3500, 0.3500, '2026-07-24 09:20:00')
+    ('DEMO202607230001', 1, 1, 'HIT', 'EXT-SUCCESS', 1, '2026-07-23 10:15:00'),
+    ('DEMO202607230002', 1, 1, 'MISS', 'EXT-NO-DATA', 0, '2026-07-23 10:16:00'),
+    ('DEMO202607240001', 1, 1, 'HIT', 'EXT-SUCCESS', 1, '2026-07-24 09:20:00')
 ON DUPLICATE KEY UPDATE result_status = VALUES(result_status);

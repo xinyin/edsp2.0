@@ -66,7 +66,7 @@ const filteredAuthorizations = computed(() => {
 const pagedAuthorizations = computed(() => filteredAuthorizations.value.slice((authorizationPage.value - 1) * 20, authorizationPage.value * 20))
 watch([authorizationSearch, authorizationClient, authorizations], () => { authorizationPage.value = 1 })
 const billingRules = ref<BillingRule[]>([])
-const billingSummary = ref<BillingSummary>({ totalCalls: 0, billableCalls: 0, totalAmount: 0, hitCalls: 0, missCalls: 0, errorCalls: 0 })
+const billingSummary = ref<BillingSummary>({ totalCalls: 0, billableCalls: 0, hitCalls: 0, missCalls: 0, errorCalls: 0 })
 const usageRecords = ref<UsageRecord[]>([])
 const monitorSummary = ref<MonitorSummary>({ totalCalls: 0, successCalls: 0, errorCalls: 0, successRate: 100, avgDurationMs: 0, p95DurationMs: 0, avgUpstreamDurationMs: 0, activeAlerts: 0 })
 const monitorPoints = ref<MonitorPoint[]>([])
@@ -97,12 +97,12 @@ const reportDimensionOptions = [
 ]
 const reportMetricOptions = [
   { value: 'callCount', label: '调用量' }, { value: 'successCount', label: '成功量' },
-  { value: 'failureCount', label: '失败量' }, { value: 'billableCount', label: '计费量' },
-  { value: 'amount', label: '金额' }, { value: 'averageDurationMs', label: '平均耗时 (ms)' },
+  { value: 'failureCount', label: '失败量' }, { value: 'billableCount', label: '纳入对账量' },
+  { value: 'averageDurationMs', label: '平均耗时 (ms)' },
   { value: 'upstreamDurationMs', label: '上游平均耗时 (ms)' }
 ]
 const reportDimensions = ref(['PROVIDER', 'DATA_SOURCE', 'API'])
-const reportMetrics = ref(['callCount', 'successCount', 'failureCount', 'amount'])
+const reportMetrics = ref(['callCount', 'successCount', 'failureCount', 'averageDurationMs'])
 function localDate(offsetDays = 0) {
   const date = new Date()
   date.setDate(date.getDate() + offsetDays)
@@ -352,7 +352,7 @@ const batchAuthPage = ref(1)
 const batchAuthPageSize = ref(20)
 const batchAuthSubmitting = ref(false)
 const billingDialog = ref(false)
-const billingForm = ref({ interfaceId: 1, billingMode: 'SUCCESS_COUNT', unitPrice: 0.35, hitBillable: true, missBillable: false, effectiveDate: '2026-07-24' })
+const billingForm = ref({ interfaceId: 1, hitBillable: true, missBillable: false, effectiveDate: '2026-07-24' })
 
 const traceNodeDefinitions = [
   { key: 'DOWNSTREAM', label: '下游系统', short: 'CLIENT', icon: UserIcon },
@@ -364,7 +364,7 @@ const traceNodeDefinitions = [
   { key: 'VENDOR', label: '上游服务', short: 'UPSTREAM', icon: OfficeBuilding },
   { key: 'MOCK_RESPONSE', label: '响应样例', short: 'MOCK', icon: DocumentCopy },
   { key: 'RESPONSE_MAPPING', label: '响应标准化', short: 'NORMALIZE', icon: DataAnalysis },
-  { key: 'BILLING', label: '计量计费', short: 'BILLING', icon: Wallet }
+  { key: 'BILLING', label: '调用计量', short: 'BILLING', icon: Wallet }
 ]
 const esbTraceNodeDefinitions = [
   { key: 'ESB_QUEUE', label: 'ESB 队列', short: 'XML QUEUE', icon: Tickets },
@@ -538,7 +538,7 @@ const pageMeta = computed(() => ({
   resource: ['数据资源接入', '配置上游请求、响应和连接验证'],
   'service-development': ['标准服务开发', '定义平台标准请求、响应与安全编排'],
   authorization: ['API 访问授权', '按机构和调用系统授予平台 API 访问权限'],
-  billing: ['计量管理', '按统一结果码生成调用计量明细并汇总费用'],
+  billing: ['计量管理', '统计调用量及纳入线下对账的数量'],
   monitor: ['运行监控', '监控 Gateway、资源提供商处理应用和上游服务的全链路耗时'],
   logs: ['链路追踪', '统一检索全行 API 调用，定位失败节点并查看节点级输入输出'],
   providers: ['资源方管理', '维护资源提供方资料、平台账号、角色与数据权限'],
@@ -2655,7 +2655,7 @@ async function runTest() {
     }
     testSucceeded.value = true
     if (testingMode !== 'UPSTREAM') {
-      try { await refreshBilling() } catch { ElMessage.warning('联调已完成，计费统计刷新失败，可稍后刷新') }
+      try { await refreshBilling() } catch { ElMessage.warning('联调已完成，调用计量统计刷新失败，可稍后刷新') }
     }
     ElMessage.success(testMode.value === 'UPSTREAM' ? '上游接口验证成功'
       : testMode.value === 'PLATFORM' ? '服务编排测试通过' : '全链路测试通过')
@@ -2965,11 +2965,11 @@ async function createBatchAuthorization() {
   } finally { batchAuthSubmitting.value = false }
 }
 function openBillingDialog(rule?: BillingRule) {
-  if (rule) billingForm.value = { interfaceId: rule.interfaceId, billingMode: rule.billingMode, unitPrice: Number(rule.unitPrice), hitBillable: rule.hitBillable, missBillable: rule.missBillable, effectiveDate: rule.effectiveDate }
+  if (rule) billingForm.value = { interfaceId: rule.interfaceId, hitBillable: rule.hitBillable, missBillable: rule.missBillable, effectiveDate: rule.effectiveDate }
   else billingForm.value.interfaceId = allInterfaces.value[0]?.id ?? 1
   billingDialog.value = true
 }
-async function saveBilling() { await api.saveBillingRule(billingForm.value); billingDialog.value = false; await refreshBilling(); ElMessage.success('计费规则已生效') }
+async function saveBilling() { await api.saveBillingRule(billingForm.value); billingDialog.value = false; await refreshBilling(); ElMessage.success('计量规则已保存') }
 async function refreshBilling() { [billingRules.value, billingSummary.value, usageRecords.value] = await Promise.all([api.billingRules(), api.billingSummary(), api.usageRecords()]) }
 async function refreshMonitor() {
   [monitorSummary.value, monitorPoints.value, monitorAlerts.value, usageRecords.value] = await Promise.all([
@@ -3152,7 +3152,6 @@ const auditTargetLabels: Record<string, string> = {
 const monitorMaxDuration = computed(() => Math.max(1, ...monitorPoints.value.map(item => item.avgDurationMs)))
 function formatJson(value: unknown) { return JSON.stringify(value, null, 2) }
 function formatDateTime(value: string) { return value ? value.replace('T', ' ').slice(0, 16) : '-' }
-function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
 </script>
 
 <template>
@@ -3249,7 +3248,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
       </el-header>
 
       <el-main class="main-content">
-        <section class="page-heading" :class="{'compact-page-heading': activeMenu === 'releases' || activeMenu === 'authorization'}"><div><h1>{{ pageMeta[0] }}<HelpTip :title="pageMeta[0]" :content="pageMeta[1]"/></h1></div><div class="heading-actions"><el-button :icon="Refresh" @click="refreshCurrentWorkspace">刷新</el-button><el-button v-if="activeMenu === 'resource'" type="primary" :icon="Plus" @click="openSourceWizard">接入数据源</el-button><el-button v-if="activeMenu === 'authorization'" :icon="Files" @click="openBatchAuthorization">批量授权</el-button><el-button v-if="activeMenu === 'authorization'" type="primary" :icon="Plus" @click="openAuthDialog">新增授权</el-button><el-button v-if="activeMenu === 'billing'" type="primary" :icon="Plus" @click="openBillingDialog()">配置计费</el-button></div></section>
+        <section class="page-heading" :class="{'compact-page-heading': activeMenu === 'releases' || activeMenu === 'authorization'}"><div><h1>{{ pageMeta[0] }}<HelpTip :title="pageMeta[0]" :content="pageMeta[1]"/></h1></div><div class="heading-actions"><el-button :icon="Refresh" @click="refreshCurrentWorkspace">刷新</el-button><el-button v-if="activeMenu === 'resource'" type="primary" :icon="Plus" @click="openSourceWizard">接入数据源</el-button><el-button v-if="activeMenu === 'authorization'" :icon="Files" @click="openBatchAuthorization">批量授权</el-button><el-button v-if="activeMenu === 'authorization'" type="primary" :icon="Plus" @click="openAuthDialog">新增授权</el-button><el-button v-if="activeMenu === 'billing'" type="primary" :icon="Plus" @click="openBillingDialog()">配置计量</el-button></div></section>
 
         <template v-if="activeMenu === 'overview'">
           <section class="cockpit-command">
@@ -3632,7 +3631,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
                   <template v-else>
                     <div class="section-toolbar"><div><strong>上游结果码 → 平台返回码</strong><HelpTip title="结果码映射" content="供应商码由响应字段提取，平台返回码从统一字典选择。结果状态由所选平台码确定。"/></div><div><el-button :icon="Plus" @click="addResponseCode">新增规则</el-button></div></div>
                     <section class="vendor-code-path-panel"><div><strong>供应商返回码字段路径</strong><HelpTip title="返回码取值路径" content="从供应商原始响应按路径提取返回码，例如 result.code、status.code 或 data.retCode。请以该接口的实际响应结构为准。"/></div><el-input v-model="detail.vendorCodePath" placeholder="例如：result.code" clearable /></section>
-                    <el-table :data="detail.responseCodes" border><el-table-column label="上游原始码值" min-width="130"><template #default="{ row }"><el-input v-model="row.vendorCode" placeholder="例如 0000" /></template></el-table-column><el-table-column label="平台返回码" min-width="190"><template #default="{ row }"><el-select v-model="row.standardCode" filterable @change="selectPlatformCode(row,$event)"><el-option v-for="item in platformResponseCodes.filter(code => code.enabled)" :key="item.code" :label="`${item.code} · ${item.name}`" :value="item.code"/></el-select></template></el-table-column><el-table-column label="结果状态" width="100"><template #default="{ row }">{{ row.resultStatus==='HIT' ? '命中' : row.resultStatus==='MISS' ? '未命中' : '异常' }}</template></el-table-column><el-table-column label="允许重试" width="90" align="center"><template #default="{ row }"><el-switch v-model="row.retryable" /></template></el-table-column><el-table-column label="参与计量" width="90" align="center"><template #default="{ row }"><el-switch v-model="row.billable" /></template></el-table-column><el-table-column label="操作" width="70" align="center"><template #default="{ $index }"><el-button :icon="Delete" text type="danger" aria-label="删除返回码规则" @click="detail.responseCodes.splice($index,1)"/></template></el-table-column></el-table>
+                    <el-table :data="detail.responseCodes" border><el-table-column label="上游原始码值" min-width="130"><template #default="{ row }"><el-input v-model="row.vendorCode" placeholder="例如 0000" /></template></el-table-column><el-table-column label="平台返回码" min-width="190"><template #default="{ row }"><el-select v-model="row.standardCode" filterable @change="selectPlatformCode(row,$event)"><el-option v-for="item in platformResponseCodes.filter(code => code.enabled)" :key="item.code" :label="`${item.code} · ${item.name}`" :value="item.code"/></el-select></template></el-table-column><el-table-column label="结果状态" width="100"><template #default="{ row }">{{ row.resultStatus==='HIT' ? '命中' : row.resultStatus==='MISS' ? '未命中' : '异常' }}</template></el-table-column><el-table-column label="允许重试" width="90" align="center"><template #default="{ row }"><el-switch v-model="row.retryable" /></template></el-table-column><el-table-column label="纳入对账量" width="90" align="center"><template #default="{ row }"><el-switch v-model="row.billable" /></template></el-table-column><el-table-column label="操作" width="70" align="center"><template #default="{ $index }"><el-button :icon="Delete" text type="danger" aria-label="删除返回码规则" @click="detail.responseCodes.splice($index,1)"/></template></el-table-column></el-table>
                   </template>
                 </el-tab-pane>
                 <el-tab-pane v-if="serviceDevelopmentStage==='ORCHESTRATION'" name="security" label="安全处理">
@@ -3734,8 +3733,8 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
         </template>
 
         <template v-else-if="activeMenu === 'billing'">
-          <section class="billing-metrics"><div><span>本期调用量</span><strong>{{ billingSummary.totalCalls }}</strong><small>累计调用量</small></div><div><span>可计费调用</span><strong>{{ billingSummary.billableCalls }}</strong><small>命中且符合规则</small></div><div><span>命中 / 未查得</span><strong>{{ billingSummary.hitCalls }} / {{ billingSummary.missCalls }}</strong><small>按统一结果状态统计</small></div><div class="amount"><span>本期预估费用</span><strong>{{ money(billingSummary.totalAmount) }}</strong><small>币种：人民币</small></div></section>
-          <section class="plain-panel table-panel"><div class="panel-heading"><div><strong>接口计费规则</strong></div></div><el-table :data="billingRules" border><el-table-column prop="interfaceName" label="API" min-width="170"/><el-table-column prop="interfaceCode" label="接口编码" min-width="160"/><el-table-column label="计费方式" width="130"><template #default>按成功次数</template></el-table-column><el-table-column label="单价" width="110"><template #default="{ row }">¥ {{ Number(row.unitPrice).toFixed(4) }}</template></el-table-column><el-table-column label="HIT / MISS" width="140"><template #default="{ row }"><el-tag :type="row.hitBillable?'success':'info'">{{ row.hitBillable?'计费':'免费' }}</el-tag> / <el-tag :type="row.missBillable?'success':'info'">{{ row.missBillable?'计费':'免费' }}</el-tag></template></el-table-column><el-table-column prop="effectiveDate" label="生效日期" width="120"/><el-table-column width="90"><template #default="{ row }"><el-button text type="primary" @click="openBillingDialog(row)">编辑</el-button></template></el-table-column></el-table></section>
+          <section class="billing-metrics"><div><span>累计调用量</span><strong>{{ billingSummary.totalCalls }}</strong><small>已记录的调用总数</small></div><div><span>纳入线下对账</span><strong>{{ billingSummary.billableCalls }}</strong><small>按接口规则统计</small></div><div><span>命中 / 未查得</span><strong>{{ billingSummary.hitCalls }} / {{ billingSummary.missCalls }}</strong><small>按统一结果状态统计</small></div></section>
+          <section class="plain-panel table-panel"><div class="panel-heading"><div><strong>接口计量规则</strong></div></div><el-table :data="billingRules" border><el-table-column prop="interfaceName" label="API" min-width="170"/><el-table-column prop="interfaceCode" label="接口编码" min-width="160"/><el-table-column label="HIT / MISS 纳入对账"><template #default="{ row }"><el-tag :type="row.hitBillable ? 'success' : 'info'">HIT {{ row.hitBillable ? '纳入' : '不纳入' }}</el-tag> / <el-tag :type="row.missBillable ? 'success' : 'info'">MISS {{ row.missBillable ? '纳入' : '不纳入' }}</el-tag></template></el-table-column><el-table-column prop="effectiveDate" label="生效日期" width="120"/><el-table-column width="90"><template #default="{ row }"><el-button text type="primary" @click="openBillingDialog(row)">编辑</el-button></template></el-table-column></el-table></section>
         </template>
 
         <template v-else-if="activeMenu === 'logs'">
@@ -3909,5 +3908,5 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
     <template #footer><div class="batch-auth-footer"><span>只展示当前调用系统尚未登记授权的 API。</span><div><el-button @click="batchAuthDialog=false">取消</el-button><el-button type="primary" :loading="batchAuthSubmitting" :disabled="!batchAuthForm.clientId || !batchAuthForm.interfaceIds.length" @click="createBatchAuthorization">确认授权 {{ batchAuthForm.interfaceIds.length }} 个 API</el-button></div></div></template>
   </el-dialog>
   <el-drawer v-model="publishedDetailDrawer" title="服务版本详情" size="620px"><div v-loading="publishedDetailLoading" class="published-interface-detail" v-if="publishedInterfaceDetail"><section class="published-detail-hero"><span>SERVICE VERSION</span><strong>{{ publishedInterfaceDetail.summary.interfaceName }}</strong><code>{{ publishedInterfaceDetail.summary.interfaceCode }}</code></section><p v-if="publishedInterfaceDetail.summary.publishedVersion != null && publishedInterfaceDetail.summary.currentVersion !== publishedInterfaceDetail.summary.publishedVersion" class="release-version-note">当前开发配置为 V{{ publishedInterfaceDetail.summary.currentVersion }}；{{ publishedInterfaceDetail.summary.status === 'OFFLINE' ? '服务已下线，最近上线版本为' : '线上仍使用' }} V{{ publishedInterfaceDetail.summary.publishedVersion }}。以下请求与响应样例来自当前开发配置，不代表已发布版本。</p><dl class="published-detail-facts"><div><dt>当前开发版本</dt><dd>V{{ publishedInterfaceDetail.summary.currentVersion }}</dd></div><div><dt>{{ publishedInterfaceDetail.summary.status === 'OFFLINE' ? '最近上线版本' : '线上版本' }}</dt><dd>{{ publishedInterfaceDetail.summary.publishedVersion == null ? '未发布' : 'V' + publishedInterfaceDetail.summary.publishedVersion }}</dd></div><div><dt>当前开发路径</dt><dd>{{ publishedInterfaceDetail.summary.servicePath }}</dd></div><div><dt>当前开发方法</dt><dd><el-tag type="info">{{ publishedInterfaceDetail.summary.httpMethod }}</el-tag></dd></div><div><dt>当前开发上游地址</dt><dd>{{ publishedInterfaceDetail.summary.upstreamUrl || '-' }}</dd></div><div><dt>调用超时</dt><dd>{{ publishedInterfaceDetail.timeoutMs }} ms · {{ publishedInterfaceDetail.timeoutSource === 'INTERFACE' ? '接口覆盖' : '数据源默认' }}</dd></div><div><dt>当前状态</dt><dd><el-tag :type="publishedInterfaceDetail.summary.status === 'OFFLINE' ? 'danger' : 'info'">{{ publishedInterfaceDetail.summary.status === 'OFFLINE' ? '已下线' : publishedInterfaceDetail.summary.currentVersion !== publishedInterfaceDetail.summary.publishedVersion ? '有未发布变更' : '运行中' }}</el-tag></dd></div></dl><section class="published-detail-code"><div><label>当前开发请求样例</label><CopyableBlock :value="formatJson(publishedInterfaceDetail.requestExample)"><pre>{{ formatJson(publishedInterfaceDetail.requestExample) }}</pre></CopyableBlock></div><div><label>当前开发响应样例</label><CopyableBlock :value="formatJson(publishedInterfaceDetail.standardResponseExample)"><pre>{{ formatJson(publishedInterfaceDetail.standardResponseExample) }}</pre></CopyableBlock></div></section></div><el-empty v-else-if="!publishedDetailLoading" description="暂无接口详情"/></el-drawer>
-  <el-dialog v-model="billingDialog" title="配置接口计费规则" width="600px"><el-form label-position="top"><el-form-item label="计费 API"><el-select v-model="billingForm.interfaceId"><el-option v-for="item in allInterfaces" :key="item.id" :label="`${item.interfaceName} · ${item.interfaceCode}`" :value="item.id"/></el-select></el-form-item><div class="form-grid"><el-form-item label="计费方式"><el-select v-model="billingForm.billingMode"><el-option label="按成功次数" value="SUCCESS_COUNT"/><el-option label="按调用次数" value="REQUEST_COUNT"/></el-select></el-form-item><el-form-item label="单价（元/次）"><el-input-number v-model="billingForm.unitPrice" :precision="4" :step="0.01" :min="0"/></el-form-item><el-form-item label="HIT 是否计费"><el-switch v-model="billingForm.hitBillable"/></el-form-item><el-form-item label="MISS 是否计费"><el-switch v-model="billingForm.missBillable"/></el-form-item></div><el-form-item label="生效日期"><el-date-picker v-model="billingForm.effectiveDate" type="date" value-format="YYYY-MM-DD"/></el-form-item></el-form><template #footer><el-button @click="billingDialog=false">取消</el-button><el-button type="primary" @click="saveBilling">保存并生效</el-button></template></el-dialog>
+  <el-dialog v-model="billingDialog" title="配置接口计量规则" width="600px"><el-form label-position="top"><el-form-item label="API"><el-select v-model="billingForm.interfaceId"><el-option v-for="item in allInterfaces" :key="item.id" :label="`${item.interfaceName} · ${item.interfaceCode}`" :value="item.id"/></el-select></el-form-item><div class="form-grid"><el-form-item label="HIT 调用纳入线下对账"><el-switch v-model="billingForm.hitBillable"/></el-form-item><el-form-item label="MISS 调用纳入线下对账"><el-switch v-model="billingForm.missBillable"/></el-form-item></div><el-form-item label="生效日期"><el-date-picker v-model="billingForm.effectiveDate" type="date" value-format="YYYY-MM-DD"/></el-form-item></el-form><template #footer><el-button @click="billingDialog=false">取消</el-button><el-button type="primary" @click="saveBilling">保存</el-button></template></el-dialog>
 </template>

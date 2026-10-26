@@ -611,13 +611,11 @@ button, input, textarea { font-family: inherit; }
 .auth-summary-panel small { margin-top: 3px; color: #afc5d4; }
 .table-panel { overflow: hidden; }
 .table-panel .el-table { border-left: 0; border-right: 0; border-bottom: 0; }
-.billing-metrics { display: grid; grid-template-columns: repeat(4, 1fr); margin-bottom: 16px; background: #fff; border: 1px solid var(--border); }
+.billing-metrics { display: grid; grid-template-columns: repeat(3, 1fr); margin-bottom: 16px; background: #fff; border: 1px solid var(--border); }
 .billing-metrics > div { min-height: 116px; display: flex; flex-direction: column; justify-content: center; padding: 18px 22px; border-right: 1px solid var(--border); }
 .billing-metrics > div:last-child { border-right: 0; }
 .billing-metrics span, .billing-metrics small { color: var(--muted); font-size: 11px; }
 .billing-metrics strong { margin: 8px 0 6px; font-size: 25px; }
-.billing-metrics .amount { color: #fff; background: #16766f; }
-.billing-metrics .amount span, .billing-metrics .amount small { color: #c9e4df; }
 .wizard-body { min-height: 300px; padding: 26px 4px 4px; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
 .form-grid .el-select, .form-grid .el-date-editor, .wizard-body .el-select { width: 100%; }

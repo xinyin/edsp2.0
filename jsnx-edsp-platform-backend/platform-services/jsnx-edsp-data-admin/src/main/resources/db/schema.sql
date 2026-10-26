@@ -322,9 +322,6 @@ CREATE TABLE IF NOT EXISTS api_authorization (
 CREATE TABLE IF NOT EXISTS billing_rule (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     interface_id BIGINT NOT NULL UNIQUE,
-    billing_mode VARCHAR(32) NOT NULL DEFAULT 'SUCCESS_COUNT',
-    unit_price DECIMAL(12,4) NOT NULL DEFAULT 0,
-    currency VARCHAR(8) NOT NULL DEFAULT 'CNY',
     hit_billable TINYINT(1) NOT NULL DEFAULT 1,
     miss_billable TINYINT(1) NOT NULL DEFAULT 0,
     effective_date DATE NOT NULL,
@@ -341,8 +338,6 @@ CREATE TABLE IF NOT EXISTS usage_record (
     result_status VARCHAR(16) NOT NULL,
     standard_code VARCHAR(64) NOT NULL,
     billable TINYINT(1) NOT NULL DEFAULT 0,
-    unit_price DECIMAL(12,4) NOT NULL DEFAULT 0,
-    amount DECIMAL(14,4) NOT NULL DEFAULT 0,
     duration_ms INT NOT NULL DEFAULT 0,
     upstream_duration_ms INT NOT NULL DEFAULT 0,
     gateway_duration_ms INT NOT NULL DEFAULT 0,

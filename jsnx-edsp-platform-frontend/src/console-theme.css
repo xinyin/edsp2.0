@@ -488,9 +488,6 @@ body { background: var(--canvas); }
 .cockpit-alerts:not(.clear) { border-color: #e1c9cb; background: #fcf7f7; }
 .cockpit-alerts.clear { border-color: #ccdcd4; background: #f7faf8; }
 .release-routing-warning { border-color: #ded3bf; background: #fbf9f5; }
-.billing-metrics .amount { color: var(--text-primary); background: #fff; }
-.billing-metrics .amount span,
-.billing-metrics .amount small { color: var(--muted); }
 .success-text { color: var(--el-color-success) !important; }
 .warning-text { color: var(--el-color-warning) !important; }
 .danger-text { color: var(--el-color-danger) !important; }
