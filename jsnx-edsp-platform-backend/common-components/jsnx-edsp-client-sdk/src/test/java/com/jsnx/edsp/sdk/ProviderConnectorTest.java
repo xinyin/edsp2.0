@@ -15,6 +15,11 @@ import static org.assertj.core.api.Assertions.*;
 
 class ProviderConnectorTest {
     @Test
+    void supportedDatabaseDriversArePackagedWithTheConnector() throws Exception {
+        assertThat(Class.forName("com.mysql.cj.jdbc.Driver")).isNotNull();
+        assertThat(Class.forName("org.postgresql.Driver")).isNotNull();
+    }
+    @Test
     void databaseConnectorDecryptsSavedPassword() {
         String key = java.util.Base64.getEncoder().encodeToString(new byte[32]);
         String encrypted = CryptoSupport.aes256GcmEncrypt("db-secret", key, "edsp-provider-database");

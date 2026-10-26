@@ -63,7 +63,8 @@ import sys
 with open(sys.argv[2], "ab") as log:
     process = subprocess.Popen(
         [os.path.join(os.environ["JAVA_HOME"], "bin", "java"), "-jar", sys.argv[1],
-         "--server.port=" + sys.argv[3]],
+         "--server.port=" + sys.argv[3],
+         "--spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration"],
         stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
         start_new_session=True,
     )

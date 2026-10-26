@@ -10,6 +10,8 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.server.ServerWebExchange;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 
 import java.nio.charset.StandardCharsets;
@@ -23,6 +25,7 @@ import java.util.Map;
  */
 @Component
 public class ExternalApiAuthFilter implements GlobalFilter, Ordered {
+    private static final Logger log = LoggerFactory.getLogger(ExternalApiAuthFilter.class);
     public static final String EXECUTION_SCOPE_HEADER = "X-Edsp-Execution-Scope";
     public static final String INTERNAL_TEST_KEY_HEADER = "X-Edsp-Internal-Test-Key";
     public static final String DRAFT_TEST_SCOPE = "DRAFT_TEST";
@@ -73,13 +76,19 @@ public class ExternalApiAuthFilter implements GlobalFilter, Ordered {
                         .queryParam("environment", environment)
                         .queryParamIfPresent("apiCode", java.util.Optional.ofNullable(exchange.getRequest().getHeaders().getFirst("X-Api-Code")))
                         .build())
-                .retrieve().bodyToMono(Map.class)
-                .flatMap(result -> Boolean.TRUE.equals(result.get("authorized"))
+                .retrieve().bodyToMono(Map.class).materialize()
+                .flatMap(signal -> {
+                    if (!signal.hasValue()) {
+                        if (signal.isOnError()) log.warn("Authorization lookup failed for {}", servicePath, signal.getThrowable());
+                        return reject(exchange, HttpStatus.SERVICE_UNAVAILABLE,
+                                "EDSP-AUTH-503", "授权中心暂不可用");
+                    }
+                    Map result = signal.get();
+                    return Boolean.TRUE.equals(result.get("authorized"))
                         ? chain.filter(exchange)
                         : reject(exchange, HttpStatus.FORBIDDEN, "EDSP-AUTH-403",
-                                String.valueOf(result.getOrDefault("reason", "调用方未获得 API 授权"))))
-                .onErrorResume(error -> reject(exchange, HttpStatus.SERVICE_UNAVAILABLE,
-                        "EDSP-AUTH-503", "授权中心暂不可用"));
+                                String.valueOf(result.getOrDefault("reason", "调用方未获得 API 授权")));
+                });
     }
 
     private boolean constantTimeEquals(String expected, String supplied) {
