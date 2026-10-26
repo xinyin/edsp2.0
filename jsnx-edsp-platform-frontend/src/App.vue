@@ -342,10 +342,12 @@ function authorizationDefaultDates() {
 }
 const defaultAuthorizationDates = authorizationDefaultDates()
 const authForm = ref({ clientId: 1, interfaceId: 1, dailyQuota: 50000, ...defaultAuthorizationDates, approvedBy: '平台管理员' })
+const authDialogMode = ref<'CREATE' | 'EDIT'>('CREATE')
+const editingAuthorization = ref<AuthorizationRecord | null>(null)
 const batchAuthDialog = ref(false)
 const batchAuthForm = ref({ clientId: 0, interfaceIds: [] as number[], dailyQuota: 50000, ...defaultAuthorizationDates, approvedBy: '平台管理员' })
 const batchAuthDateRange = ref<[string, string]>([defaultAuthorizationDates.validFrom, defaultAuthorizationDates.validTo])
-const batchAuthFilters = ref({ sourceId: 0, keyword: '', grantStatus: 'UNAUTHORIZED' as 'ALL'|'UNAUTHORIZED'|'AUTHORIZED' })
+const batchAuthFilters = ref({ sourceId: 0, keyword: '' })
 const batchAuthPage = ref(1)
 const batchAuthPageSize = ref(20)
 const batchAuthSubmitting = ref(false)
@@ -707,27 +709,36 @@ const activeClients = computed(() => clients.value.filter(item => item.status ==
 const today = computed(() => new Date().toISOString().slice(0, 10))
 const validAuthorizations = computed(() => authorizations.value.filter(item => item.status === 'ACTIVE'
   && item.validFrom <= today.value && item.validTo >= today.value))
+const existingAuthInterfaceIds = computed(() => new Set(authorizations.value
+  .filter(grant => grant.clientId === authForm.value.clientId).map(grant => grant.interfaceId)))
+const availableAuthInterfaces = computed(() => authorizableInterfaces.value.filter(item =>
+  !existingAuthInterfaceIds.value.has(item.id)))
+watch(() => authForm.value.clientId, () => {
+  if (authDialogMode.value === 'EDIT') return
+  if (!availableAuthInterfaces.value.some(item => item.id === authForm.value.interfaceId)) {
+    authForm.value.interfaceId = availableAuthInterfaces.value[0]?.id ?? 0
+  }
+})
 function authorizationStatus(item: AuthorizationRecord) {
   if (item.status !== 'ACTIVE') return { text: '已停用', type: 'info' as const }
   if (item.validFrom > today.value) return { text: '待生效', type: 'warning' as const }
   if (item.validTo < today.value) return { text: '已过期', type: 'danger' as const }
   return { text: '生效', type: 'success' as const }
 }
-function hasAuthorization(interfaceId: number) {
-  return authorizations.value.some(item => item.clientId === batchAuthForm.value.clientId
-    && item.interfaceId === interfaceId
-    && item.status === 'ACTIVE' && item.validFrom <= today.value && item.validTo >= today.value)
-}
+const existingBatchAuthInterfaceIds = computed(() => new Set(authorizations.value
+  .filter(grant => grant.clientId === batchAuthForm.value.clientId).map(grant => grant.interfaceId)))
+function hasAuthorization(interfaceId: number) { return existingBatchAuthInterfaceIds.value.has(interfaceId) }
 const filteredBatchAuthorizationInterfaces = computed(() => {
   const keyword = batchAuthFilters.value.keyword.trim().toLowerCase()
   return authorizableInterfaces.value.filter(item => {
     if (batchAuthFilters.value.sourceId && item.dataSourceId !== batchAuthFilters.value.sourceId) return false
     if (keyword && !`${item.interfaceName}${item.interfaceCode}${item.servicePath}`.toLowerCase().includes(keyword)) return false
-    const granted = hasAuthorization(item.id)
-    if (batchAuthFilters.value.grantStatus === 'AUTHORIZED' && !granted) return false
-    if (batchAuthFilters.value.grantStatus === 'UNAUTHORIZED' && granted) return false
-    return true
+    return !hasAuthorization(item.id)
   })
+})
+watch(() => batchAuthForm.value.clientId, () => {
+  batchAuthForm.value.interfaceIds = []
+  batchAuthPage.value = 1
 })
 const pagedBatchAuthorizationInterfaces = computed(() => {
   const start = (batchAuthPage.value - 1) * batchAuthPageSize.value
@@ -2876,14 +2887,26 @@ async function createClient() {
   ElMessage.success('调用系统已登记')
 }
 function openAuthDialog() {
+  authDialogMode.value = 'CREATE'
+  editingAuthorization.value = null
   Object.assign(authForm.value, defaultAuthorizationDates)
-  authForm.value.clientId = activeClients.value[0]?.id ?? 0
-  if (!authorizableInterfaces.value.some(item => item.id === authForm.value.interfaceId)) {
-    authForm.value.interfaceId = authorizableInterfaces.value[0]?.id ?? 0
+  authForm.value.clientId = activeClients.value.find(item => item.id === authorizationClient.value)?.id
+    ?? activeClients.value[0]?.id ?? 0
+  if (!availableAuthInterfaces.value.some(item => item.id === authForm.value.interfaceId)) {
+    authForm.value.interfaceId = availableAuthInterfaces.value[0]?.id ?? 0
   }
-  if (!authForm.value.interfaceId) {
-    ElMessage.warning('暂无已发布且在线的 API，请先完成服务发布')
+  authDialog.value = true
+}
+function editAuthorization(row: AuthorizationRecord) {
+  if (!authorizableInterfaces.value.some(item => item.id === row.interfaceId)) {
+    ElMessage.warning('该 API 当前未上线，不能修改授权')
     return
+  }
+  authDialogMode.value = 'EDIT'
+  editingAuthorization.value = row
+  authForm.value = {
+    clientId: row.clientId, interfaceId: row.interfaceId, dailyQuota: row.dailyQuota,
+    validFrom: row.validFrom, validTo: row.validTo, approvedBy: '平台管理员'
   }
   authDialog.value = true
 }
@@ -2892,14 +2915,19 @@ async function createAuthorization() {
     ElMessage.warning('请先登记并启用一个调用系统')
     return
   }
-  if (!authForm.value.interfaceId) {
-    ElMessage.warning('请选择需要授权的 API')
+  if (authDialogMode.value === 'CREATE' && !availableAuthInterfaces.value.some(item => item.id === authForm.value.interfaceId)) {
+    ElMessage.warning('请选择该调用系统尚未获得有效授权的 API')
+    return
+  }
+  if (authDialogMode.value === 'EDIT' && !authorizations.value.some(item =>
+    item.clientId === authForm.value.clientId && item.interfaceId === authForm.value.interfaceId)) {
+    ElMessage.warning('原授权记录已变化，请刷新后重试')
     return
   }
   await api.createAuthorization(authForm.value)
   authDialog.value = false
   authorizations.value = await api.authorizations()
-  ElMessage.success('API 授权已生效')
+  ElMessage.success(authDialogMode.value === 'EDIT' ? '授权配置已更新' : 'API 授权已生效')
 }
 function openBatchAuthorization() {
   if (!activeClients.value.length) {
@@ -2914,13 +2942,17 @@ function openBatchAuthorization() {
   batchAuthDateRange.value = [defaultAuthorizationDates.validFrom, defaultAuthorizationDates.validTo]
   batchAuthForm.value.clientId = activeClients.value[0]?.id ?? 0
   batchAuthForm.value.interfaceIds = []
-  batchAuthFilters.value = { sourceId: 0, keyword: '', grantStatus: 'UNAUTHORIZED' }
+  batchAuthFilters.value = { sourceId: 0, keyword: '' }
   batchAuthPage.value = 1
   batchAuthDialog.value = true
 }
 async function createBatchAuthorization() {
   if (!batchAuthForm.value.clientId || !batchAuthForm.value.interfaceIds.length) {
     ElMessage.warning('请选择调用系统和至少一个已发布 API')
+    return
+  }
+  if (batchAuthForm.value.interfaceIds.some(id => !authorizableInterfaces.value.some(item => item.id === id) || hasAuthorization(id))) {
+    ElMessage.warning('部分 API 已有授权记录或不再在线，请重新选择')
     return
   }
   try {
@@ -3698,7 +3730,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
 
         <template v-else-if="activeMenu === 'authorization'">
           <section class="authorization-overview"><div class="plain-panel"><div class="panel-heading"><div><strong>调用系统</strong><span>{{ clients.length }} 个系统 · {{ validAuthorizations.length }} 条有效授权</span></div><el-button :icon="Plus" @click="openClientRegistration()">登记系统</el-button></div><template v-if="clients.length"><el-table :data="clients"><el-table-column prop="clientName" label="系统名称" min-width="160"/><el-table-column prop="clientCode" label="系统编码" min-width="130"/><el-table-column prop="institutionName" label="所属机构" min-width="160"/><el-table-column prop="ownerName" label="负责人" width="90"/><el-table-column label="状态" width="90"><template #default="{row}"><el-tag :type="row.status === 'ACTIVE' ? 'success' : 'info'">{{ row.status === 'ACTIVE' ? '有效' : '停用' }}</el-tag></template></el-table-column></el-table></template><div v-else class="authorization-empty"><div class="authorization-empty-icon"><UserIcon /></div><strong>暂无调用系统</strong><span>先登记行内系统，才能为 API 配置访问授权。</span><el-button type="primary" plain :icon="Plus" @click="openClientRegistration()">登记第一个调用系统</el-button></div></div></section>
-          <section class="plain-panel table-panel authorization-list-panel"><div class="panel-heading"><div><strong>API 授权清单</strong><HelpTip title="API 访问授权" content="按调用系统配置可访问的 API、日配额和有效期。正式调用同时要求服务已上线且授权有效；内部链路测试不使用业务授权。"/></div></div><div class="list-filter-bar"><el-input v-model="authorizationSearch" :prefix-icon="Search" clearable placeholder="搜索系统、API 名称或编码" aria-label="搜索授权"/><el-select v-model="authorizationClient" filterable aria-label="按调用系统筛选"><el-option label="全部调用系统" :value="0"/><el-option v-for="client in clients" :key="client.id" :label="client.clientName" :value="client.id"/></el-select><span>{{ filteredAuthorizations.length }} 条授权</span></div><el-table :data="pagedAuthorizations" border empty-text="暂无匹配的授权记录"><el-table-column prop="clientName" label="调用系统" min-width="160"/><el-table-column prop="interfaceName" label="授权 API" min-width="170"/><el-table-column prop="interfaceCode" label="接口编码" min-width="150"/><el-table-column prop="dailyQuota" label="日配额" width="110"/><el-table-column label="有效期" min-width="190"><template #default="{ row }">{{ row.validFrom }} 至 {{ row.validTo }}</template></el-table-column><el-table-column label="状态" width="90"><template #default="{ row }"><el-tag :type="authorizationStatus(row).type">{{ authorizationStatus(row).text }}</el-tag></template></el-table-column></el-table><el-pagination v-if="filteredAuthorizations.length>20" class="list-pagination" v-model:current-page="authorizationPage" :page-size="20" :total="filteredAuthorizations.length" layout="total, prev, pager, next"/></section>
+          <section class="plain-panel table-panel authorization-list-panel"><div class="panel-heading"><div><strong>API 授权清单</strong><HelpTip title="API 访问授权" content="按调用系统配置可访问的 API、日配额和有效期。正式调用同时要求服务已上线且授权有效；内部链路测试不使用业务授权。"/></div></div><div class="list-filter-bar"><el-input v-model="authorizationSearch" :prefix-icon="Search" clearable placeholder="搜索系统、API 名称或编码" aria-label="搜索授权"/><el-select v-model="authorizationClient" filterable aria-label="按调用系统筛选"><el-option label="全部调用系统" :value="0"/><el-option v-for="client in clients" :key="client.id" :label="client.clientName" :value="client.id"/></el-select><span>{{ filteredAuthorizations.length }} 条授权</span></div><el-table :data="pagedAuthorizations" border empty-text="暂无匹配的授权记录"><el-table-column prop="clientName" label="调用系统" min-width="160"/><el-table-column prop="interfaceName" label="授权 API" min-width="170"/><el-table-column prop="interfaceCode" label="接口编码" min-width="150"/><el-table-column prop="dailyQuota" label="日配额" width="110"/><el-table-column label="有效期" min-width="190"><template #default="{ row }">{{ row.validFrom }} 至 {{ row.validTo }}</template></el-table-column><el-table-column label="状态" width="90"><template #default="{ row }"><el-tag :type="authorizationStatus(row).type">{{ authorizationStatus(row).text }}</el-tag></template></el-table-column><el-table-column label="操作" width="82" align="center"><template #default="{ row }"><el-button text type="primary" @click="editAuthorization(row)">编辑</el-button></template></el-table-column></el-table><el-pagination v-if="filteredAuthorizations.length>20" class="list-pagination" v-model:current-page="authorizationPage" :page-size="20" :total="filteredAuthorizations.length" layout="total, prev, pager, next"/></section>
         </template>
 
         <template v-else-if="activeMenu === 'billing'">
@@ -3852,7 +3884,7 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
   </el-dialog>
   <el-dialog v-model="approvalDialog" title="发布审批" width="640px"><div v-if="selectedApproval" class="approval-review"><div class="approval-title"><strong>{{ selectedApproval.interfaceName }}</strong><el-tag type="warning">V{{ selectedApproval.releaseVersion }} · 待审批</el-tag></div><div class="approval-meta"><span>接口编码：{{ selectedApproval.interfaceCode }}</span><span>申请人：{{ selectedApproval.applicant }}</span><span>提交时间：{{ selectedApproval.submittedAt }}</span></div><div class="approval-checklist"><p><el-icon><CircleCheck /></el-icon>字段映射与统一返回码已配置</p><p><el-icon><CircleCheck /></el-icon>草稿版本校验通过</p><p><el-icon><CircleCheck /></el-icon>审批通过后自动激活发布计划</p></div><CopyableBlock :value="approvalComment"><el-input v-model="approvalComment" type="textarea" :rows="4" placeholder="填写审批意见"/></CopyableBlock></div><template #footer><el-button @click="approvalDialog=false">取消</el-button><el-button type="danger" @click="decideApproval('REJECT')">驳回</el-button><el-button type="primary" @click="decideApproval('APPROVE')">审批通过并发布</el-button></template></el-dialog>
   <el-dialog v-model="clientDialog" title="登记调用系统" width="600px"><el-form label-position="top"><div class="form-grid"><el-form-item label="系统名称"><el-input v-model="clientForm.clientName"/></el-form-item><el-form-item label="系统编码"><el-input v-model="clientForm.clientCode"/></el-form-item><el-form-item label="机构名称"><el-input v-model="clientForm.institutionName"/></el-form-item><el-form-item label="机构编码"><el-input v-model="clientForm.institutionCode"/></el-form-item></div><el-form-item label="负责人"><el-input v-model="clientForm.ownerName"/></el-form-item></el-form><template #footer><el-button @click="clientDialog=false; returnToAuthAfterClient=false">取消</el-button><el-button type="primary" @click="createClient">确认登记</el-button></template></el-dialog>
-  <el-dialog v-model="authDialog" title="新增 API 授权" width="620px"><el-form label-position="top"><el-form-item label="调用系统"><template v-if="activeClients.length"><el-select v-model="authForm.clientId" placeholder="请选择调用系统" style="width:100%"><el-option v-for="item in activeClients" :key="item.id" :label="`${item.clientName} · ${item.institutionName}`" :value="item.id"/></el-select></template><div v-else class="auth-client-empty"><div><strong>暂无可用调用系统</strong><span>请先登记一个行内调用系统，再继续授权。</span></div><el-button type="primary" plain :icon="Plus" @click="openClientRegistration(true)">去登记</el-button></div></el-form-item><el-form-item label="授权 API"><el-select v-model="authForm.interfaceId" placeholder="请选择已发布 API" style="width:100%"><el-option v-for="item in authorizableInterfaces" :key="item.id" :label="`${item.interfaceName} · ${item.interfaceCode} · V${item.publishedVersion}`" :value="item.id"/></el-select></el-form-item><div class="form-grid"><el-form-item label="日调用配额"><el-input-number v-model="authForm.dailyQuota" :min="1" :step="1000"/></el-form-item><el-form-item label="生效日期"><el-date-picker v-model="authForm.validFrom" type="date" value-format="YYYY-MM-DD"/></el-form-item><el-form-item label="失效日期"><el-date-picker v-model="authForm.validTo" type="date" value-format="YYYY-MM-DD"/></el-form-item></div></el-form><template #footer><el-button @click="authDialog=false">取消</el-button><el-button type="primary" :disabled="!activeClients.length || !authForm.clientId || !authForm.interfaceId" @click="createAuthorization">确认授权</el-button></template></el-dialog>
+  <el-dialog v-model="authDialog" :title="authDialogMode === 'EDIT' ? '编辑 API 授权' : '新增 API 授权'" width="620px"><el-form label-position="top"><el-form-item label="调用系统"><span v-if="authDialogMode === 'EDIT'" class="authorization-edit-value">{{ editingAuthorization?.clientName || '-' }}</span><template v-else-if="activeClients.length"><el-select v-model="authForm.clientId" placeholder="请选择调用系统" style="width:100%"><el-option v-for="item in activeClients" :key="item.id" :label="`${item.clientName} · ${item.institutionName}`" :value="item.id"/></el-select></template><div v-else class="auth-client-empty"><div><strong>暂无可用调用系统</strong><span>请先登记一个行内调用系统，再继续授权。</span></div><el-button type="primary" plain :icon="Plus" @click="openClientRegistration(true)">去登记</el-button></div></el-form-item><el-form-item label="授权 API"><span v-if="authDialogMode === 'EDIT'" class="authorization-edit-value">{{ editingAuthorization?.interfaceName || '-' }} · {{ editingAuthorization?.interfaceCode || '-' }}</span><el-select v-else v-model="authForm.interfaceId" :disabled="!availableAuthInterfaces.length" placeholder="请选择该系统尚未授权的 API" no-data-text="该系统暂无可新增授权的 API" style="width:100%"><el-option v-for="item in availableAuthInterfaces" :key="item.id" :label="`${item.interfaceName} · ${item.interfaceCode} · V${item.publishedVersion}`" :value="item.id"/></el-select><small v-if="authDialogMode === 'CREATE' && !availableAuthInterfaces.length" class="authorization-candidate-empty">该调用系统暂无可新增授权的线上 API。</small></el-form-item><div class="form-grid"><el-form-item label="日调用配额"><el-input-number v-model="authForm.dailyQuota" :min="1" :step="1000"/></el-form-item><el-form-item label="生效日期"><el-date-picker v-model="authForm.validFrom" type="date" value-format="YYYY-MM-DD"/></el-form-item><el-form-item label="失效日期"><el-date-picker v-model="authForm.validTo" type="date" value-format="YYYY-MM-DD"/></el-form-item></div></el-form><template #footer><el-button @click="authDialog=false">取消</el-button><el-button type="primary" :disabled="!activeClients.length || !authForm.clientId || (authDialogMode === 'CREATE' && !availableAuthInterfaces.some(item => item.id === authForm.interfaceId))" @click="createAuthorization">{{ authDialogMode === 'EDIT' ? '保存修改' : '确认授权' }}</el-button></template></el-dialog>
   <el-dialog v-model="batchAuthDialog" width="min(1080px,94vw)" class="batch-auth-dialog" destroy-on-close>
     <template #header><div class="batch-auth-title"><span>BATCH AUTHORIZATION</span><strong>批量授予 API 访问权限</strong><small>通过筛选和跨页勾选快速处理大规模 API</small></div></template>
     <div class="batch-auth-layout">
@@ -3868,13 +3900,13 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
       </section>
       <section class="batch-auth-picker">
         <header><span>02</span><div><strong>选择 API</strong><small>{{ filteredBatchAuthorizationInterfaces.length }} 个筛选结果</small></div></header>
-        <div class="batch-auth-filters"><el-select v-model="batchAuthFilters.sourceId" filterable @change="resetBatchPage"><el-option label="全部数据源" :value="0"/><el-option v-for="source in sources" :key="source.id" :label="source.sourceName" :value="source.id"/></el-select><el-input v-model="batchAuthFilters.keyword" :prefix-icon="Search" clearable placeholder="搜索 API 名称、编码或路径" @input="resetBatchPage"/><el-select v-model="batchAuthFilters.grantStatus" @change="resetBatchPage"><el-option label="尚未授权" value="UNAUTHORIZED"/><el-option label="已授权" value="AUTHORIZED"/><el-option label="全部状态" value="ALL"/></el-select></div>
+        <div class="batch-auth-filters"><el-select v-model="batchAuthFilters.sourceId" filterable @change="resetBatchPage"><el-option label="全部数据源" :value="0"/><el-option v-for="source in sources" :key="source.id" :label="source.sourceName" :value="source.id"/></el-select><el-input v-model="batchAuthFilters.keyword" :prefix-icon="Search" clearable placeholder="搜索 API 名称、编码或路径" @input="resetBatchPage"/></div>
         <div class="batch-auth-toolbar"><div><el-checkbox :model-value="pagedBatchAuthorizationInterfaces.length>0 && batchPageSelectedCount===pagedBatchAuthorizationInterfaces.length" :indeterminate="batchPageSelectedCount>0 && batchPageSelectedCount<pagedBatchAuthorizationInterfaces.length" @change="selectBatchPage">选择当前页</el-checkbox><button type="button" @click="selectAllBatchResults">选择全部 {{ filteredBatchAuthorizationInterfaces.length }} 个结果</button></div><span>已选 {{ batchAuthForm.interfaceIds.length }} 个</span></div>
-        <div class="batch-auth-table"><div class="batch-auth-table-head"><span></span><span>API</span><span>数据源</span><span>版本</span><span>授权状态</span></div><label v-for="item in pagedBatchAuthorizationInterfaces" :key="item.id" class="batch-auth-row" :class="{selected:batchAuthForm.interfaceIds.includes(item.id)}"><el-checkbox :model-value="batchAuthForm.interfaceIds.includes(item.id)" @change="toggleBatchInterface(item.id,$event)"/><span><strong>{{ item.interfaceName }}</strong><small>{{ item.interfaceCode }} · {{ item.servicePath }}</small></span><span>{{ sources.find(source=>source.id===item.dataSourceId)?.sourceName || '-' }}</span><span>V{{ item.publishedVersion }}</span><el-tag size="small" :type="hasAuthorization(item.id)?'success':'info'">{{ hasAuthorization(item.id)?'已授权':'未授权' }}</el-tag></label><el-empty v-if="!pagedBatchAuthorizationInterfaces.length" :image-size="54" description="当前筛选条件下没有 API"/></div>
+        <div class="batch-auth-table"><div class="batch-auth-table-head"><span></span><span>API</span><span>数据源</span><span>版本</span></div><label v-for="item in pagedBatchAuthorizationInterfaces" :key="item.id" class="batch-auth-row" :class="{selected:batchAuthForm.interfaceIds.includes(item.id)}"><el-checkbox :model-value="batchAuthForm.interfaceIds.includes(item.id)" @change="toggleBatchInterface(item.id,$event)"/><span><strong>{{ item.interfaceName }}</strong><small>{{ item.interfaceCode }} · {{ item.servicePath }}</small></span><span>{{ sources.find(source=>source.id===item.dataSourceId)?.sourceName || '-' }}</span><span>V{{ item.publishedVersion }}</span></label><el-empty v-if="!pagedBatchAuthorizationInterfaces.length" :image-size="54" description="当前筛选条件下没有 API"/></div>
         <div class="batch-auth-pagination"><el-pagination v-model:current-page="batchAuthPage" v-model:page-size="batchAuthPageSize" :page-sizes="[20,50,100]" :total="filteredBatchAuthorizationInterfaces.length" layout="total, sizes, prev, pager, next"/></div>
       </section>
     </div>
-    <template #footer><div class="batch-auth-footer"><span>授权成功后即时生效，已有授权将更新配额和有效期。</span><div><el-button @click="batchAuthDialog=false">取消</el-button><el-button type="primary" :loading="batchAuthSubmitting" :disabled="!batchAuthForm.clientId || !batchAuthForm.interfaceIds.length" @click="createBatchAuthorization">确认授权 {{ batchAuthForm.interfaceIds.length }} 个 API</el-button></div></div></template>
+    <template #footer><div class="batch-auth-footer"><span>只展示当前调用系统尚未登记授权的 API。</span><div><el-button @click="batchAuthDialog=false">取消</el-button><el-button type="primary" :loading="batchAuthSubmitting" :disabled="!batchAuthForm.clientId || !batchAuthForm.interfaceIds.length" @click="createBatchAuthorization">确认授权 {{ batchAuthForm.interfaceIds.length }} 个 API</el-button></div></div></template>
   </el-dialog>
   <el-drawer v-model="publishedDetailDrawer" title="服务版本详情" size="620px"><div v-loading="publishedDetailLoading" class="published-interface-detail" v-if="publishedInterfaceDetail"><section class="published-detail-hero"><span>SERVICE VERSION</span><strong>{{ publishedInterfaceDetail.summary.interfaceName }}</strong><code>{{ publishedInterfaceDetail.summary.interfaceCode }}</code></section><p v-if="publishedInterfaceDetail.summary.publishedVersion != null && publishedInterfaceDetail.summary.currentVersion !== publishedInterfaceDetail.summary.publishedVersion" class="release-version-note">当前开发配置为 V{{ publishedInterfaceDetail.summary.currentVersion }}；{{ publishedInterfaceDetail.summary.status === 'OFFLINE' ? '服务已下线，最近上线版本为' : '线上仍使用' }} V{{ publishedInterfaceDetail.summary.publishedVersion }}。以下请求与响应样例来自当前开发配置，不代表已发布版本。</p><dl class="published-detail-facts"><div><dt>当前开发版本</dt><dd>V{{ publishedInterfaceDetail.summary.currentVersion }}</dd></div><div><dt>{{ publishedInterfaceDetail.summary.status === 'OFFLINE' ? '最近上线版本' : '线上版本' }}</dt><dd>{{ publishedInterfaceDetail.summary.publishedVersion == null ? '未发布' : 'V' + publishedInterfaceDetail.summary.publishedVersion }}</dd></div><div><dt>当前开发路径</dt><dd>{{ publishedInterfaceDetail.summary.servicePath }}</dd></div><div><dt>当前开发方法</dt><dd><el-tag type="info">{{ publishedInterfaceDetail.summary.httpMethod }}</el-tag></dd></div><div><dt>当前开发上游地址</dt><dd>{{ publishedInterfaceDetail.summary.upstreamUrl || '-' }}</dd></div><div><dt>调用超时</dt><dd>{{ publishedInterfaceDetail.timeoutMs }} ms · {{ publishedInterfaceDetail.timeoutSource === 'INTERFACE' ? '接口覆盖' : '数据源默认' }}</dd></div><div><dt>当前状态</dt><dd><el-tag :type="publishedInterfaceDetail.summary.status === 'OFFLINE' ? 'danger' : 'info'">{{ publishedInterfaceDetail.summary.status === 'OFFLINE' ? '已下线' : publishedInterfaceDetail.summary.currentVersion !== publishedInterfaceDetail.summary.publishedVersion ? '有未发布变更' : '运行中' }}</el-tag></dd></div></dl><section class="published-detail-code"><div><label>当前开发请求样例</label><CopyableBlock :value="formatJson(publishedInterfaceDetail.requestExample)"><pre>{{ formatJson(publishedInterfaceDetail.requestExample) }}</pre></CopyableBlock></div><div><label>当前开发响应样例</label><CopyableBlock :value="formatJson(publishedInterfaceDetail.standardResponseExample)"><pre>{{ formatJson(publishedInterfaceDetail.standardResponseExample) }}</pre></CopyableBlock></div></section></div><el-empty v-else-if="!publishedDetailLoading" description="暂无接口详情"/></el-drawer>
   <el-dialog v-model="billingDialog" title="配置接口计费规则" width="600px"><el-form label-position="top"><el-form-item label="计费 API"><el-select v-model="billingForm.interfaceId"><el-option v-for="item in allInterfaces" :key="item.id" :label="`${item.interfaceName} · ${item.interfaceCode}`" :value="item.id"/></el-select></el-form-item><div class="form-grid"><el-form-item label="计费方式"><el-select v-model="billingForm.billingMode"><el-option label="按成功次数" value="SUCCESS_COUNT"/><el-option label="按调用次数" value="REQUEST_COUNT"/></el-select></el-form-item><el-form-item label="单价（元/次）"><el-input-number v-model="billingForm.unitPrice" :precision="4" :step="0.01" :min="0"/></el-form-item><el-form-item label="HIT 是否计费"><el-switch v-model="billingForm.hitBillable"/></el-form-item><el-form-item label="MISS 是否计费"><el-switch v-model="billingForm.missBillable"/></el-form-item></div><el-form-item label="生效日期"><el-date-picker v-model="billingForm.effectiveDate" type="date" value-format="YYYY-MM-DD"/></el-form-item></el-form><template #footer><el-button @click="billingDialog=false">取消</el-button><el-button type="primary" @click="saveBilling">保存并生效</el-button></template></el-dialog>

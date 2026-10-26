@@ -49,7 +49,7 @@ function harness(overrides = {}, confirm = async () => true) {
       resourceValidationStatus: async () => ({ upstreamVerified: false }), ...overrides },
       { get: (target, name) => target[name] ?? (() => { throw new Error('Unexpected API call: ' + String(name)) }) })
   })
-  const state = vm.runInNewContext('(() => { ' + appJS + ' return { responseStructurePreview, platformResponseContracts, contractEditorForm, contractEditorDialog, contractEditorSaving, platformContractFieldsDrawer, platformContractFields, selectedPlatformContractId, viewPlatformContract, editPlatformContract, savePlatformContract, platformManagementTab, openPlatformManagement, activeSidebarMenu, pageMeta, auditFilters, auditRange, auditRows, auditPage, auditSize, auditTotal, auditLoading, loadOperationAudit, searchOperationAudit, resetOperationAudit, savedResponsePolicyBaseline, platformServiceDialog, platformServiceForm, serviceResourceOptions, serviceCreationResource, selectServiceResource, openPlatformServiceDialog, createPlatformService, validateUpstreamCapability, testResult, testError, testSucceeded, navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, activeMenu, activeTab, detail, canDeleteApi, deleteApiRestriction, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, allResourceApis, catalogProviders, filteredCatalogProviders, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, providerExpansion, sourceExpansion, isProviderExpanded, isSourceExpanded, sourceInterfaces, filteredProviderGroups, filteredSources, setAllSourcesExpanded, locateSelectedApi, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, apiForm, apiDialog, apiMetadataDialog, apiMetadataSaving, apiMetadataForm, openResourceApiMetadataEditor, saveResourceApiMetadata, mappingDirection, mappingIsPassThrough, mappingModeLabel, onResponseSourceChange, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
+  const state = vm.runInNewContext('(() => { ' + appJS + ' return { responseStructurePreview, platformResponseContracts, contractEditorForm, contractEditorDialog, contractEditorSaving, platformContractFieldsDrawer, platformContractFields, selectedPlatformContractId, viewPlatformContract, editPlatformContract, savePlatformContract, platformManagementTab, openPlatformManagement, activeSidebarMenu, pageMeta, auditFilters, auditRange, auditRows, auditPage, auditSize, auditTotal, auditLoading, loadOperationAudit, searchOperationAudit, resetOperationAudit, savedResponsePolicyBaseline, platformServiceDialog, platformServiceForm, serviceResourceOptions, serviceCreationResource, selectServiceResource, openPlatformServiceDialog, createPlatformService, validateUpstreamCapability, testResult, testError, testSucceeded, navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, authForm, authDialogMode, editingAuthorization, availableAuthInterfaces, batchAuthForm, filteredBatchAuthorizationInterfaces, openAuthDialog, editAuthorization, createAuthorization, openBatchAuthorization, activeMenu, activeTab, detail, canDeleteApi, deleteApiRestriction, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, allResourceApis, catalogProviders, filteredCatalogProviders, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, providerExpansion, sourceExpansion, isProviderExpanded, isSourceExpanded, sourceInterfaces, filteredProviderGroups, filteredSources, setAllSourcesExpanded, locateSelectedApi, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, apiForm, apiDialog, apiMetadataDialog, apiMetadataSaving, apiMetadataForm, openResourceApiMetadataEditor, saveResourceApiMetadata, mappingDirection, mappingIsPassThrough, mappingModeLabel, onResponseSourceChange, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
   state.selectedTraceKey = deps.__selectedTraceKey
   state.selectedSourceId.value = 1
   state.activeMenu.value = 'resource'
@@ -356,6 +356,51 @@ test('授权清单同时按调用系统与接口关键词过滤，单页最多20
   s.authorizationSearch.value = 'enterprise_44'
   assert.equal(s.filteredAuthorizations.value.length, 1)
   assert.equal(s.filteredAuthorizations.value[0].id, 44)
+})
+
+test('新增授权按调用系统排除已有记录，过期授权从清单编辑', async () => {
+  const saved = []
+  const s = harness({ createAuthorization: async payload => { saved.push({ ...payload }); return payload } })
+  s.clients.value = [
+    { id: 1, clientName: '系统 A', status: 'ACTIVE' },
+    { id: 2, clientName: '系统 B', status: 'ACTIVE' }
+  ]
+  s.allInterfaces.value = [1, 2, 3].map(id => ({
+    id, dataSourceId: 1, interfaceName: `接口 ${id}`, interfaceCode: `API_${id}`,
+    servicePath: `/api/${id}`, status: 'PUBLISHED', publishedVersion: 1
+  }))
+  const existing = { id: 11, clientId: 1, clientName: '系统 A', interfaceId: 1,
+    interfaceName: '接口 1', interfaceCode: 'API_1', status: 'ACTIVE',
+    dailyQuota: 100, validFrom: '2025-01-01', validTo: '2028-01-01' }
+  const expired = { ...existing, id: 12, interfaceId: 2, interfaceName: '接口 2',
+    interfaceCode: 'API_2', status: 'DISABLED', validTo: '2025-12-31' }
+  s.authorizations.value = [existing, expired]
+
+  s.openAuthDialog()
+  assert.deepEqual(Array.from(s.availableAuthInterfaces.value, item => item.id), [3])
+  s.authForm.value.clientId = 2
+  await nextTick()
+  assert.deepEqual(Array.from(s.availableAuthInterfaces.value, item => item.id), [1, 2, 3])
+  s.authForm.value.clientId = 1
+  await nextTick()
+  s.editAuthorization(expired)
+  assert.equal(s.authDialogMode.value, 'EDIT')
+  assert.equal(s.authForm.value.interfaceId, 2)
+  await s.createAuthorization()
+  assert.equal(saved[0].interfaceId, 2)
+  assert.equal(saved[0].clientId, 1)
+
+  // Keep the server's persisted grants after the edit response is reloaded.
+  s.authorizations.value = [existing, expired]
+  s.openBatchAuthorization()
+  assert.deepEqual(Array.from(s.filteredBatchAuthorizationInterfaces.value, item => item.id), [3])
+  s.batchAuthForm.value.interfaceIds = [3]
+  s.batchAuthForm.value.clientId = 2
+  await nextTick()
+  assert.deepEqual(Array.from(s.filteredBatchAuthorizationInterfaces.value, item => item.id), [1, 2, 3])
+  assert.deepEqual(Array.from(s.batchAuthForm.value.interfaceIds), [])
+  assert.match(appText, /@click="editAuthorization\(row\)"/)
+  assert.doesNotMatch(appText, /batchAuthFilters\.grantStatus/)
 })
 
 test('进入授权页时重新读取服务目录，包含缓存建立后发布的 API', async () => {
