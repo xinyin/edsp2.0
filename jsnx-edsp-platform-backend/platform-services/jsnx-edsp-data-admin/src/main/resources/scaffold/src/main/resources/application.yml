@@ -1,4 +1,6 @@
 spring:
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
   application:
     # 复制模板后必须同时修改应用名和下方 Nacos Data ID。
     name: jsnx-edsp-data-template

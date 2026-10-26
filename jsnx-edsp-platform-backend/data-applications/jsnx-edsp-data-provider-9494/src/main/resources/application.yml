@@ -1,0 +1,26 @@
+spring:
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+  application:
+    # 复制模板后必须同时修改应用名和下方 Nacos Data ID。
+    name: jsnx-edsp-data-provider-9494
+  config:
+    import: ${SPRING_CONFIG_IMPORT:nacos:jsnx-edsp-data-provider-9494.yaml?group=${NACOS_GROUP:DEFAULT_GROUP}&refreshEnabled=true}
+  cloud:
+    nacos:
+      server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+      username: ${NACOS_USERNAME:}
+      password: ${NACOS_PASSWORD:}
+      config:
+        enabled: true
+        namespace: ${NACOS_NAMESPACE:}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        username: ${NACOS_CONFIG_USERNAME:${NACOS_USERNAME:}}
+        password: ${NACOS_CONFIG_PASSWORD:${NACOS_PASSWORD:}}
+      discovery:
+        enabled: true
+        register-enabled: true
+        namespace: ${NACOS_NAMESPACE:}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        username: ${NACOS_DISCOVERY_USERNAME:${NACOS_USERNAME:}}
+        password: ${NACOS_DISCOVERY_PASSWORD:${NACOS_PASSWORD:}}

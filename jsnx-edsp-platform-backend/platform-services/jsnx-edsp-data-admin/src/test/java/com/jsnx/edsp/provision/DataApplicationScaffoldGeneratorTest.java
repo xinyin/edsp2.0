@@ -30,7 +30,8 @@ class DataApplicationScaffoldGeneratorTest {
         assertThat(Files.readString(project.resolve("src/main/java/com/jsnx/edsp/data/creditv2/CreditV2DataApplication.java")))
                 .contains("package com.jsnx.edsp.data.creditv2", "class CreditV2DataApplication");
         assertThat(Files.readString(project.resolve("src/main/resources/application.yml")))
-                .contains("nacos:jsnx-edsp-data-credit-v2.yaml").doesNotContain("password: nacos");
+                .contains("nacos:jsnx-edsp-data-credit-v2.yaml", "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration")
+                .doesNotContain("password: nacos");
         assertThat(Files.readString(project.resolve("config/nacos/jsnx-edsp-data-credit-v2.yaml")))
                 .contains("provider-code: \"CREDIT_V2\"", "\\n资源方", "${SERVER_PORT:8198}")
                 .doesNotContain("${SERVER_PORT:8199}");

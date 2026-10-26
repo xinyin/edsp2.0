@@ -112,6 +112,33 @@ START_CAPABILITY_SERVICE=1 ./bin/start-demo.sh
 ./bin/start-data-application.sh jsnx-edsp-data-source-raex 18880
 ```
 
+`9494` 资源方的本地监听端口为 `18883`，可直接运行：
+
+```bash
+./bin/start-provider-9494.sh
+curl --fail http://127.0.0.1:18883/actuator/health
+curl --fail http://127.0.0.1:18883/internal/adapter/info
+```
+
+后续新增资源方应用，以 `jsnx-edsp-data-provider-example`、端口 `18884` 为例：
+
+1. 在“资源方管理”登记提供商，配置唯一应用名、监听端口和应用访问地址；生成工程及 Nacos 配置。将生成的模块纳入后端工程，父 `pom.xml` 的模块路径须为 `data-applications/jsnx-edsp-data-provider-example`（不加前导 `/`）。
+2. 检查 Nacos 中同名 Data ID 已发布。若仅有工程内的 YAML，可从模块目录复制到 `jsnx-edsp-deployment/config/nacos/data/`，在部署工程执行 `./bin/sync-config-to-nacos.sh`。已有配置与文件不同时先核对差异，不直接覆盖。
+3. 使用 JDK 17 构建、启动并验收：
+
+```bash
+cd ../jsnx-edsp-platform-backend
+JAVA_HOME=$(/usr/libexec/java_home -v 17) mvn -f data-applications/jsnx-edsp-data-provider-example/pom.xml clean verify
+cd ../jsnx-edsp-deployment
+./bin/start-data-application.sh jsnx-edsp-data-provider-example 18884
+curl --fail http://127.0.0.1:18884/actuator/health
+curl --fail http://127.0.0.1:18884/internal/adapter/info
+```
+
+4. 核对 `/internal/adapter/info` 的应用名和提供商编码，与页面路由一致，再执行数据库连接测试或上游 API 联调。
+
+部署新版本时，先从流量入口摘除该实例，再停止旧进程、替换 JAR 并启动；本地可执行 `./bin/stop-data-application.sh jsnx-edsp-data-provider-example 18884`，随后运行相同的启动命令。启动脚本只检查应用身份和健康状态，不会自动替换已运行的旧 JAR。生产环境由进程管理器或部署流水线负责进程守护与滚动发布，平台总启动脚本不自动管理新增资源方应用。
+
 脚本会进入应用模块目录启动 JAR，并检查 `/internal/adapter/info` 是否返回对应应用，而非仅判断端口是否监听。不要在本部署目录直接运行数据应用 JAR：这里的 `config/nacos/application.properties` 属于 Nacos 服务端，Spring Boot 从当前目录自动加载时会把数据应用的上下文路径误设为 `/nacos`，导致接入测试返回 404。
 
 演示样例报文保存在 `fixtures/`：

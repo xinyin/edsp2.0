@@ -1,0 +1,25 @@
+---
+server:
+  # 复制模板后必须分配唯一端口；生产环境可由 SERVER_PORT 覆盖。
+  port: "${SERVER_PORT:18883}"
+spring:
+  application:
+    name: jsnx-edsp-data-provider-9494
+  cloud:
+    sentinel:
+      enabled: "${SENTINEL_ENABLED:false}"
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    tags:
+      application: "${spring.application.name}"
+edsp:
+  data-application:
+    # 必须与平台 data_provider.provider_code 完全一致。
+    provider-code: "9494"
+    display-name: "合合工商"
+  admin-url: "${ADMIN_URL:http://127.0.0.1:8081}"
+  observability-url: "${OBSERVABILITY_URL:http://127.0.0.1:8083}"

@@ -42,6 +42,7 @@
     <module>data-applications/jsnx-edsp-data-antifraud</module>
     <module>data-applications/jsnx-edsp-data-credit</module>
     <module>data-applications/jsnx-edsp-data-source-lhzx</module>
+    <module>data-applications/jsnx-edsp-data-provider-9494</module>
   </modules>
 
   <dependencyManagement>
