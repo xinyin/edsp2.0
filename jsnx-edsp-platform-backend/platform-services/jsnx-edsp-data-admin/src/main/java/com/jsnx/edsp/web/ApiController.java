@@ -75,6 +75,11 @@ public class ApiController {
     @GetMapping("/providers/{id}")
     public ProviderSummary provider(@PathVariable long id) { return service.provider(id); }
 
+    @PostMapping("/providers/{id}/database-connection/test")
+    public DatabaseConnectionTestResult testDatabaseConnection(@PathVariable long id) {
+        return service.testDatabaseConnection(id);
+    }
+
     @PutMapping("/providers/{id}")
     public ProviderSummary updateProvider(@PathVariable long id, @Valid @RequestBody CreateProviderRequest request) {
         return service.updateProvider(id, request);

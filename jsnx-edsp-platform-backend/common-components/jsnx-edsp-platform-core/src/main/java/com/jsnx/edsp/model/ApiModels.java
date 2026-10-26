@@ -213,6 +213,9 @@ public final class ApiModels {
             @NotBlank String applicationName, @NotBlank String runtimeUrl,
             @NotNull @Min(1) @Max(65535) Integer serverPort) {}
 
+    public record DatabaseConnectionTestResult(boolean success, String message,
+                                               long durationMs, String databaseProduct) {}
+
     public record ProviderAccount(
             long id, long providerId, String providerName, String username,
             String displayName, String mobile, String email, String roleCode,

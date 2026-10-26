@@ -314,6 +314,14 @@ test('数据库资源可经提供商应用读取表字段，并支持选表或�
   assert.match(apiText, /\/api\/data-sources\/\$\{sourceId\}\/database-columns/)
 })
 
+test('数据库资源方可使用已保存配置测试连接并显示结果', () => {
+  assert.match(apiText, /testDatabaseConnection:.*\/api\/providers\/\$\{id\}\/database-connection\/test.*method: 'POST'/)
+  assert.match(appText, /v-if="selectedProvider\.accessMode === 'DATABASE'"[^>]*@click="testDatabaseConnection"/)
+  assert.match(appText, /databaseConnectionResult\.value = await api\.testDatabaseConnection\(provider\.id\)|const result = await api\.testDatabaseConnection\(provider\.id\)/)
+  assert.match(appText, /databaseConnectionResult\.value = null[\s\S]*?const saved = isNew/)
+  assert.match(appText, /databaseConnectionResult\.databaseProduct/)
+})
+
 test('已创建的资源 API 可从独立入口修改名称、编码和请求方式', async () => {
   let request
   const updated = {

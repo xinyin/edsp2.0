@@ -67,6 +67,49 @@ class ProviderConnectorTest {
     }
 
     @Test
+    void databaseConnectionTestUsesProviderConnectorWithoutSql() {
+        ProviderConnector connector = new ProviderConnector() {
+            public String accessMode() { return "DATABASE"; }
+            public Map<String, Object> execute(Map<String, Object> connection, String method, String endpoint,
+                    Map<String, Object> request, String traceId, int timeoutMs) {
+                assertThat(connection.get("resourceQuery")).isEqualTo(Map.of(
+                        "executionMode", "CONNECTION_TEST", "sqlTemplate", ""));
+                assertThat(request).isEmpty();
+                assertThat(timeoutMs).isEqualTo(10_000);
+                return Map.of("connected", true, "databaseProduct", "MySQL");
+            }
+        };
+        UpstreamClient client = new UpstreamClient(new ObjectMapper(), List.of(connector));
+        Map<String, Object> payload = Map.of("providerCode", "BANK", "dataSourceCode", "DATABASE_CONNECTION_TEST",
+                "executionMode", "CONNECTION_TEST", "timeoutMs", 10_000,
+                "providerConnection", Map.of("accessMode", "DATABASE", "accessConfig", Map.of("jdbcUrl", "jdbc:test")));
+
+        Map<String, Object> result = DraftAdapterExecutor.executeForProvider("BANK", payload, client);
+
+        assertThat(result.get("success")).isEqualTo(true);
+        assertThat(result.get("upstreamResponse")).isEqualTo(Map.of("connected", true, "databaseProduct", "MySQL"));
+        assertThatThrownBy(() -> DraftAdapterExecutor.executeForProvider("OTHER", payload, client))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("不匹配");
+    }
+
+    @Test
+    void connectionTestReturnsAdapterFailureWithoutExposingExceptionAsHttp500() {
+        ProviderConnector connector = new ProviderConnector() {
+            public String accessMode() { return "DATABASE"; }
+            public Map<String, Object> execute(Map<String, Object> connection, String method, String endpoint,
+                    Map<String, Object> request, String traceId, int timeoutMs) {
+                throw new IllegalStateException("数据库连接配置不完整");
+            }
+        };
+        UpstreamClient client = new UpstreamClient(new ObjectMapper(), List.of(connector));
+        Map<String, Object> result = DraftAdapterExecutor.executeForProvider("BANK", Map.of(
+                "providerCode", "BANK", "dataSourceCode", "DATABASE_CONNECTION_TEST",
+                "executionMode", "CONNECTION_TEST", "providerConnection", Map.of("accessMode", "DATABASE")), client);
+        assertThat(result).containsEntry("success", false).containsEntry("errorType", "ADAPTER")
+                .containsEntry("errorMessage", "数据库连接配置不完整");
+    }
+
+    @Test
     void httpGetSendsQueryParametersInsteadOfJsonBody() throws Exception {
         AtomicReference<String> captured = new AtomicReference<>();
         AtomicReference<String> trace = new AtomicReference<>();

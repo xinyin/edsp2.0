@@ -33,7 +33,8 @@ public final class DatabaseProviderConnector implements ProviderConnector, AutoC
                                        Map<String, Object> request, String traceId, int timeoutMs) {
         Map<String, Object> query = map(connection.get("resourceQuery"));
         String executionMode = text(query.get("executionMode"));
-        if ("METADATA_TABLES".equalsIgnoreCase(executionMode)
+        if ("CONNECTION_TEST".equalsIgnoreCase(executionMode)
+                || "METADATA_TABLES".equalsIgnoreCase(executionMode)
                 || "METADATA_COLUMNS".equalsIgnoreCase(executionMode)) {
             return metadata(connection, executionMode, endpoint, timeoutMs);
         }
@@ -115,6 +116,13 @@ public final class DatabaseProviderConnector implements ProviderConnector, AutoC
         QueryPool pool = pool(url, user, password, config, Math.max(1, (int) Math.ceil(timeoutMs / 1000.0)), 2_000);
         try (var jdbc = pool.dataSource.getConnection()) {
             jdbc.setNetworkTimeout(java.util.concurrent.ForkJoinPool.commonPool(), Math.max(100, Math.min(120_000, timeoutMs)));
+            if ("CONNECTION_TEST".equalsIgnoreCase(mode)) {
+                if (!jdbc.isValid(Math.max(1, (int) Math.ceil(timeoutMs / 1000.0)))) {
+                    throw new IllegalStateException("数据库连接不可用");
+                }
+                return Map.of("connected", true, "databaseProduct",
+                        Objects.toString(jdbc.getMetaData().getDatabaseProductName(), ""));
+            }
             var metadata = jdbc.getMetaData();
             String catalog = jdbc.getCatalog();
             String schema = null;

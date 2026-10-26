@@ -1,5 +1,5 @@
 import * as mock from './mock'
-import type { AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary, DataApplicationProvisionResult, DataApplicationProvisionSettings, DataSourceSummary, EsbDiagnosticResult, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult, MonitorAlert, MonitorPoint, MonitorSummary, OperationAuditPage, PlatformResponseCode, PlatformResponseContract, ProviderAccount, ProviderSummary, ReleaseApproval, ReleaseServicePage, ResourceApiDetail, ResourceApiSummary, ResourceDirectoryPage, ResourceDocument, SecurityAlgorithmDescriptor, SecurityPolicy, TestResult, UsageRecord, UsageReportResult, ValidationResult, VendorDataSourceDefinition } from './types'
+import type { AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary, DataApplicationProvisionResult, DataApplicationProvisionSettings, DataSourceSummary, DatabaseConnectionTestResult, EsbDiagnosticResult, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult, MonitorAlert, MonitorPoint, MonitorSummary, OperationAuditPage, PlatformResponseCode, PlatformResponseContract, ProviderAccount, ProviderSummary, ReleaseApproval, ReleaseServicePage, ResourceApiDetail, ResourceApiSummary, ResourceDirectoryPage, ResourceDocument, SecurityAlgorithmDescriptor, SecurityPolicy, TestResult, UsageRecord, UsageReportResult, ValidationResult, VendorDataSourceDefinition } from './types'
 
 const demoMode = import.meta.env.VITE_DEMO_MODE === 'mock'
 export const isDemoMode = () => demoMode
@@ -97,6 +97,7 @@ export const api = {
   createProvider: (body: Omit<ProviderSummary, 'id'>) => request<ProviderSummary>('/api/providers', { method: 'POST', body: JSON.stringify(body) }),
   updateProvider: (id: number, body: Omit<ProviderSummary, 'id'>) => request<ProviderSummary>(`/api/providers/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteProvider: (id: number) => request<void>(`/api/providers/${id}`, { method: 'DELETE' }),
+  testDatabaseConnection: (id: number) => request<DatabaseConnectionTestResult>(`/api/providers/${id}/database-connection/test`, { method: 'POST' }, undefined, 15_000),
   providerAccounts: (providerId: number) => request<ProviderAccount[]>(`/api/providers/${providerId}/accounts`),
   createProviderAccount: (providerId: number, body: Omit<ProviderAccount, 'id'|'providerId'|'providerName'>) => request<ProviderAccount>(`/api/providers/${providerId}/accounts`, { method: 'POST', body: JSON.stringify(body) }),
   updateProviderAccount: (id: number, body: Omit<ProviderAccount, 'id'|'providerId'|'providerName'>) => request<ProviderAccount>(`/api/provider-accounts/${id}`, { method: 'PUT', body: JSON.stringify(body) }),

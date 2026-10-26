@@ -333,10 +333,12 @@ public class InterfaceService {
                     HAVING COUNT(DISTINCT CONCAT(COALESCE(application_name,''),'|',COALESCE(runtime_url,''),'|',server_port))=1
                 ) consistent ON consistent.provider_id=p.id
                 JOIN data_source ds ON ds.id=consistent.first_id
+                LEFT JOIN data_provider owner ON owner.application_name=ds.application_name AND owner.id<>p.id
                 SET p.application_name=COALESCE(p.application_name,ds.application_name),
                     p.server_port=CASE WHEN p.runtime_url IS NULL THEN ds.server_port ELSE p.server_port END,
                     p.runtime_url=COALESCE(p.runtime_url,ds.runtime_url)
-                WHERE p.application_name IS NULL OR p.runtime_url IS NULL
+                WHERE (p.application_name IS NULL OR p.runtime_url IS NULL)
+                  AND (p.application_name IS NOT NULL OR owner.id IS NULL)
                 """);
         Integer routeIndex = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM information_schema.statistics
@@ -402,6 +404,70 @@ public class InterfaceService {
     public ProviderSummary provider(long id) {
         return Objects.requireNonNull(jdbc.queryForObject(
                 "SELECT * FROM data_provider WHERE id=?", (rs, rowNum) -> providerFromRow(rs), id));
+    }
+
+    public DatabaseConnectionTestResult testDatabaseConnection(long providerId) {
+        ProviderSummary provider = provider(providerId);
+        if (!"DATABASE".equalsIgnoreCase(provider.accessMode())) {
+            throw new IllegalArgumentException("只有数据库类型的资源提供商可以测试连接");
+        }
+        if (provider.runtimeUrl() == null || provider.runtimeUrl().isBlank()) {
+            return new DatabaseConnectionTestResult(false, "请先配置并启动资源提供商独立应用", 0, null);
+        }
+        Map<String, Object> connection = new LinkedHashMap<>();
+        connection.put("providerCode", provider.providerCode());
+        connection.put("accessMode", "DATABASE");
+        connection.put("accessConfig", provider.accessConfig() == null ? Map.of() : provider.accessConfig());
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("traceId", "DB-CONNECTION-" + UUID.randomUUID().toString().replace("-", ""));
+        payload.put("providerCode", provider.providerCode());
+        payload.put("dataSourceCode", "DATABASE_CONNECTION_TEST");
+        payload.put("interfaceCode", "DATABASE_CONNECTION_TEST");
+        payload.put("providerConnection", connection);
+        payload.put("executionMode", "CONNECTION_TEST");
+        payload.put("timeoutMs", 10_000);
+        payload.put("requestBody", Map.of());
+        long started = System.nanoTime();
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = restClient(12_000).post()
+                    .uri(trimTrailingSlash(provider.runtimeUrl()) + "/internal/adapter/execute")
+                    .body(payload).retrieve().body(Map.class);
+            long duration = Duration.ofNanos(System.nanoTime() - started).toMillis();
+            if (result == null || !Boolean.TRUE.equals(result.get("success"))) {
+                String error = result == null ? "" : Objects.toString(result.get("errorMessage"), "");
+                return new DatabaseConnectionTestResult(false, databaseTestFailure(error), duration, null);
+            }
+            Object response = result.get("upstreamResponse");
+            if (!(response instanceof Map<?, ?> details) || !Boolean.TRUE.equals(details.get("connected"))) {
+                return new DatabaseConnectionTestResult(false, "处理应用未返回连接校验结果，请更新并重启应用", duration, null);
+            }
+            return new DatabaseConnectionTestResult(true, "数据库连接正常", duration,
+                    Objects.toString(details.get("databaseProduct"), ""));
+        } catch (org.springframework.web.client.RestClientResponseException error) {
+            String message = error.getStatusCode().value() == 404
+                    ? "处理应用未提供连接测试接口，请核对应用路由和部署版本"
+                    : "处理应用返回 HTTP " + error.getStatusCode().value() + "，请检查应用日志";
+            return new DatabaseConnectionTestResult(false, message,
+                    Duration.ofNanos(System.nanoTime() - started).toMillis(), null);
+        } catch (org.springframework.web.client.RestClientException error) {
+            return new DatabaseConnectionTestResult(false, "处理应用不可达或请求超时，请检查应用路由与运行状态",
+                    Duration.ofNanos(System.nanoTime() - started).toMillis(), null);
+        }
+    }
+
+    private String databaseTestFailure(String error) {
+        String normalized = error.toLowerCase(Locale.ROOT);
+        if (normalized.contains("密码") || normalized.contains("密钥引用")) return "数据库密码引用无法解析，请检查独立应用的环境变量或配置";
+        if (normalized.contains("driver") || normalized.contains("驱动")) return "数据库 JDBC 驱动不可用，请检查独立应用依赖";
+        if (normalized.contains("access denied") || normalized.contains("authentication") || normalized.contains("login failed"))
+            return "数据库认证失败，请检查账号及密码引用";
+        if (normalized.contains("timeout") || normalized.contains("timed out")) return "数据库连接超时，请检查网络和防火墙";
+        if (normalized.contains("connection refused") || normalized.contains("communications link failure"))
+            return "数据库地址不可达，请检查 JDBC 地址和网络";
+        if (normalized.contains("尚未配置 sql 查询模式")) return "处理应用未包含连接测试能力，请重新打包并部署";
+        if (normalized.contains("连接配置不完整")) return "数据库连接配置不完整，请检查 JDBC 地址和用户名";
+        return "数据库连接校验失败，请检查独立应用日志";
     }
 
     @Transactional

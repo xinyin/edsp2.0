@@ -20,7 +20,7 @@ import type {
   DataSourceSummary, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, ReleaseServiceRow, LoginResult,
   MonitorAlert, MonitorPoint, MonitorSummary, PlatformResponseCode, ProviderAccount, ProviderSummary, ReleaseApproval, TestResult,
   ResourceApiDetail, ResourceApiSummary, ResourceDirectoryRow, ResourceDocument, UsageRecord, UsageReportRow, OperationAuditRecord, ValidationResult,
-  DataApplicationProvisionResult, DataApplicationProvisionSettings, SecurityAlgorithmDescriptor, SecurityPolicy, PlatformResponseContract
+  DataApplicationProvisionResult, DataApplicationProvisionSettings, DatabaseConnectionTestResult, SecurityAlgorithmDescriptor, SecurityPolicy, PlatformResponseContract
 } from './types'
 
 const loggedIn = ref(false)
@@ -39,6 +39,8 @@ const selectedProviderId = ref(0)
 const providerAccounts = ref<ProviderAccount[]>([])
 const providerDialog = ref(false)
 const providerSaving = ref(false)
+const databaseConnectionTesting = ref(false)
+const databaseConnectionResult = ref<DatabaseConnectionTestResult | null>(null)
 const providerForm = ref<ProviderSummary>({ id: 0, providerCode: '', providerName: '', status: 'ACTIVE', accessMode: 'HTTP', accessConfig: {} })
 const accountDialog = ref(false)
 const accountForm = ref({ username: '', displayName: '', mobile: '', email: '', roleCode: 'PROVIDER_ADMIN', permissions: ['DATASOURCE_VIEW', 'API_VIEW'], status: 'ACTIVE' })
@@ -752,6 +754,7 @@ function clearBatchSelection() { batchAuthForm.value.interfaceIds = [] }
 function removeBatchSelection(interfaceId: number) { toggleBatchInterface(interfaceId, false) }
 function resetBatchPage() { batchAuthPage.value = 1 }
 const selectedProvider = computed(() => providers.value.find(item => item.id === selectedProviderId.value))
+watch(selectedProviderId, () => { databaseConnectionResult.value = null })
 const pendingApprovals = computed(() => approvals.value.filter(item => item.status === 'PENDING'))
 const logSelectedNode = computed(() => callTrace.value?.nodes.find(node => node.key === selectedLogNodeKey.value) ?? callTrace.value?.nodes[0])
 const failedCallCount = computed(() => callLogs.value.filter(item => item.requestStatus !== 'SUCCESS' || item.resultStatus === 'ERROR').length)
@@ -1506,6 +1509,7 @@ async function saveProvider() {
       providers.value = providers.value.map(item => item.id === saved.id ? saved : item)
     }
     selectedProviderId.value = saved.id
+    databaseConnectionResult.value = null
     providerAccounts.value = []
     providerDialog.value = false
     ElMessage.success(isNew ? '资源提供商已新增' : '资源提供商资料已保存')
@@ -1513,6 +1517,25 @@ async function saveProvider() {
     ElMessage.error(error instanceof Error ? error.message : '资源提供商保存失败')
   } finally {
     providerSaving.value = false
+  }
+}
+async function testDatabaseConnection() {
+  const provider = selectedProvider.value
+  if (!provider || provider.accessMode !== 'DATABASE' || databaseConnectionTesting.value) return
+  databaseConnectionTesting.value = true
+  databaseConnectionResult.value = null
+  try {
+    const result = await api.testDatabaseConnection(provider.id)
+    if (selectedProviderId.value === provider.id) databaseConnectionResult.value = result
+  } catch (error) {
+    if (selectedProviderId.value === provider.id) databaseConnectionResult.value = {
+      success: false,
+      message: error instanceof Error ? error.message : '连接测试失败',
+      durationMs: 0,
+      databaseProduct: null
+    }
+  } finally {
+    databaseConnectionTesting.value = false
   }
 }
 async function deleteSelectedProvider() {
@@ -1736,6 +1759,7 @@ async function saveSourceRuntime() {
       serverPort: sourceRuntimeForm.value.serverPort
     })
     providers.value = providers.value.map(item => item.id === result.provider.id ? result.provider : item)
+    databaseConnectionResult.value = null
     sources.value = await api.dataSources()
     sourceRuntimeResult.value = result
     sourceRuntimeStatusLoaded.value = false
@@ -3257,7 +3281,24 @@ function money(value: number) { return `¥ ${Number(value).toFixed(2)}` }
         <template v-else-if="activeMenu === 'providers'">
           <section class="provider-management">
             <aside class="provider-list plain-panel"><div class="panel-heading"><strong>资源提供商</strong><el-button :icon="Plus" text aria-label="新增资源提供商" @click="openNewProvider" /></div><button v-for="provider in providers" :key="provider.id" class="provider-item" :class="{active: provider.id === selectedProviderId}" @click="selectedProviderId = provider.id; loadProviderAccounts()"><span class="provider-avatar">{{ provider.providerName.slice(0,1) }}</span><span><strong>{{ provider.providerName }}</strong><small>{{ provider.providerCode }}</small></span><el-tag size="small" type="success">{{ provider.status === 'ACTIVE' ? '启用' : '停用' }}</el-tag></button></aside>
-            <section v-if="selectedProvider" class="provider-detail plain-panel"><div class="panel-heading"><div><strong>{{ selectedProvider.providerName }}</strong><span>{{ selectedProvider.providerCode }} · 提供商信息</span></div><div><el-button @click="openSourceRuntimeEditor">配置应用路由</el-button><el-button type="primary" :icon="Setting" @click="openProviderEditor()">编辑资料</el-button><el-button type="danger" plain @click="deleteSelectedProvider">删除资源方</el-button></div></div><div class="provider-info-grid"><div><span>机构类别</span><strong>{{ providerCategoryLabel(selectedProvider.providerType) }}</strong></div><div><span>接入类型</span><strong>{{ providerAccessModeLabel(selectedProvider.accessMode) }}</strong></div><div><span>处理应用</span><strong>{{ selectedProvider.applicationName || '待配置' }}</strong></div><div><span>应用路由</span><strong>{{ selectedProvider.runtimeUrl ? '已配置' : '待配置' }}</strong></div><div><span>经办人</span><strong>{{ selectedProvider.contactName || '-' }}</strong></div><div><span>接入时间</span><strong>{{ selectedProvider.accessDate || '-' }}</strong></div><div><span>通讯报文编码</span><strong>{{ selectedProvider.messageEncoding || '-' }}</strong></div><div><span>收费要求</span><strong>{{ selectedProvider.chargeRequired ? '是' : '否' }}</strong></div><div><span>加密要求</span><strong>{{ selectedProvider.encryptionRequired ? '是' : '否' }}</strong></div><div><span>登录要求</span><strong>{{ selectedProvider.loginRequired ? '是' : '否' }}</strong></div><div class="wide"><span>提供商描述</span><strong>{{ selectedProvider.description || '-' }}</strong></div></div><details v-if="selectedProvider.runtimeUrl" class="address-disclosure provider-address-disclosure"><summary>查看应用路由地址</summary><div class="address-disclosure-body"><span>平台访问处理应用</span><code>{{ selectedProvider.runtimeUrl }}</code><el-button text :icon="DocumentCopy" aria-label="复制应用路由地址" @click="copyApiValue(selectedProvider.runtimeUrl)">复制</el-button></div></details><div class="section-toolbar"><div><strong>账号与权限</strong><HelpTip title="账号与权限" content="维护资源提供商侧账号及其可操作范围。此处账号不是行内 API 调用系统的访问凭证；调用系统在 API 访问授权中登记。"/></div><el-button type="primary" :icon="Plus" @click="openAccountDialog">新增账号</el-button></div><el-table :data="providerAccounts" border><el-table-column prop="username" label="账号" width="150"/><el-table-column prop="displayName" label="显示名称" width="130"/><el-table-column label="角色" width="160"><template #default="{row}">{{ providerRoleLabel(row.roleCode) }}</template></el-table-column><el-table-column label="权限" min-width="320"><template #default="{row}"><el-tag v-for="permission in row.permissions" :key="permission" size="small" effect="plain" class="permission-tag">{{ providerPermissionLabel(permission) }}</el-tag></template></el-table-column><el-table-column prop="lastLoginAt" label="最近登录" width="170"/><el-table-column label="状态" width="90"><template #default="{row}"><el-tag :type="row.status==='ACTIVE'?'success':'info'">{{ row.status==='ACTIVE'?'启用':'停用' }}</el-tag></template></el-table-column></el-table></section>
+            <section v-if="selectedProvider" class="provider-detail plain-panel">
+              <div class="panel-heading">
+                <div><strong>{{ selectedProvider.providerName }}</strong><span>{{ selectedProvider.providerCode }} · 提供商信息</span></div>
+                <div>
+                  <el-button v-if="selectedProvider.accessMode === 'DATABASE'" :icon="Connection" :loading="databaseConnectionTesting" @click="testDatabaseConnection">测试连接</el-button>
+                  <el-button @click="openSourceRuntimeEditor">配置应用路由</el-button>
+                  <el-button type="primary" :icon="Setting" @click="openProviderEditor()">编辑资料</el-button>
+                  <el-button type="danger" plain @click="deleteSelectedProvider">删除资源方</el-button>
+                </div>
+              </div>
+              <div v-if="selectedProvider.accessMode === 'DATABASE' && databaseConnectionResult" class="database-test-result" :class="databaseConnectionResult.success ? 'is-success' : 'is-error'" role="status">
+                <el-icon><CircleCheck v-if="databaseConnectionResult.success"/><Warning v-else/></el-icon>
+                <span>{{ databaseConnectionResult.message }}</span>
+                <small v-if="databaseConnectionResult.success && databaseConnectionResult.databaseProduct">{{ databaseConnectionResult.databaseProduct }}</small>
+                <small v-if="databaseConnectionResult.durationMs">{{ databaseConnectionResult.durationMs }} ms</small>
+              </div>
+              <div class="provider-info-grid"><div><span>机构类别</span><strong>{{ providerCategoryLabel(selectedProvider.providerType) }}</strong></div><div><span>接入类型</span><strong>{{ providerAccessModeLabel(selectedProvider.accessMode) }}</strong></div><div><span>处理应用</span><strong>{{ selectedProvider.applicationName || '待配置' }}</strong></div><div><span>应用路由</span><strong>{{ selectedProvider.runtimeUrl ? '已配置' : '待配置' }}</strong></div><div><span>经办人</span><strong>{{ selectedProvider.contactName || '-' }}</strong></div><div><span>接入时间</span><strong>{{ selectedProvider.accessDate || '-' }}</strong></div><div><span>通讯报文编码</span><strong>{{ selectedProvider.messageEncoding || '-' }}</strong></div><div><span>收费要求</span><strong>{{ selectedProvider.chargeRequired ? '是' : '否' }}</strong></div><div><span>加密要求</span><strong>{{ selectedProvider.encryptionRequired ? '是' : '否' }}</strong></div><div><span>登录要求</span><strong>{{ selectedProvider.loginRequired ? '是' : '否' }}</strong></div><div class="wide"><span>提供商描述</span><strong>{{ selectedProvider.description || '-' }}</strong></div></div><details v-if="selectedProvider.runtimeUrl" class="address-disclosure provider-address-disclosure"><summary>查看应用路由地址</summary><div class="address-disclosure-body"><span>平台访问处理应用</span><code>{{ selectedProvider.runtimeUrl }}</code><el-button text :icon="DocumentCopy" aria-label="复制应用路由地址" @click="copyApiValue(selectedProvider.runtimeUrl)">复制</el-button></div></details><div class="section-toolbar"><div><strong>账号与权限</strong><HelpTip title="账号与权限" content="维护资源提供商侧账号及其可操作范围。此处账号不是行内 API 调用系统的访问凭证；调用系统在 API 访问授权中登记。"/></div><el-button type="primary" :icon="Plus" @click="openAccountDialog">新增账号</el-button></div><el-table :data="providerAccounts" border><el-table-column prop="username" label="账号" width="150"/><el-table-column prop="displayName" label="显示名称" width="130"/><el-table-column label="角色" width="160"><template #default="{row}">{{ providerRoleLabel(row.roleCode) }}</template></el-table-column><el-table-column label="权限" min-width="320"><template #default="{row}"><el-tag v-for="permission in row.permissions" :key="permission" size="small" effect="plain" class="permission-tag">{{ providerPermissionLabel(permission) }}</el-tag></template></el-table-column><el-table-column prop="lastLoginAt" label="最近登录" width="170"/><el-table-column label="状态" width="90"><template #default="{row}"><el-tag :type="row.status==='ACTIVE'?'success':'info'">{{ row.status==='ACTIVE'?'启用':'停用' }}</el-tag></template></el-table-column></el-table>
+            </section>
           </section>
         </template>
         <template v-else-if="activeMenu === 'platform-management'">

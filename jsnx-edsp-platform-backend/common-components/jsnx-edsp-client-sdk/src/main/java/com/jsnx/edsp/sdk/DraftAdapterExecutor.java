@@ -74,7 +74,7 @@ public final class DraftAdapterExecutor {
             result.put("errorType", "TRANSPORT");
             result.put("errorMessage", error.getMessage());
         } catch (IllegalArgumentException error) {
-            if (!executionMode.startsWith("METADATA_")) throw error;
+            if (!executionMode.startsWith("METADATA_") && !"CONNECTION_TEST".equals(executionMode)) throw error;
             result.put("success", false);
             result.put("errorType", "ADAPTER");
             result.put("errorMessage", error.getMessage() == null ? "处理应用请求参数无效" : error.getMessage());
@@ -82,6 +82,11 @@ public final class DraftAdapterExecutor {
             result.put("success", false);
             result.put("errorType", "ADAPTER");
             result.put("errorMessage", error.getMessage() == null ? "处理应用调用失败" : error.getMessage());
+        } catch (RuntimeException error) {
+            if (!"CONNECTION_TEST".equals(executionMode)) throw error;
+            result.put("success", false);
+            result.put("errorType", "ADAPTER");
+            result.put("errorMessage", error.getMessage() == null ? "数据库连接校验失败" : error.getMessage());
         }
         result.put("traceId", traceId);
         result.put("interfaceCode", text(payload.get("interfaceCode")));

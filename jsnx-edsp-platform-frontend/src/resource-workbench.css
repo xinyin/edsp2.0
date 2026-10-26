@@ -21,6 +21,9 @@
 .address-disclosure[open] summary { border-bottom: 1px solid #e6ebf0; }
 .address-disclosure-body { padding: 10px 14px; }
 .provider-address-disclosure { margin: 0 16px 12px; border: 1px solid #e6ebf0; }
+.database-test-result { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; padding: 9px 12px; border: 1px solid #dce8df; border-radius: 4px; background: #f5faf6; color: #325b3d; font-size: 12px; overflow-wrap: anywhere; }
+.database-test-result.is-error { border-color: #eddfdb; background: #fcf7f5; color: #8b4739; }
+.database-test-result small { color: inherit; opacity: .8; font-size: 11px; }
 .test-route-disclosure { border-top: 0; border-bottom: 1px solid #e6ebf0; }
 @media (max-width: 640px) {
   .address-detail-row, .address-disclosure-body { grid-template-columns: minmax(0, 1fr) auto; }
