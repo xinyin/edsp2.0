@@ -19,8 +19,11 @@ import static org.mockito.Mockito.*;
 class DatabaseConnectionTest {
     private InterfaceService service(ProviderSummary provider) {
         ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        JdbcTemplate jdbc = mock(JdbcTemplate.class, withSettings().mockMaker("mock-maker-subclass"));
+        when(jdbc.queryForObject(eq("SELECT access_config FROM data_provider WHERE id=?"), eq(String.class), eq(provider.id())))
+                .thenReturn("{\"jdbcUrl\":\"jdbc:mysql://db.internal:3306/test\",\"username\":\"reader\",\"secretReference\":\"env://TEST_DB_PASSWORD\"}");
         InterfaceService service = spy(new InterfaceService(
-                mock(JdbcTemplate.class, withSettings().mockMaker("mock-maker-subclass")),
+                jdbc,
                 new JsonSupport(mapper), mapper, new PublishedPlanRegistry(), new MockEnvironment()));
         doReturn(provider).when(service).provider(provider.id());
         return service;

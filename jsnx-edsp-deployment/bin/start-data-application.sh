@@ -23,6 +23,7 @@ fi
 
 NACOS_LOCAL_ENV="$DEPLOY_DIR/var/nacos/local.env"
 [[ -f "$NACOS_LOCAL_ENV" ]] || { echo "未找到本地 Nacos 配置：$NACOS_LOCAL_ENV" >&2; exit 1; }
+"$DEPLOY_DIR/bin/ensure-database-credential-key.sh"
 set -a
 source "$NACOS_LOCAL_ENV"
 set +a

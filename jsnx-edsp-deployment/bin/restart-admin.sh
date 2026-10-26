@@ -20,6 +20,7 @@ export JAVA_HOME
 NACOS_SERVER_ADDR="${NACOS_SERVER_ADDR:-127.0.0.1:8848}"
 NACOS_LOCAL_ENV="$DEPLOY_DIR/var/nacos/local.env"
 [[ -f "$NACOS_LOCAL_ENV" ]] || { echo "未找到 ${NACOS_LOCAL_ENV}，请先安装 Nacos。" >&2; exit 1; }
+"$DEPLOY_DIR/bin/ensure-database-credential-key.sh"
 set -a
 source "$NACOS_LOCAL_ENV"
 set +a

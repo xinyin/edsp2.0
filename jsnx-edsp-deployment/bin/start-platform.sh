@@ -33,6 +33,7 @@ NACOS_LOCAL_ENV="$DEPLOY_DIR/var/nacos/local.env"
   echo "未找到 ${NACOS_LOCAL_ENV}，请先执行 bin/install-nacos.sh。" >&2
   exit 1
 }
+"$DEPLOY_DIR/bin/ensure-database-credential-key.sh"
 set -a
 source "$NACOS_LOCAL_ENV"
 set +a

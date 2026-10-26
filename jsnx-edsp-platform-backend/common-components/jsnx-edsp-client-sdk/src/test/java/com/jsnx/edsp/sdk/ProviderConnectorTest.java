@@ -1,6 +1,7 @@
 package com.jsnx.edsp.sdk;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jsnx.edsp.crypto.CryptoSupport;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 
@@ -13,6 +14,18 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.*;
 
 class ProviderConnectorTest {
+    @Test
+    void databaseConnectorDecryptsSavedPassword() {
+        String key = java.util.Base64.getEncoder().encodeToString(new byte[32]);
+        String encrypted = CryptoSupport.aes256GcmEncrypt("db-secret", key, "edsp-provider-database");
+        DatabaseProviderConnector connector = new DatabaseProviderConnector(name ->
+                "EDSP_DATABASE_CREDENTIAL_KEY".equals(name) ? key : null);
+        assertThat(connector.password(Map.of("passwordCiphertext", encrypted))).isEqualTo("db-secret");
+        assertThat(connector.password(Map.of())).isEmpty();
+        assertThatThrownBy(() -> new DatabaseProviderConnector(name -> null)
+                .password(Map.of("passwordCiphertext", encrypted)))
+                .hasMessageContaining("加密密钥未配置");
+    }
     @Test
     void missingProtocolConnectorNeverFallsBackToHttp() {
         UpstreamClient client = new UpstreamClient(new ObjectMapper(), List.of());

@@ -1,6 +1,7 @@
 package com.jsnx.edsp.sdk;
 
 import com.jsnx.edsp.plan.SqlQuerySupport;
+import com.jsnx.edsp.crypto.CryptoSupport;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -57,7 +58,7 @@ public final class DatabaseProviderConnector implements ProviderConnector, AutoC
         String url = text(config.get("jdbcUrl"));
         String user = text(config.get("username"));
         if (!url.startsWith("jdbc:") || user.isBlank()) throw new IllegalStateException("数据库连接配置不完整");
-        String password = resolveSecret(text(config.get("secretReference")));
+        String password = password(config);
         int maxRows = boundedNumber(config.get("maxRows"), 500, 1, ABSOLUTE_MAX_ROWS);
         int queryTimeout = Math.max(1, (int) Math.ceil(timeoutMs / 1000.0));
         QueryPool pool = pool(url, user, password, config, queryTimeout, maxRows);
@@ -112,7 +113,7 @@ public final class DatabaseProviderConnector implements ProviderConnector, AutoC
         String url = text(config.get("jdbcUrl"));
         String user = text(config.get("username"));
         if (!url.startsWith("jdbc:") || user.isBlank()) throw new IllegalStateException("数据库连接配置不完整");
-        String password = resolveSecret(text(config.get("secretReference")));
+        String password = password(config);
         QueryPool pool = pool(url, user, password, config, Math.max(1, (int) Math.ceil(timeoutMs / 1000.0)), 2_000);
         try (var jdbc = pool.dataSource.getConnection()) {
             jdbc.setNetworkTimeout(java.util.concurrent.ForkJoinPool.commonPool(), Math.max(100, Math.min(120_000, timeoutMs)));
@@ -206,6 +207,17 @@ public final class DatabaseProviderConnector implements ProviderConnector, AutoC
             return value;
         }
         throw new IllegalArgumentException("数据库密码仅支持 config://、env:// 或 sys:// 密钥引用");
+    }
+
+    String password(Map<String, Object> config) {
+        String ciphertext = text(config.get("passwordCiphertext"));
+        if (!ciphertext.isBlank()) {
+            String key = configLookup.apply("EDSP_DATABASE_CREDENTIAL_KEY");
+            if (key == null || key.isBlank()) throw new IllegalStateException("数据库密码加密密钥未配置");
+            return CryptoSupport.aes256GcmDecrypt(ciphertext, key, "edsp-provider-database");
+        }
+        String reference = text(config.get("secretReference"));
+        return reference.isBlank() ? "" : resolveSecret(reference);
     }
 
     private static int boundedNumber(Object value, int fallback, int minimum, int maximum) {

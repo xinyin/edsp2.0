@@ -3,6 +3,7 @@ package com.jsnx.edsp.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jsnx.edsp.crypto.SecretReferenceResolver;
+import com.jsnx.edsp.crypto.CryptoSupport;
 import com.jsnx.edsp.model.ApiModels.*;
 import com.jsnx.edsp.plan.PlanMappingSupport;
 import com.jsnx.edsp.plan.ResponsePolicySupport;
@@ -396,7 +397,7 @@ public class InterfaceService {
                 valueOr(request.settlementMode(), "MONTHLY"), request.officeAddress(), request.description(),
                 request.accessDate(), valueOr(request.messageEncoding(), "UTF-8"), request.chargeRequired(),
                 request.encryptionRequired(), request.loginRequired(),
-                valueOr(request.status(), "ACTIVE"), accessMode, json.write(normalizeAccessConfig(accessMode, request.accessConfig())));
+                valueOr(request.status(), "ACTIVE"), accessMode, json.write(normalizeAccessConfig(accessMode, request.accessConfig(), null)));
         long id = Objects.requireNonNull(jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class));
         return provider(id);
     }
@@ -417,7 +418,7 @@ public class InterfaceService {
         Map<String, Object> connection = new LinkedHashMap<>();
         connection.put("providerCode", provider.providerCode());
         connection.put("accessMode", "DATABASE");
-        connection.put("accessConfig", provider.accessConfig() == null ? Map.of() : provider.accessConfig());
+        connection.put("accessConfig", storedProviderAccessConfig(providerId));
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("traceId", "DB-CONNECTION-" + UUID.randomUUID().toString().replace("-", ""));
         payload.put("providerCode", provider.providerCode());
@@ -458,10 +459,10 @@ public class InterfaceService {
 
     private String databaseTestFailure(String error) {
         String normalized = error.toLowerCase(Locale.ROOT);
-        if (normalized.contains("密码") || normalized.contains("密钥引用")) return "数据库密码引用无法解析，请检查独立应用的环境变量或配置";
+        if (normalized.contains("密码") || normalized.contains("密钥引用")) return "数据库密码不可用，请检查密码及应用密钥配置";
         if (normalized.contains("driver") || normalized.contains("驱动")) return "数据库 JDBC 驱动不可用，请检查独立应用依赖";
         if (normalized.contains("access denied") || normalized.contains("authentication") || normalized.contains("login failed"))
-            return "数据库认证失败，请检查账号及密码引用";
+            return "数据库认证失败，请检查账号及密码";
         if (normalized.contains("timeout") || normalized.contains("timed out")) return "数据库连接超时，请检查网络和防火墙";
         if (normalized.contains("connection refused") || normalized.contains("communications link failure"))
             return "数据库地址不可达，请检查 JDBC 地址和网络";
@@ -490,7 +491,7 @@ public class InterfaceService {
                 request.accessDate(), valueOr(request.messageEncoding(), "UTF-8"), request.chargeRequired(),
                 request.encryptionRequired(), request.loginRequired(),
                 valueOr(request.status(), "ACTIVE"), accessMode,
-                json.write(normalizeAccessConfig(accessMode, request.accessConfig())), id);
+                json.write(normalizeAccessConfig(accessMode, request.accessConfig(), storedProviderAccessConfig(id))), id);
         runAfterCommit(() -> refreshProviderPlans(id));
         return provider(id);
     }
@@ -1262,7 +1263,7 @@ public class InterfaceService {
                 rs.getDate("access_date") == null ? null : rs.getDate("access_date").toLocalDate(),
                 rs.getString("message_encoding"), rs.getBoolean("charge_required"),
                 rs.getBoolean("encryption_required"), rs.getBoolean("login_required"), rs.getString("status"),
-                valueOr(rs.getString("access_mode"), "HTTP"), json.readMap(rs.getString("access_config")),
+                valueOr(rs.getString("access_mode"), "HTTP"), publicProviderAccessConfig(json.readMap(rs.getString("access_config"))),
                 rs.getString("application_name"), rs.getString("runtime_url"), rs.getInt("server_port"),
                 rs.getInt("config_version"));
     }
@@ -3265,11 +3266,40 @@ public class InterfaceService {
         return mode;
     }
 
-    private Map<String, Object> normalizeAccessConfig(String accessMode, Map<String, Object> source) {
+    private Map<String, Object> normalizeAccessConfig(String accessMode, Map<String, Object> source,
+                                                      Map<String, Object> previous) {
         Map<String, Object> config = source == null ? new LinkedHashMap<>() : new LinkedHashMap<>(source);
-        // Credentials must be resolved by the provider application from a controlled secret reference.
+        String password = Objects.toString(config.remove("password"), "");
+        config.remove("passwordValue");
+        config.remove("passwordConfigured");
+        config.remove("passwordCiphertext");
+        if ("DATABASE".equals(accessMode)) {
+            if (!password.isEmpty()) {
+                String key = environment.getProperty("EDSP_DATABASE_CREDENTIAL_KEY");
+                if (key == null || key.isBlank()) {
+                    throw new IllegalStateException("数据库密码加密密钥未配置，请联系平台管理员");
+                }
+                config.put("passwordCiphertext", CryptoSupport.aes256GcmEncrypt(password, key, "edsp-provider-database"));
+                config.remove("secretReference");
+            } else if (previous != null && previous.get("passwordCiphertext") != null) {
+                config.put("passwordCiphertext", previous.get("passwordCiphertext"));
+            }
+        }
+        return config;
+    }
+
+    private Map<String, Object> storedProviderAccessConfig(long providerId) {
+        String value = jdbc.queryForObject("SELECT access_config FROM data_provider WHERE id=?", String.class, providerId);
+        return json.readMap(value);
+    }
+
+    private Map<String, Object> publicProviderAccessConfig(Map<String, Object> stored) {
+        Map<String, Object> config = new LinkedHashMap<>(stored);
+        boolean configured = config.remove("passwordCiphertext") != null
+                || !Objects.toString(config.get("secretReference"), "").isBlank();
         config.remove("password");
-        if ("DATABASE".equals(accessMode) && config.containsKey("passwordValue")) config.remove("passwordValue");
+        config.remove("passwordValue");
+        if (configured) config.put("passwordConfigured", true);
         return config;
     }
 

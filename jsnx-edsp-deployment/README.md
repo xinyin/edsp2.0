@@ -106,6 +106,8 @@ START_CAPABILITY_SERVICE=1 ./bin/start-demo.sh
 
 日志保存在 `var/logs/`，PID 保存在 `var/run/`。
 
+数据库资源方的密码可在页面直接输入；保存时由 Admin 加密，编辑页不会回显，留空表示保持原密码。本地启停脚本首次运行会在未纳入 Git 的 `var/nacos/local.env` 中生成 `EDSP_DATABASE_CREDENTIAL_KEY`，并同时提供给 Admin 与独立数据应用。请备份此密钥；丢失后已保存的数据库密码无法解密，需重新录入。生产部署应由密钥管理系统向 Admin 和对应数据应用注入同一密钥，不使用各实例自行生成的密钥。
+
 新增的独立数据应用在构建并配置 Nacos 后，从部署工程启动，例如：
 
 ```bash
