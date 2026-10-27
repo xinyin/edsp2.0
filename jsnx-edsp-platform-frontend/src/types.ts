@@ -179,6 +179,7 @@ export interface PlatformResponseCode {
   code: string
   name: string
   resultStatus: 'HIT' | 'MISS' | 'ERROR'
+  category: string
   description: string
   enabled: boolean
 }

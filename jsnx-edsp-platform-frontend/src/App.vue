@@ -240,6 +240,18 @@ const platformResponseCodes = ref<PlatformResponseCode[]>([])
 type PlatformManagementTab = 'contract' | 'codes' | 'security' | 'audit'
 const platformManagementTab = ref<PlatformManagementTab>('contract')
 const platformCodeSearch = ref('')
+const platformCodeCategory = ref('')
+const platformCodeCategories = [
+  { value: 'SUCCESS', label: '成功结果' }, { value: 'NO_DATA', label: '未查得数据' },
+  { value: 'REQUEST', label: '请求校验' }, { value: 'AUTH', label: '认证授权' },
+  { value: 'LIMIT', label: '访问限制' }, { value: 'DEPENDENCY', label: '基础依赖' },
+  { value: 'UPSTREAM', label: '第三方调用' }, { value: 'PLATFORM', label: '平台处理' },
+  { value: 'SECURITY', label: '安全处理' }, { value: 'FILE', label: '文件处理' },
+  { value: 'OTHER', label: '其他' }
+]
+function platformCodeCategoryLabel(value: string) {
+  return platformCodeCategories.find(item => item.value === value)?.label ?? '其他'
+}
 const platformResponseContracts = ref<PlatformResponseContract[]>([])
 const selectedPlatformContractId = ref(0)
 const platformContractFieldsDrawer = ref(false)
@@ -258,13 +270,14 @@ const activeSidebarMenu = computed(() => activeMenu.value === 'platform-manageme
   : activeMenu.value)
 const filteredPlatformResponseCodes = computed(() => {
   const keyword = platformCodeSearch.value.trim().toLowerCase()
-  if (!keyword) return platformResponseCodes.value
-  return platformResponseCodes.value.filter(item => `${item.code} ${item.name} ${item.description}`.toLowerCase().includes(keyword))
+  return platformResponseCodes.value.filter(item =>
+    (!platformCodeCategory.value || item.category === platformCodeCategory.value)
+    && (!keyword || `${item.code} ${item.name} ${item.description} ${platformCodeCategoryLabel(item.category)}`.toLowerCase().includes(keyword)))
 })
 const codeEditorDialog = ref(false)
 const codeEditorOriginal = ref('')
 const codeEditorSaving = ref(false)
-const codeEditorForm = ref<PlatformResponseCode>({ code: '', name: '', resultStatus: 'HIT', description: '', enabled: true })
+const codeEditorForm = ref<PlatformResponseCode>({ code: '', name: '', resultStatus: 'HIT', category: 'OTHER', description: '', enabled: true })
 const savedVendorCodePathBaseline = ref('result.code')
 const savedSecurityBaseline = ref('')
 const standardServiceForm = ref({ servicePath: '', httpMethod: 'POST' })
@@ -2562,7 +2575,7 @@ async function refreshPlatformContracts() {
 }
 function editPlatformCode(item?: PlatformResponseCode) {
   codeEditorOriginal.value = item?.code ?? ''
-  codeEditorForm.value = item ? { ...item } : { code: '', name: '', resultStatus: 'HIT', description: '', enabled: true }
+  codeEditorForm.value = item ? { ...item } : { code: '', name: '', resultStatus: 'HIT', category: 'OTHER', description: '', enabled: true }
   codeEditorDialog.value = true
 }
 async function savePlatformCode() {
@@ -3472,8 +3485,8 @@ function formatDateTime(value: string) { return value ? value.replace('T', ' ').
             </section>
 
             <section v-else-if="platformManagementTab==='codes'" class="platform-management-panel plain-panel">
-              <div class="platform-toolbar"><el-input v-model="platformCodeSearch" :prefix-icon="Search" clearable placeholder="搜索返回码、名称或说明"/><el-button type="primary" :icon="Plus" @click="editPlatformCode()">新增返回码</el-button></div>
-              <el-table :data="filteredPlatformResponseCodes" v-loading="loading" size="small" class="platform-code-table" empty-text="暂无平台返回码"><el-table-column prop="code" label="返回码" width="180"><template #default="{row}"><code>{{ row.code }}</code></template></el-table-column><el-table-column prop="name" label="名称" min-width="160"/><el-table-column label="结果状态" width="110"><template #default="{row}"><el-tag size="small" :type="row.resultStatus==='HIT'?'success':row.resultStatus==='MISS'?'info':'danger'">{{ row.resultStatus==='HIT'?'命中':row.resultStatus==='MISS'?'未命中':'异常' }}</el-tag></template></el-table-column><el-table-column label="状态" width="90"><template #default="{row}">{{ row.enabled ? '启用' : '停用' }}</template></el-table-column><el-table-column prop="description" label="说明" min-width="240" show-overflow-tooltip/><el-table-column label="操作" width="130" fixed="right"><template #default="{row}"><el-button text type="primary" @click="editPlatformCode(row)">编辑</el-button><el-button text type="danger" @click="deletePlatformCode(row)">删除</el-button></template></el-table-column></el-table>
+              <div class="platform-toolbar"><el-input v-model="platformCodeSearch" :prefix-icon="Search" clearable placeholder="搜索返回码、名称或原始码"/><el-select v-model="platformCodeCategory" class="platform-code-category-filter" aria-label="返回码分类"><el-option label="全部分类" value=""/><el-option v-for="category in platformCodeCategories" :key="category.value" :label="category.label" :value="category.value"/></el-select><el-button type="primary" :icon="Plus" @click="editPlatformCode()">新增返回码</el-button></div>
+              <el-table :data="filteredPlatformResponseCodes" v-loading="loading" size="small" class="platform-code-table" empty-text="暂无平台返回码"><el-table-column prop="code" label="返回码" width="190"><template #default="{row}"><code>{{ row.code }}</code></template></el-table-column><el-table-column prop="name" label="名称" min-width="170"/><el-table-column label="分类" width="110"><template #default="{row}">{{ platformCodeCategoryLabel(row.category) }}</template></el-table-column><el-table-column label="结果状态" width="110"><template #default="{row}"><el-tag size="small" :type="row.resultStatus==='HIT'?'success':row.resultStatus==='MISS'?'info':'danger'">{{ row.resultStatus==='HIT'?'命中':row.resultStatus==='MISS'?'未命中':'异常' }}</el-tag></template></el-table-column><el-table-column label="状态" width="90"><template #default="{row}">{{ row.enabled ? '启用' : '停用' }}</template></el-table-column><el-table-column prop="description" label="说明" min-width="260" show-overflow-tooltip/><el-table-column label="操作" width="130" fixed="right"><template #default="{row}"><el-button text type="primary" @click="editPlatformCode(row)">编辑</el-button><el-button text type="danger" @click="deletePlatformCode(row)">删除</el-button></template></el-table-column></el-table>
             </section>
 
             <section v-else-if="platformManagementTab==='security'" class="platform-management-panel plain-panel">
@@ -3967,7 +3980,7 @@ function formatDateTime(value: string) { return value ? value.replace('T', ' ').
     <template #footer><el-button @click="contractEditorDialog=false">取消</el-button><el-button type="primary" :loading="contractEditorSaving" @click="savePlatformContract">保存标准响应</el-button></template>
   </el-dialog>
   <el-dialog v-model="codeEditorDialog" :title="codeEditorOriginal ? '修改平台返回码' : '新增平台返回码'" width="min(520px,94vw)" append-to-body>
-    <el-form label-position="top"><div class="form-grid"><el-form-item label="返回码" required><el-input v-model="codeEditorForm.code" maxlength="64"/></el-form-item><el-form-item label="名称" required><el-input v-model="codeEditorForm.name" maxlength="128"/></el-form-item><el-form-item label="结果状态"><el-select v-model="codeEditorForm.resultStatus"><el-option label="命中" value="HIT"/><el-option label="未命中" value="MISS"/><el-option label="异常" value="ERROR"/></el-select></el-form-item><el-form-item label="启用"><el-switch v-model="codeEditorForm.enabled"/></el-form-item></div><el-form-item label="说明"><CopyableBlock :value="codeEditorForm.description"><el-input v-model="codeEditorForm.description" maxlength="500" type="textarea" :rows="2"/></CopyableBlock></el-form-item></el-form>
+    <el-form label-position="top"><div class="form-grid"><el-form-item label="返回码" required><el-input v-model="codeEditorForm.code" maxlength="64"/></el-form-item><el-form-item label="名称" required><el-input v-model="codeEditorForm.name" maxlength="128"/></el-form-item><el-form-item label="分类"><el-select v-model="codeEditorForm.category"><el-option v-for="category in platformCodeCategories" :key="category.value" :label="category.label" :value="category.value"/></el-select></el-form-item><el-form-item label="结果状态"><el-select v-model="codeEditorForm.resultStatus"><el-option label="命中" value="HIT"/><el-option label="未命中" value="MISS"/><el-option label="异常" value="ERROR"/></el-select></el-form-item><el-form-item label="启用"><el-switch v-model="codeEditorForm.enabled"/></el-form-item></div><el-form-item label="说明"><CopyableBlock :value="codeEditorForm.description"><el-input v-model="codeEditorForm.description" maxlength="500" type="textarea" :rows="2"/></CopyableBlock></el-form-item></el-form>
     <template #footer><el-button @click="codeEditorDialog=false">取消</el-button><el-button type="primary" :loading="codeEditorSaving" @click="savePlatformCode">保存</el-button></template>
   </el-dialog>
   <el-dialog v-model="platformServiceDialog" title="基于资源 API 创建平台标准服务" width="680px">

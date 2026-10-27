@@ -339,6 +339,7 @@
 .contract-field-editor-row .el-input, .contract-field-editor-row .el-select { min-width: 0; }
 .platform-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .platform-toolbar .el-input { max-width: 360px; }
+.platform-toolbar .platform-code-category-filter { width: 160px; flex: 0 0 160px; margin-right: auto; }
 .platform-code-table { width: 100%; }
 @media (max-width: 900px) {
   .contract-field-editor-row { grid-template-columns: 30px repeat(2, minmax(0,1fr)) 100px 50px 32px; }
@@ -348,6 +349,7 @@
   .platform-management-panel { padding: 16px; }
   .platform-toolbar { align-items: stretch; flex-direction: column; }
   .platform-toolbar .el-input { max-width: none; }
+  .platform-toolbar .platform-code-category-filter { width: 100%; flex: none; }
   .contract-fields-editor > header { align-items: flex-start; flex-direction: column; }
   .contract-field-editor-row { grid-template-columns: 24px minmax(0,1fr) 32px; }
   .contract-field-editor-row .el-input, .contract-field-editor-row .el-select { grid-column: 2 / -1; }

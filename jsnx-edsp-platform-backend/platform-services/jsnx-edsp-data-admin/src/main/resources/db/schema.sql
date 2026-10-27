@@ -223,9 +223,29 @@ CREATE TABLE IF NOT EXISTS platform_response_code (
     code VARCHAR(64) PRIMARY KEY,
     name VARCHAR(128) NOT NULL,
     result_status VARCHAR(16) NOT NULL,
+    category VARCHAR(24) NOT NULL DEFAULT 'OTHER',
     description VARCHAR(500) NOT NULL DEFAULT '',
     enabled TINYINT(1) NOT NULL DEFAULT 1,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+DROP PROCEDURE IF EXISTS migrate_platform_response_code_category;
+DELIMITER $$
+CREATE PROCEDURE migrate_platform_response_code_category()
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = DATABASE() AND table_name = 'platform_response_code'
+                     AND column_name = 'category') THEN
+        ALTER TABLE platform_response_code ADD COLUMN category VARCHAR(24) NOT NULL DEFAULT 'OTHER' AFTER result_status;
+    END IF;
+END$$
+DELIMITER ;
+CALL migrate_platform_response_code_category();
+DROP PROCEDURE migrate_platform_response_code_category;
+
+CREATE TABLE IF NOT EXISTS platform_dictionary_seed (
+    catalog_key VARCHAR(64) PRIMARY KEY,
+    applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS platform_response_contract (

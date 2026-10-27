@@ -185,8 +185,8 @@ export const api = {
     return structuredClone(mock.interfaceDetail.responseCodes)
   }),
   platformResponseCodes: () => request<PlatformResponseCode[]>('/api/platform-response-codes', undefined, () => [
-    { code: '0000', name: '成功', resultStatus: 'HIT', description: '', enabled: true },
-    { code: 'EXT-SUCCESS', name: '查询成功', resultStatus: 'HIT', description: '', enabled: true }
+    { code: '0000', name: '成功', resultStatus: 'HIT', category: 'SUCCESS', description: '', enabled: true },
+    { code: 'EXT-SUCCESS', name: '查询成功', resultStatus: 'HIT', category: 'SUCCESS', description: '', enabled: true }
   ]),
   createPlatformResponseCode: (body: PlatformResponseCode) => request<PlatformResponseCode>('/api/platform-response-codes', {
     method: 'POST', headers: { 'X-Edsp-Operator-Token': operatorToken }, body: JSON.stringify(body)

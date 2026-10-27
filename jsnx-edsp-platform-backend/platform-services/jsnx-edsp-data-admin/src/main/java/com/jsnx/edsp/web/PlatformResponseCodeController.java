@@ -20,22 +20,32 @@ import java.util.Set;
 @RequestMapping("/api/platform-response-codes")
 public class PlatformResponseCodeController {
     private static final Set<String> STATUSES = Set.of("HIT", "MISS", "ERROR");
+    private static final Set<String> CATEGORIES = Set.of("SUCCESS", "NO_DATA", "REQUEST", "AUTH",
+            "LIMIT", "DEPENDENCY", "UPSTREAM", "PLATFORM", "SECURITY", "FILE", "OTHER");
     private final JdbcTemplate jdbc;
 
     public PlatformResponseCodeController(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
     public record Code(@NotBlank String code, @NotBlank String name, @NotBlank String resultStatus,
-                       String description, boolean enabled) {}
+                       String category, String description, boolean enabled) {}
 
     @PostConstruct
     public void ensureDictionary() {
         jdbc.execute("""
                 CREATE TABLE IF NOT EXISTS platform_response_code (
                     code VARCHAR(64) PRIMARY KEY, name VARCHAR(128) NOT NULL,
-                    result_status VARCHAR(16) NOT NULL, description VARCHAR(500) NOT NULL DEFAULT '',
+                    result_status VARCHAR(16) NOT NULL, category VARCHAR(24) NOT NULL DEFAULT 'OTHER',
+                    description VARCHAR(500) NOT NULL DEFAULT '',
                     enabled TINYINT(1) NOT NULL DEFAULT 1,
                     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)
                 """);
+        Integer categoryColumns = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_schema=DATABASE() AND table_name='platform_response_code' AND column_name='category'
+                """, Integer.class);
+        if (categoryColumns != null && categoryColumns == 0) {
+            jdbc.execute("ALTER TABLE platform_response_code ADD COLUMN category VARCHAR(24) NOT NULL DEFAULT 'OTHER' AFTER result_status");
+        }
         Integer existing = jdbc.queryForObject("SELECT COUNT(*) FROM platform_response_code", Integer.class);
         if (existing != null && existing == 0) {
             jdbc.update("""
@@ -46,6 +56,38 @@ public class PlatformResponseCodeController {
                     ('EXT-PLATFORM-ERROR','平台处理异常','ERROR','平台处理失败')
                     """);
         }
+        jdbc.execute("""
+                CREATE TABLE IF NOT EXISTS platform_dictionary_seed (
+                    catalog_key VARCHAR(64) PRIMARY KEY,
+                    applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)
+                """);
+        Integer seeded = jdbc.queryForObject("SELECT COUNT(*) FROM platform_dictionary_seed WHERE catalog_key=?",
+                Integer.class, "PRODUCTION_RESPONSE_CODES_V1");
+        if (seeded == null || seeded == 0) {
+            jdbc.batchUpdate("""
+                    INSERT IGNORE INTO platform_response_code(code,name,result_status,category,description,enabled)
+                    VALUES(?,?,?,?,?,?)
+                    """, PlatformResponseCodeCatalog.CODES, PlatformResponseCodeCatalog.CODES.size(), (statement, code) -> {
+                statement.setString(1, code.code());
+                statement.setString(2, code.name());
+                statement.setString(3, code.resultStatus());
+                statement.setString(4, code.category());
+                statement.setString(5, code.description());
+                statement.setBoolean(6, code.enabled());
+            });
+            jdbc.batchUpdate("""
+                    UPDATE platform_response_code
+                    SET name=?,result_status=?,category=?,description=?
+                    WHERE code=? AND name=CONCAT('已使用：',code) AND description='从现有接口规则登记'
+                    """, PlatformResponseCodeCatalog.CODES, PlatformResponseCodeCatalog.CODES.size(), (statement, code) -> {
+                statement.setString(1, code.name());
+                statement.setString(2, code.resultStatus());
+                statement.setString(3, code.category());
+                statement.setString(4, code.description());
+                statement.setString(5, code.code());
+            });
+            jdbc.update("INSERT IGNORE INTO platform_dictionary_seed(catalog_key) VALUES(?)", "PRODUCTION_RESPONSE_CODES_V1");
+        }
         jdbc.update("""
                 INSERT IGNORE INTO platform_response_code(code,name,result_status,description)
                 SELECT standard_code,CONCAT('已使用：',standard_code),MIN(result_status),'从现有接口规则登记'
@@ -55,9 +97,9 @@ public class PlatformResponseCodeController {
 
     @GetMapping
     public List<Code> list() {
-        return jdbc.query("SELECT code,name,result_status,description,enabled FROM platform_response_code ORDER BY code",
+        return jdbc.query("SELECT code,name,result_status,category,description,enabled FROM platform_response_code ORDER BY code",
                 (rs, i) -> new Code(rs.getString("code"), rs.getString("name"), rs.getString("result_status"),
-                        rs.getString("description"), rs.getBoolean("enabled")));
+                        rs.getString("category"), rs.getString("description"), rs.getBoolean("enabled")));
     }
 
     @PostMapping
@@ -66,8 +108,8 @@ public class PlatformResponseCodeController {
         requireOperator(request, token);
         Code code = normalized(input);
         try {
-            jdbc.update("INSERT INTO platform_response_code(code,name,result_status,description,enabled) VALUES(?,?,?,?,?)",
-                    code.code(), code.name(), code.resultStatus(), code.description(), code.enabled());
+            jdbc.update("INSERT INTO platform_response_code(code,name,result_status,category,description,enabled) VALUES(?,?,?,?,?,?)",
+                    code.code(), code.name(), code.resultStatus(), code.category(), code.description(), code.enabled());
         } catch (DuplicateKeyException error) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "平台返回码已存在");
         }
@@ -83,8 +125,8 @@ public class PlatformResponseCodeController {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "返回码已被接口引用，不能修改编码");
         }
         try {
-            if (jdbc.update("UPDATE platform_response_code SET code=?,name=?,result_status=?,description=?,enabled=? WHERE code=?",
-                    next.code(), next.name(), next.resultStatus(), next.description(), next.enabled(), code) == 0) {
+            if (jdbc.update("UPDATE platform_response_code SET code=?,name=?,result_status=?,category=?,description=?,enabled=? WHERE code=?",
+                    next.code(), next.name(), next.resultStatus(), next.category(), next.description(), next.enabled(), code) == 0) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "平台返回码不存在");
             }
         } catch (DuplicateKeyException error) {
@@ -122,12 +164,14 @@ public class PlatformResponseCodeController {
         String code = input.code().trim();
         String name = input.name().trim();
         String status = input.resultStatus().trim().toUpperCase();
+        String category = input.category() == null || input.category().isBlank()
+                ? "OTHER" : input.category().trim().toUpperCase();
         String description = input.description() == null ? "" : input.description().trim();
         if (!code.matches("[A-Za-z0-9_-]{1,64}") || name.isBlank() || name.length() > 128
-                || description.length() > 500 || !STATUSES.contains(status)) {
+                || description.length() > 500 || !STATUSES.contains(status) || !CATEGORIES.contains(category)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "返回码、名称或结果状态不合法");
         }
-        return new Code(code, name, status, description, input.enabled());
+        return new Code(code, name, status, category, description, input.enabled());
     }
 
     private void requireOperator(HttpServletRequest request, String token) {
