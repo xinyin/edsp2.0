@@ -111,7 +111,7 @@ class ProviderConnectorTest {
     }
 
     @Test
-    void databaseQueryLimitIsForwardedToTheProviderConnector() {
+    void databaseQueryLimitFromPlatformPayloadIsMergedIntoProviderQueryConfig() {
         ProviderConnector connector = new ProviderConnector() {
             public String accessMode() { return "DATABASE"; }
             public Map<String, Object> execute(Map<String, Object> connection, String method, String endpoint,
@@ -124,9 +124,10 @@ class ProviderConnectorTest {
         };
         UpstreamClient client = new UpstreamClient(new ObjectMapper(), List.of(connector));
         Map<String, Object> result = DraftAdapterExecutor.executeForProvider("BANK", Map.of(
-                "providerCode", "BANK", "dataSourceCode", "BANK_DB", "executionMode", "SQL",
-                "sqlTemplate", "SELECT id FROM users", "sqlParameters", Map.of(), "maxRows", 5,
-                "providerConnection", Map.of("accessMode", "DATABASE", "accessConfig", Map.of("jdbcUrl", "jdbc:test")),
+                "providerCode", "BANK", "dataSourceCode", "BANK_DB", "maxRows", 5,
+                "providerConnection", Map.of("accessMode", "DATABASE", "accessConfig", Map.of("jdbcUrl", "jdbc:test"),
+                        "resourceQuery", Map.of("executionMode", "SQL", "sqlTemplate", "SELECT id FROM users",
+                                "sqlParameters", Map.of())),
                 "timeoutMs", 3000), client);
 
         assertThat(result.get("success")).isEqualTo(true);

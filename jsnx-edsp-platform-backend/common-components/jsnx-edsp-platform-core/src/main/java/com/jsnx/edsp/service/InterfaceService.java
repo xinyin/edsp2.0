@@ -2055,7 +2055,9 @@ public class InterfaceService {
         connection.put("requestHeaders", requestHeaders);
         Map<String, Object> resourceQuery = new LinkedHashMap<>(resourceQuery(summary));
         if (maxRows != null && "SQL".equalsIgnoreCase(Objects.toString(resourceQuery.get("executionMode"), ""))) {
-            resourceQuery.put("maxRows", Math.max(1, Math.min(500, maxRows)));
+            int effectiveMaxRows = Math.max(1, Math.min(500, maxRows));
+            resourceQuery.put("maxRows", effectiveMaxRows);
+            payload.put("maxRows", effectiveMaxRows);
         }
         connection.put("resourceQuery", resourceQuery);
         payload.put("providerConnection", connection);

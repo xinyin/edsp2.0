@@ -46,12 +46,17 @@ public final class DraftAdapterExecutor {
     private static Map<String, Object> executeRequest(Map<String, Object> payload, UpstreamClient upstream) {
         String upstreamUrl = text(payload.get("upstreamUrl"));
         Map<String, Object> connection = payload.get("providerConnection") instanceof Map<?, ?> config
-                ? new LinkedHashMap<>((Map<String, Object>) config) : Map.of();
+                ? new LinkedHashMap<>((Map<String, Object>) config) : new LinkedHashMap<>();
         String executionMode = text(payload.get("executionMode"));
-        if (payload.containsKey("executionMode") || payload.containsKey("sqlTemplate")) {
-            Map<String, Object> query = new LinkedHashMap<>();
-            query.put("executionMode", executionMode);
-            query.put("sqlTemplate", text(payload.get("sqlTemplate")));
+        Object configuredQuery = connection.get("resourceQuery");
+        if (payload.containsKey("executionMode") || payload.containsKey("sqlTemplate")
+                || payload.containsKey("maxRows")) {
+            Map<String, Object> query = configuredQuery instanceof Map<?, ?> values
+                    ? new LinkedHashMap<>((Map<String, Object>) values) : new LinkedHashMap<>();
+            if (payload.containsKey("executionMode")) query.put("executionMode", executionMode);
+            if (payload.containsKey("executionMode") || payload.containsKey("sqlTemplate")) {
+                query.put("sqlTemplate", text(payload.get("sqlTemplate")));
+            }
             if (payload.get("sqlParameters") != null) query.put("sqlParameters", payload.get("sqlParameters"));
             if (payload.get("maxRows") != null) query.put("maxRows", payload.get("maxRows"));
             connection.put("resourceQuery", query);

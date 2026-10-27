@@ -24,7 +24,9 @@
 .database-test-result { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; padding: 9px 12px; border: 1px solid #dce8df; border-radius: 4px; background: #f5faf6; color: #325b3d; font-size: 12px; overflow-wrap: anywhere; }
 .database-test-result.is-error { border-color: #eddfdb; background: #fcf7f5; color: #8b4739; }
 .database-test-result small { color: inherit; opacity: .8; font-size: 11px; }
-.database-query-limit-hint { margin-left: 10px; color: #65778a; font-size: 11px; }
+.database-query-limit-control { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 12px 0; }
+.database-query-limit-control > span { color: #344b60; font-size: 12px; font-weight: 600; }
+.database-query-limit-control > small { color: #65778a; font-size: 11px; }
 .database-query-result-table { max-height: 360px; margin-top: 0; overflow: auto; }
 .database-query-output { display: grid; gap: 10px; align-items: start; }
 .database-query-empty { padding: 16px; border: 1px solid #e2e8ed; color: #687b89; background: #fafcfd; font-size: 12px; text-align: center; }

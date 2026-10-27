@@ -163,11 +163,9 @@ const selectedResourceApiBySource = new Map<number, number>()
 let sourceRequestSequence = 0
 const activeTab = ref('overview')
 const upstreamSection = ref(0)
-const upstreamSections = [
-  { title: '连接配置' },
-  { title: '接口报文' },
-  { title: '接入测试' }
-]
+const upstreamSections = computed(() => detail.value?.executionMode === 'SQL'
+  ? [{ title: '查询配置', section: 0 }, { title: '接入测试', section: 2 }]
+  : [{ title: '连接配置', section: 0 }, { title: '接口报文', section: 1 }, { title: '接入测试', section: 2 }])
 watch(selectedInterfaceId, () => { upstreamSection.value = 0; connectionDetailsExpanded.value = false })
 type ServiceDevelopmentStage = 'UPSTREAM' | 'ORCHESTRATION'
 const serviceDevelopmentStage = ref<ServiceDevelopmentStage>('UPSTREAM')
@@ -3536,7 +3534,7 @@ function formatDateTime(value: string) { return value ? value.replace('T', ' ').
                 </div>
               </header>
               <nav v-if="serviceDevelopmentStage==='UPSTREAM'" class="developer-tabs" aria-label="资源接口配置">
-                <button v-for="(step,index) in upstreamSections" :key="step.title" type="button" :class="{active:upstreamSection===index}" :aria-current="upstreamSection===index?'page':undefined" @click="upstreamSection=index">{{ step.title }}</button>
+                <button v-for="step in upstreamSections" :key="step.title" type="button" :class="{active:upstreamSection===step.section}" :aria-current="upstreamSection===step.section?'page':undefined" @click="upstreamSection=step.section">{{ step.title }}</button>
               </nav>
               <nav v-if="serviceDevelopmentStage==='ORCHESTRATION'" class="developer-tabs" aria-label="标准服务配置"><button v-for="step in orchestrationGuideSteps" :key="step.key" :class="{active:activeTab===step.key,changed:activeTab===step.key && hasUnsavedChanges}" :aria-current="activeTab===step.key ? 'page' : undefined" :disabled="guideBusy || testRunning || connectionSaving" @click="openGuideStep(step.key)">{{ step.title }}</button></nav>
               <div v-if="guideError" class="api-guide-error compact" role="alert">{{ guideError }}</div>
@@ -3545,13 +3543,12 @@ function formatDateTime(value: string) { return value ? value.replace('T', ' ').
                   <div class="api-connection-workspace">
                     <div v-show="upstreamSection===0" class="api-config-columns">
                     <section class="api-config-card">
-                        <header><div><h3>接口连接</h3></div><el-tag :type="previewUpstreamUrl ? 'info' : 'warning'" effect="plain" size="small">{{ connectionForm.configScope==='INHERIT' ? '继承数据源' : '独立配置' }}</el-tag></header>
+                        <header><div><h3>{{ connectionForm.executionMode==='SQL' ? '数据库查询' : '接口连接' }}</h3></div><el-tag v-if="connectionForm.executionMode==='SQL'" type="info" effect="plain" size="small">SQL</el-tag><el-tag v-else :type="previewUpstreamUrl ? 'info' : 'warning'" effect="plain" size="small">{{ connectionForm.configScope==='INHERIT' ? '继承数据源' : '独立配置' }}</el-tag></header>
                         <div class="api-card-body">
                           <template v-if="connectionForm.executionMode==='SQL'">
                             <el-form label-position="top">
                               <el-form-item label="SQL 查询语句" required><CopyableBlock :value="connectionForm.sqlTemplate"><el-input v-model="connectionForm.sqlTemplate" type="textarea" :rows="10" resize="vertical" placeholder="SELECT id, name FROM user_info WHERE user_id = :userId"/></CopyableBlock></el-form-item>
                               <el-form-item label="请求参数 JSON"><CopyableBlock :value="connectionForm.sqlParameters"><el-input v-model="connectionForm.sqlParameters" type="textarea" :rows="5" resize="vertical" placeholder="{\n  &quot;userId&quot;: &quot;10001&quot;\n}"/></CopyableBlock></el-form-item>
-                              <el-form-item label="单次查询条数"><el-input-number v-model="databaseQueryLimit" :min="1" :max="500" :step="1" controls-position="right"/><span class="database-query-limit-hint">默认 5 条，最多 500 条</span></el-form-item>
                             </el-form>
                           </template>
                           <template v-else>
@@ -3580,7 +3577,7 @@ function formatDateTime(value: string) { return value ? value.replace('T', ' ').
                     </div>
                     <section v-show="upstreamSection===0" class="api-timeout-disclosure" :class="{overridden:connectionForm.timeoutMode==='OVERRIDE'}">
                       <button class="api-timeout-toggle" :aria-expanded="timeoutExpanded" aria-controls="api-timeout-options" @click="timeoutExpanded=!timeoutExpanded">
-                        <Setting/><span><strong>请求超时 <em>可选配置</em></strong><small>{{ connectionForm.timeoutMode==='INHERIT' ? '继承数据源默认配置' : '已设置单接口覆盖，不影响其他接口' }} · {{ previewTimeoutMs }} ms</small></span><b>{{ timeoutExpanded ? '收起设置' : '按需调整' }}</b><ArrowRight :class="{expanded:timeoutExpanded}"/>
+                        <Setting/><span><strong>{{ detail.executionMode==='SQL' ? '查询超时' : '请求超时' }} <em>可选配置</em></strong><small>{{ connectionForm.timeoutMode==='INHERIT' ? '继承数据源默认配置' : '已设置单接口覆盖，不影响其他接口' }} · {{ previewTimeoutMs }} ms</small></span><b>{{ timeoutExpanded ? '收起设置' : '按需调整' }}</b><ArrowRight :class="{expanded:timeoutExpanded}"/>
                       </button>
                       <div v-show="timeoutExpanded" id="api-timeout-options" class="api-card-body">
                           <span class="api-field-label">超时配置方式</span>
@@ -3588,7 +3585,7 @@ function formatDateTime(value: string) { return value ? value.replace('T', ' ').
                           <el-form label-position="top"><el-form-item label="超时时间"><div class="api-timeout-input"><el-input-number :model-value="previewTimeoutMs" @update:model-value="(value: number | undefined) => { if (value != null) connectionForm.timeoutMs = value }" :disabled="connectionForm.timeoutMode==='INHERIT'" :min="100" :max="120000" :step="500" controls-position="right"/><span>毫秒（ms）</span></div></el-form-item></el-form>
                         </div>
                     </section>
-                    <section v-show="upstreamSection===1" class="upstream-contract-panel">
+                    <section v-if="detail.executionMode!=='SQL'" v-show="upstreamSection===1" class="upstream-contract-panel">
                       <header><div><div><h3>供应商原始报文</h3></div></div><el-tag size="small" type="info">JSON</el-tag></header>
                       <div class="upstream-contract-grid">
                         <div class="upstream-contract-field"><span>请求报文</span><CopyableBlock :value="upstreamRequestText"><el-input v-model="upstreamRequestText" type="textarea" :autosize="{ minRows: 12, maxRows: 20 }" placeholder="填写资源方接口实际请求 JSON" /></CopyableBlock></div>
@@ -3597,12 +3594,13 @@ function formatDateTime(value: string) { return value ? value.replace('T', ' ').
                     </section>
                     <section v-show="upstreamSection===2" class="upstream-validation-panel" :class="{'has-error':!!testError && !currentUpstreamVerified}">
                       <div class="upstream-validation-copy"><div><h3>{{ detail.executionMode === 'SQL' ? '查询结果' : '测试结果' }}<HelpTip title="测试范围" content="通过资源提供商独立处理应用执行已保存的 SQL 或发送 HTTP 请求，并展示原始查询结果或供应商响应。此测试不执行标准服务字段转换。"/></h3></div></div>
+                      <div v-if="detail.executionMode==='SQL'" class="database-query-limit-control"><span>单次查询条数</span><el-input-number v-model="databaseQueryLimit" :min="1" :max="500" :step="1" controls-position="right"/><small>默认 5 条，最多 500 条</small></div>
                       <div class="upstream-validation-result success" v-if="currentUpstreamVerified"><span class="status-dot"></span><strong>{{ detail.executionMode === 'SQL' ? '查询成功' : '当前连接验证通过' }}</strong><small>{{ detail.executionMode === 'SQL' ? `${databaseResultRows.length} 条查询结果` : '已收到上游原始响应' }}</small></div>
                       <div class="upstream-validation-result error" v-else-if="testError" role="alert"><span class="status-dot offline"></span><div><strong>验证失败</strong><small>{{ testError }}</small></div></div>
                       <div v-else class="upstream-validation-idle">尚未执行{{ detail.executionMode === 'SQL' ? '查询' : '测试' }}</div>
                     </section>
                     <section v-if="upstreamSection===2" class="resource-test-detail">
-                      <details class="address-disclosure test-route-disclosure"><summary>查看调用路径</summary><div class="address-disclosure-body"><span>处理应用</span><code>{{ selectedSource.applicationName || '未配置应用' }} · {{ selectedSource.runtimeUrl || '尚未配置地址' }}</code></div><div class="address-disclosure-body"><span>供应商接口</span><code>{{ previewUpstreamUrl || '尚未配置地址' }}</code></div></details>
+                      <details class="address-disclosure test-route-disclosure"><summary>查看调用路径</summary><div class="address-disclosure-body"><span>处理应用</span><code>{{ selectedSource.applicationName || '未配置应用' }} · {{ selectedSource.runtimeUrl || '尚未配置地址' }}</code></div><div v-if="detail.executionMode!=='SQL'" class="address-disclosure-body"><span>供应商接口</span><code>{{ previewUpstreamUrl || '尚未配置地址' }}</code></div></details>
                       <div v-if="detail.executionMode === 'SQL'" class="database-query-output">
                         <div v-if="testResult && databaseRequestHasParameters" class="code-pane readonly database-query-parameters"><div class="code-title"><span>本次查询参数</span></div><CopyableBlock :value="formatJson(databaseRequestParameters)"><pre>{{ formatJson(databaseRequestParameters) }}</pre></CopyableBlock></div>
                         <el-table v-if="databaseResultRows.length" :data="databaseResultRows" border size="small" max-height="360" class="database-query-result-table"><el-table-column v-for="column in databaseResultColumns" :key="column" :prop="column" :label="column" min-width="140" show-overflow-tooltip/></el-table>
