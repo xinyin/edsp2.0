@@ -312,7 +312,7 @@ class PublicationValidationTest {
                 RESOURCE_ID, "COMPANY_RESOURCE", "企业资源接口");
         return new InterfaceDetail(summary, Map.of(), Map.of(), REQUEST, REQUEST, RESPONSE, RESPONSE,
                 3000, null, "DATA_SOURCE", 0, "result.code", List.of(),
-                List.of(new ResponseCodeMapping(1L, "0000", "EXT-SUCCESS", "HIT", false, false)),
+                List.of(new ResponseCodeMapping(1L, "0000", "EXT-SUCCESS", "HIT", false)),
                 new SecurityPolicy(SERVICE_ID, false, "NONE", "NONE", "", "", "", "signature", ""));
     }
 

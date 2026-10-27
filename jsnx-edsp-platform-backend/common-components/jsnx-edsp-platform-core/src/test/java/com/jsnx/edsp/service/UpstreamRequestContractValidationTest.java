@@ -40,7 +40,7 @@ class UpstreamRequestContractValidationTest {
                 "DATA_SOURCE", 0, "result.code",
                 List.of(new FieldMapping(1L, "REQUEST", "query_reason", "query_reason",
                         "DIRECT", Map.of(), null, true, 10)),
-                List.of(new ResponseCodeMapping(1L, "0000", "EXT-SUCCESS", "HIT", false, true)),
+                List.of(new ResponseCodeMapping(1L, "0000", "EXT-SUCCESS", "HIT", true)),
                 new SecurityPolicy(42, false, "NONE", "NONE", "", "", "", "signature", ""));
         doReturn(detail).when(service).interfaceDetail(42);
 

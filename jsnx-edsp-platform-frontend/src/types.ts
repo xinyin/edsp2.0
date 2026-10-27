@@ -172,7 +172,6 @@ export interface ResponseCodeMapping {
   vendorCode: string
   standardCode: string
   resultStatus: string
-  retryable: boolean
   billable: boolean
 }
 

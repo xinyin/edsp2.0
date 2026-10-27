@@ -200,11 +200,24 @@ CREATE TABLE IF NOT EXISTS response_code_mapping (
     vendor_code VARCHAR(64) NOT NULL,
     standard_code VARCHAR(64) NOT NULL,
     result_status VARCHAR(16) NOT NULL,
-    retryable TINYINT(1) NOT NULL DEFAULT 0,
     billable TINYINT(1) NOT NULL DEFAULT 0,
     UNIQUE KEY uk_interface_vendor_code (interface_id, vendor_code),
     CONSTRAINT fk_code_interface FOREIGN KEY (interface_id) REFERENCES api_interface(id) ON DELETE CASCADE
 );
+
+DROP PROCEDURE IF EXISTS migrate_response_code_retryable;
+DELIMITER $$
+CREATE PROCEDURE migrate_response_code_retryable()
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = DATABASE() AND table_name = 'response_code_mapping'
+                 AND column_name = 'retryable') THEN
+        ALTER TABLE response_code_mapping DROP COLUMN retryable;
+    END IF;
+END$$
+DELIMITER ;
+CALL migrate_response_code_retryable();
+DROP PROCEDURE migrate_response_code_retryable;
 
 CREATE TABLE IF NOT EXISTS platform_response_code (
     code VARCHAR(64) PRIMARY KEY,

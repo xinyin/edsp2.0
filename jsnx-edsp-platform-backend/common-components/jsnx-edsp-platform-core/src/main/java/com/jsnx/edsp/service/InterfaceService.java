@@ -885,8 +885,8 @@ public class InterfaceService {
                 resource.executionMode(), resource.sqlTemplate(), json.write(resource.sqlParameters()));
         long id = Objects.requireNonNull(jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class));
         jdbc.update("""
-                INSERT INTO response_code_mapping(interface_id,vendor_code,standard_code,result_status,retryable,billable)
-                VALUES(?,'0000','EXT-SUCCESS','HIT',0,1),(?,'1001','EXT-NO-DATA','MISS',0,0),(?,'9999','EXT-VENDOR-ERROR','ERROR',1,0)
+                INSERT INTO response_code_mapping(interface_id,vendor_code,standard_code,result_status,billable)
+                VALUES(?,'0000','EXT-SUCCESS','HIT',1),(?,'1001','EXT-NO-DATA','MISS',0),(?,'9999','EXT-VENDOR-ERROR','ERROR',0)
                 """, id, id, id);
         return interfaceSummary(id);
     }
@@ -1372,7 +1372,7 @@ public class InterfaceService {
         return jdbc.query("SELECT * FROM response_code_mapping WHERE interface_id=? ORDER BY vendor_code",
                 (rs, rowNum) -> new ResponseCodeMapping(rs.getLong("id"), rs.getString("vendor_code"),
                         rs.getString("standard_code"), rs.getString("result_status"),
-                        rs.getBoolean("retryable"), rs.getBoolean("billable")), interfaceId);
+                        rs.getBoolean("billable")), interfaceId);
     }
 
     @Transactional
@@ -1387,10 +1387,10 @@ public class InterfaceService {
         jdbc.update("DELETE FROM response_code_mapping WHERE interface_id=?", interfaceId);
         for (ResponseCodeMapping code : request.responseCodes()) {
             jdbc.update("""
-                    INSERT INTO response_code_mapping(interface_id,vendor_code,standard_code,result_status,retryable,billable)
-                    VALUES(?,?,?,?,?,?)
+                    INSERT INTO response_code_mapping(interface_id,vendor_code,standard_code,result_status,billable)
+                    VALUES(?,?,?,?,?)
                     """, interfaceId, code.vendorCode(), code.standardCode(), code.resultStatus(),
-                    code.retryable(), code.billable());
+                    code.billable());
         }
         jdbc.update("""
                 UPDATE api_interface SET vendor_code_path=?,current_version=COALESCE(published_version,0)+1,
@@ -1821,9 +1821,9 @@ public class InterfaceService {
         ResponseCodeMapping matchedCode = executionCodes.stream()
                 .filter(c -> c.vendorCode().equals(vendorCode)).findFirst().orElse(null);
         ResponseCodeMapping code = httpSuccessMode
-                ? new ResponseCodeMapping(null, "", String.valueOf(responsePolicy.get("successCode")), "HIT", false, false)
+                ? new ResponseCodeMapping(null, "", String.valueOf(responsePolicy.get("successCode")), "HIT", false)
                 : matchedCode == null
-                    ? new ResponseCodeMapping(null, vendorCode, "EXT-VENDOR-ERROR", "ERROR", false, false)
+                    ? new ResponseCodeMapping(null, vendorCode, "EXT-VENDOR-ERROR", "ERROR", false)
                     : matchedCode;
         String responseMappingDetail = "完成供应商响应封装";
         if (!httpSuccessMode && vendorCode.isBlank()) {
@@ -1842,7 +1842,7 @@ public class InterfaceService {
                     responsePolicy, code.resultStatus(), secretResolver);
         code = new ResponseCodeMapping(code.id(), code.vendorCode(),
                 String.valueOf(responseFields.getOrDefault("code", code.standardCode())),
-                code.resultStatus(), code.retryable(), code.billable());
+                code.resultStatus(), code.billable());
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("code", code.standardCode());
         response.put("message", "HIT".equals(code.resultStatus()) ? "查询成功"

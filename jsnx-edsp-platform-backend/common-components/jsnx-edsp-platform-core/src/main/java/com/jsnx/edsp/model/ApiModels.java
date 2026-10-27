@@ -1,5 +1,6 @@
 package com.jsnx.edsp.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.NotEmpty;
@@ -117,9 +118,10 @@ public final class ApiModels {
             String requestFields, String encryptionKeyReference,
             String signingKeyReference, String signatureField, String description) {}
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record ResponseCodeMapping(
             Long id, @NotBlank String vendorCode, @NotBlank String standardCode,
-            @NotBlank String resultStatus, boolean retryable, boolean billable) {}
+            @NotBlank String resultStatus, boolean billable) {}
 
     public record SaveMappingsRequest(
             @NotNull List<FieldMapping> mappings,

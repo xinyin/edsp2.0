@@ -86,7 +86,7 @@ class InterfaceOnlineTest {
         snapshot.put("responseMappings", List.of());
         snapshot.put("summary", summary);
         snapshot.put("vendorCodePath", "result.code");
-        snapshot.put("responseCodes", List.of(new ResponseCodeMapping(1L, "0000", "EXT-SUCCESS", "HIT", false, false)));
+        snapshot.put("responseCodes", List.of(new ResponseCodeMapping(1L, "0000", "EXT-SUCCESS", "HIT", false)));
         snapshot.put("securityPolicy", new SecurityPolicy(ID, false, "NONE", "NONE", "", "", "", "signature", ""));
         snapshot.put("checksum", "v2-checksum");
         return mapper.writeValueAsString(snapshot);

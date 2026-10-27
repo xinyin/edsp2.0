@@ -378,8 +378,8 @@ WHERE NOT EXISTS (SELECT 1 FROM field_mapping WHERE interface_id=3 AND mapping_d
 INSERT INTO field_mapping(interface_id,mapping_direction,source_path,target_path,transform_type,transform_config,default_value,required_flag,sort_order)
 SELECT 3,'RESPONSE','data.rule_version','data.ruleVersion','DIRECT',NULL,NULL,0,40
 WHERE NOT EXISTS (SELECT 1 FROM field_mapping WHERE interface_id=3 AND mapping_direction='RESPONSE' AND source_path='data.rule_version');
-INSERT INTO response_code_mapping(interface_id,vendor_code,standard_code,result_status,retryable,billable)
-VALUES (3,'0000','EXT-SUCCESS','HIT',0,1),(3,'1001','EXT-NO-DATA','MISS',0,0),(3,'9999','EXT-VENDOR-ERROR','ERROR',1,0)
+INSERT INTO response_code_mapping(interface_id,vendor_code,standard_code,result_status,billable)
+VALUES (3,'0000','EXT-SUCCESS','HIT',1),(3,'1001','EXT-NO-DATA','MISS',0),(3,'9999','EXT-VENDOR-ERROR','ERROR',0)
 ON DUPLICATE KEY UPDATE standard_code=VALUES(standard_code),result_status=VALUES(result_status),billable=VALUES(billable);
 INSERT INTO billing_rule(interface_id,hit_billable,miss_billable,effective_date,status)
 VALUES (3,1,0,'2026-01-01','ACTIVE')
@@ -395,11 +395,11 @@ signature_mode=VALUES(signature_mode), request_fields=VALUES(request_fields),
 encryption_key_reference=VALUES(encryption_key_reference), signing_key_reference=VALUES(signing_key_reference),
 signature_field=VALUES(signature_field), description=VALUES(description);
 
-INSERT INTO response_code_mapping (interface_id, vendor_code, standard_code, result_status, retryable, billable)
+INSERT INTO response_code_mapping (interface_id, vendor_code, standard_code, result_status, billable)
 VALUES
-    (1, '0000', 'EXT-SUCCESS', 'HIT', 0, 1),
-    (1, '1001', 'EXT-NO-DATA', 'MISS', 0, 0),
-    (1, '9999', 'EXT-VENDOR-ERROR', 'ERROR', 1, 0)
+    (1, '0000', 'EXT-SUCCESS', 'HIT', 1),
+    (1, '1001', 'EXT-NO-DATA', 'MISS', 0),
+    (1, '9999', 'EXT-VENDOR-ERROR', 'ERROR', 0)
 ON DUPLICATE KEY UPDATE standard_code = VALUES(standard_code), result_status = VALUES(result_status);
 
 INSERT INTO vendor_mock_config (interface_id, mock_name, response_body, http_status, delay_ms, enabled)
@@ -438,8 +438,8 @@ SELECT id,'RESPONSE','data.query_no','data.queryNo','DIRECT',NULL,NULL,0,30 FROM
 WHERE interface_code='CREDIT_REPORT_QUERY' AND NOT EXISTS (
     SELECT 1 FROM field_mapping fm WHERE fm.interface_id=api_interface.id AND fm.source_path='data.query_no');
 
-INSERT INTO response_code_mapping(interface_id,vendor_code,standard_code,result_status,retryable,billable)
-VALUES (2,'0000','EXT-SUCCESS','HIT',0,1),(2,'1001','EXT-NO-DATA','MISS',0,0),(2,'9999','EXT-VENDOR-ERROR','ERROR',1,0)
+INSERT INTO response_code_mapping(interface_id,vendor_code,standard_code,result_status,billable)
+VALUES (2,'0000','EXT-SUCCESS','HIT',1),(2,'1001','EXT-NO-DATA','MISS',0),(2,'9999','EXT-VENDOR-ERROR','ERROR',0)
 ON DUPLICATE KEY UPDATE standard_code=VALUES(standard_code),result_status=VALUES(result_status),billable=VALUES(billable);
 
 INSERT INTO vendor_mock_config (interface_id,mock_name,response_body,http_status,delay_ms,enabled)

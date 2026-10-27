@@ -62,9 +62,9 @@ export let interfaceDetail: InterfaceDetail = {
     description: '演示：请求字段加密后签名，密钥仅保存引用。'
   },
   responseCodes: [
-    { id: 1, vendorCode: '0000', standardCode: 'EXT-SUCCESS', resultStatus: 'HIT', retryable: false, billable: true },
-    { id: 2, vendorCode: '1001', standardCode: 'EXT-NO-DATA', resultStatus: 'MISS', retryable: false, billable: false },
-    { id: 3, vendorCode: '9999', standardCode: 'EXT-VENDOR-ERROR', resultStatus: 'ERROR', retryable: true, billable: false }
+    { id: 1, vendorCode: '0000', standardCode: 'EXT-SUCCESS', resultStatus: 'HIT', billable: true },
+    { id: 2, vendorCode: '1001', standardCode: 'EXT-NO-DATA', resultStatus: 'MISS', billable: false },
+    { id: 3, vendorCode: '9999', standardCode: 'EXT-VENDOR-ERROR', resultStatus: 'ERROR', billable: false }
   ]
 }
 

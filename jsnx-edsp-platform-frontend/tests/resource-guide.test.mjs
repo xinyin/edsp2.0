@@ -25,7 +25,7 @@ for (const declaration of [...imports].reverse()) standalone = standalone.slice(
 const appJS = ts.transpileModule(standalone + '\nglobalThis.__selectedTraceKey = selectedTraceKey; globalThis.__catalogState = { remoteResourceOptions, servicePages, serviceSearchPage, loadServiceSourcePage, loadServiceSearch, searchResourceOptions };', { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText
 
 const mapping = direction => ({ direction, sourcePath: 'name', targetPath: 'name', transformType: 'DIRECT', transformConfig: {}, defaultValue: '', required: true, sortOrder: 1 })
-const codes = [{ vendorCode: '0000', standardCode: 'EXT-SUCCESS', resultStatus: 'HIT', billable: true, retryable: false }]
+const codes = [{ vendorCode: '0000', standardCode: 'EXT-SUCCESS', resultStatus: 'HIT', billable: true }]
 const baseGuide = { upstreamUrl: 'http://localhost/query', servicePath: '/api/query', mappings: [mapping('REQUEST'), mapping('RESPONSE')], responseCodes: codes, securityEnabled: false, status: 'DRAFT', currentVersion: 2, publishedVersion: 1, orchestrationVerified: false }
 const result = () => ({ upstreamRequest: {}, upstreamResponse: {}, standardResponse: { resultStatus: 'HIT' }, steps: [], traceNodes: ['ESB_ADAPTER', 'GATEWAY', 'DATA_SOURCE', 'VENDOR', 'RESPONSE_MAPPING', 'STANDARD_RESPONSE'].map(key => ({ key, status: 'SUCCESS' })) })
 
@@ -266,6 +266,11 @@ test('新增标准服务弹窗只保留创建所需信息，不展示 ESB 接入
   assert.match(dialog, /来源资源 API/)
   assert.match(dialog, /标准服务名称/)
   assert.doesNotMatch(dialog, /接入方式：ESB 队列|XML 请求 \/ XML 响应/)
+})
+
+test('返回码映射不再提供重试策略开关', () => {
+  assert.doesNotMatch(appText, /允许重试|row\.retryable/)
+  assert.match(appText, /label="纳入对账量"/)
 })
 
 test('未选择有效资源 API 时不允许绕过页面创建标准服务', async () => {
