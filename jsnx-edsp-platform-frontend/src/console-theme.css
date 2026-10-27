@@ -594,11 +594,9 @@ body { background: var(--canvas); }
 .mapping-sample-head > div, .standard-contract-strip > div:first-child { display: flex; flex-direction: row; align-items: center; gap: 7px; }
 .trace-workbench-head > div:first-child { flex-wrap: wrap; }
 .trace-workbench-head .help-tip span { grid-row: auto; padding: 0; border: 1px solid currentColor; font: 600 11px/1 Arial, sans-serif; }
-.test-context-bar, .esb-contract-strip, .dialog-context, .catalog-guidance { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin: 10px 0; padding: 9px 12px; border: 1px solid var(--border); border-radius: 3px; color: var(--text-regular); background: var(--workspace-chrome); font-size: 12px; }
-.test-context-bar > span, .esb-contract-strip > span, .dialog-context > span { display: inline-flex; align-items: center; gap: 6px; }
-.test-context-bar code, .esb-contract-strip code { min-width: 0; overflow-wrap: anywhere; }
-.esb-contract-strip { border-left: 1px solid var(--border); }
-.esb-contract-strip > span { color: var(--text-regular); font: inherit; }
+.test-context-bar, .dialog-context, .catalog-guidance { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin: 10px 0; padding: 9px 12px; border: 1px solid var(--border); border-radius: 3px; color: var(--text-regular); background: var(--workspace-chrome); font-size: 12px; }
+.test-context-bar > span, .dialog-context > span { display: inline-flex; align-items: center; gap: 6px; }
+.test-context-bar code { min-width: 0; overflow-wrap: anywhere; }
 .mapping-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .mapping-summary > .help-tip { margin-left: auto; margin-right: 12px; flex-shrink: 0; }
 .provider-detail .panel-heading, .provider-info-grid { gap: 16px; }

@@ -230,6 +230,13 @@ test('标准服务可以独立选择已保存的资源 API，不以测试通过�
   assert.equal(s.platformServiceForm.value.resourceApiId, 0)
 })
 
+test('新增标准服务弹窗只保留创建所需信息，不展示 ESB 接入方式说明', () => {
+  const dialog = appText.slice(appText.indexOf('<el-dialog v-model="platformServiceDialog"'), appText.indexOf('<el-dialog v-model="providerDialog"'))
+  assert.match(dialog, /来源资源 API/)
+  assert.match(dialog, /标准服务名称/)
+  assert.doesNotMatch(dialog, /接入方式：ESB 队列|XML 请求 \/ XML 响应/)
+})
+
 test('未选择有效资源 API 时不允许绕过页面创建标准服务', async () => {
   let called = false
   const s = harness({ createPlatformService: async () => { called = true } })
