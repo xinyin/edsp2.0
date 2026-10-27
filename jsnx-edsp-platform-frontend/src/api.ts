@@ -1,5 +1,5 @@
 import * as mock from './mock'
-import type { AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary, DataApplicationProvisionResult, DataApplicationProvisionSettings, DataSourceSummary, DatabaseConnectionTestResult, EsbDiagnosticResult, FieldMapping, InterfaceDetail, InterfaceSummary, InterfaceVersionHistory, LoginResult, MonitorAlert, MonitorPoint, MonitorSummary, OperationAuditPage, PlatformResponseCode, PlatformResponseContract, ProviderAccount, ProviderSummary, ReleaseApproval, ReleaseServicePage, ResourceApiDetail, ResourceApiSummary, ResourceDirectoryPage, ResourceDocument, SecurityAlgorithmDescriptor, SecurityPolicy, TestResult, UsageRecord, UsageReportResult, ValidationResult, VendorDataSourceDefinition } from './types'
+import type { AuthorizationRecord, BillingRule, BillingSummary, CallTraceDetail, ClientApp, DashboardSummary, DataApplicationProvisionResult, DataApplicationProvisionSettings, DataSourceSummary, DatabaseConnectionTestResult, EsbDiagnosticResult, FieldMapping, InterfaceDetail, InterfaceSummary, InterfacePage, InterfaceVersionHistory, LoginResult, MonitorAlert, MonitorPoint, MonitorSummary, OperationAuditPage, PlatformResponseCode, PlatformResponseContract, ProviderAccount, ProviderSummary, ReleaseApproval, ReleaseServicePage, ResourceApiDetail, ResourceApiPage, ResourceApiSummary, ResourceDirectoryPage, ResourceDocument, SecurityAlgorithmDescriptor, SecurityPolicy, TestResult, UsageRecord, UsageReportResult, ValidationResult, VendorDataSourceDefinition } from './types'
 
 const demoMode = import.meta.env.VITE_DEMO_MODE === 'mock'
 export const isDemoMode = () => demoMode
@@ -114,12 +114,18 @@ export const api = {
   databaseColumns: (sourceId: number, table: string) => request<{ table: string; columns: { name: string; type: string; nullable: boolean; ordinal: number }[] }>(`/api/data-sources/${sourceId}/database-columns?table=${encodeURIComponent(table)}`),
   createResourceApi: (body: Record<string, unknown>) => request<ResourceApiSummary>('/api/resource-apis', { method: 'POST', body: JSON.stringify(body) }),
   resourceApi: (id: number) => request<ResourceApiDetail>(`/api/resource-apis/${id}`),
+  resourceApiPage: (filters: { dataSourceId?: number; keyword?: string; page?: number; size?: number }) =>
+    request<ResourceApiPage>(`/api/resource-apis/page?${new URLSearchParams(Object.entries(filters).filter(([, value]) => value != null && value !== '').map(([key, value]) => [key, String(value)]))}`, undefined,
+      () => ({ rows: [], total: 0, page: filters.page ?? 1, size: filters.size ?? 20 })),
   resourceValidationStatus: (id: number) => request<{ upstreamVerified: boolean }>(`/api/resource-apis/${id}/validation-status`),
   saveResourceApi: (id: number, body: Record<string, unknown>) => request<ResourceApiDetail>(`/api/resource-apis/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   updateResourceApiMetadata: (id: number, body: Record<string, unknown>) => request<ResourceApiSummary>(`/api/resource-apis/${id}/metadata`, { method: 'PUT', body: JSON.stringify(body) }),
   verifyResourceApi: (id: number, maxRows?: number) => request<TestResult>(`/api/resource-apis/${id}/verify`, { method: 'POST', body: JSON.stringify(maxRows == null ? {} : { maxRows }) }),
   createPlatformService: (body: Record<string, unknown>) => request<InterfaceSummary>('/api/platform-services', { method: 'POST', body: JSON.stringify(body) }),
   interfaces: (sourceId?: number) => request<InterfaceSummary[]>(sourceId ? `/api/interfaces?dataSourceId=${sourceId}` : '/api/interfaces', undefined, () => sourceId ? mock.interfaces.filter(item => item.dataSourceId === sourceId) : mock.interfaces),
+  interfacePage: (filters: { dataSourceId?: number; keyword?: string; page?: number; size?: number }) =>
+    request<InterfacePage>(`/api/interfaces/page?${new URLSearchParams(Object.entries(filters).filter(([, value]) => value != null && value !== '').map(([key, value]) => [key, String(value)]))}`, undefined,
+      () => { const rows = mock.interfaces.filter(item => (!filters.dataSourceId || item.dataSourceId === filters.dataSourceId) && (!filters.keyword || `${item.interfaceName} ${item.interfaceCode} ${item.servicePath}`.toLowerCase().includes(filters.keyword.toLowerCase()))); return { rows: rows.slice(((filters.page ?? 1) - 1) * (filters.size ?? 30), (filters.page ?? 1) * (filters.size ?? 30)), total: rows.length, page: filters.page ?? 1, size: filters.size ?? 30 } }),
   releaseServices: (filters: { keyword?: string; providerId?: number; dataSourceId?: number; runStatus?: string; authorizationStatus?: string; page?: number; size?: number }) => {
     const params = new URLSearchParams()
     Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== null && value !== '') params.set(key, String(value)) })

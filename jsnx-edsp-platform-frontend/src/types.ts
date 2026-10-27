@@ -91,6 +91,8 @@ export interface ReleaseServiceRow {
   latestPublishedAt?: string
 }
 export interface ReleaseServicePage { rows: ReleaseServiceRow[]; total: number; page: number; size: number }
+export interface InterfacePage { rows: InterfaceSummary[]; total: number; page: number; size: number }
+export interface ResourceApiPage { rows: ResourceApiSummary[]; total: number; page: number; size: number }
 
 export interface ResourceApiSummary {
   id: number

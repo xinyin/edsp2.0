@@ -8,7 +8,7 @@ import {
   Bell, Check, CircleCheck, Connection, DataAnalysis, DataBoard, Delete,
   DocumentChecked, DocumentCopy, Edit, Files, Key, Lock, Monitor, Plus, Promotion, Refresh,
   Search, Setting, SwitchButton, Tickets, User as UserIcon, Wallet, OfficeBuilding, Warning,
-  Fold, Expand, Upload,
+  Fold, Expand, Upload, MoreFilled,
   Guide, ArrowRight
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -52,6 +52,14 @@ const sources = ref<DataSourceSummary[]>([])
 const interfaces = ref<InterfaceSummary[]>([])
 const allInterfaces = ref<InterfaceSummary[]>([])
 const allResourceApis = ref<ResourceApiSummary[]>([])
+const servicePages = ref<Record<number, { rows: InterfaceSummary[]; total: number; page: number; loading: boolean }>>({})
+const serviceSearchPage = ref({ rows: [] as InterfaceSummary[], total: 0, page: 0, loading: false })
+const remoteResourceOptions = ref<ResourceApiSummary[]>([])
+const remoteResourceLoading = ref(false)
+const serviceCreationSourceId = ref<number | undefined>()
+let serviceCatalogRequest = 0
+let serviceSearchTimer: ReturnType<typeof setTimeout> | undefined
+let resourceSearchRequest = 0
 const clients = ref<ClientApp[]>([])
 const authorizations = ref<AuthorizationRecord[]>([])
 const activeAuthorizationCount = ref(0)
@@ -317,8 +325,9 @@ const apiForm = ref({ dataSourceId: 1, interfaceCode: '', interfaceName: '', ser
 const platformServiceDialog = ref(false)
 const platformServiceCreating = ref(false)
 const platformServiceForm = ref({ resourceApiId: 0, serviceCode: '', serviceName: '', servicePath: '', httpMethod: 'POST' })
-const serviceResourceOptions = computed(() => allResourceApis.value
+const serviceResourceOptions = computed(() => [...remoteResourceOptions.value, ...(activeMenu.value === 'resource' ? allResourceApis.value : [])]
   .filter(resource => resource.status === 'READY')
+  .filter((resource, index, rows) => rows.findIndex(item => item.id === resource.id) === index)
   .map(resource => {
     const source = sources.value.find(item => item.id === resource.dataSourceId)
     const provider = providers.value.find(item => item.id === source?.providerId)
@@ -593,8 +602,7 @@ function adaptResourceDetail(item: ResourceApiDetail): InterfaceDetail {
 }
 const workspaceInterfaceRows = computed(() => activeMenu.value === 'resource'
   ? allResourceApis.value.map(resourceApiProjection) : allInterfaces.value)
-const availableSources = computed(() => sources.value.filter(source => activeMenu.value !== 'service-development'
-  || workspaceInterfaceRows.value.some(apiItem => apiItem.dataSourceId === source.id)))
+const availableSources = computed(() => sources.value)
 type ProviderSourceGroup = { providerId: number; providerName: string; providerCode: string; sources: DataSourceSummary[] }
 function resolvedProviderId(source: DataSourceSummary) {
   return providers.value.find(item => item.id === source.providerId)?.id
@@ -606,6 +614,8 @@ const filteredProviderGroups = computed<ProviderSourceGroup[]>(() => {
   const keyword = sourceSearch.value.trim().toLowerCase()
   const grouped = new Map<number, ProviderSourceGroup>()
   availableSources.value.forEach(source => {
+    if (activeMenu.value === 'service-development' && keyword
+        && !serviceSearchPage.value.rows.some(item => item.dataSourceId === source.id)) return
     const provider = providers.value.find(item => item.id === source.providerId)
       ?? providers.value.find(item => item.providerName === source.providerName)
     const providerId = resolvedProviderId(source)
@@ -615,7 +625,7 @@ const filteredProviderGroups = computed<ProviderSourceGroup[]>(() => {
     const sourceMatched = `${source.sourceName}${source.sourceCode}`.toLowerCase().includes(keyword)
     const apiMatched = workspaceInterfaceRows.value.some(apiItem => apiItem.dataSourceId === source.id
       && `${apiItem.interfaceName}${apiItem.interfaceCode}${apiItem.servicePath}`.toLowerCase().includes(keyword))
-    if (keyword && !providerMatched && !sourceMatched && !apiMatched) return
+    if (keyword && activeMenu.value !== 'service-development' && !providerMatched && !sourceMatched && !apiMatched) return
     if (!grouped.has(providerId)) grouped.set(providerId, { providerId, providerName, providerCode, sources: [] })
     grouped.get(providerId)!.sources.push(source)
   })
@@ -623,6 +633,9 @@ const filteredProviderGroups = computed<ProviderSourceGroup[]>(() => {
 })
 const filteredSources = computed(() => filteredProviderGroups.value.flatMap(group => group.sources))
 function sourceInterfaces(sourceId: number) {
+  if (activeMenu.value === 'service-development') return sourceSearch.value.trim()
+    ? serviceSearchPage.value.rows.filter(item => item.dataSourceId === sourceId)
+    : servicePages.value[sourceId]?.rows ?? []
   const keyword = sourceSearch.value.trim().toLowerCase()
   const rows = workspaceInterfaceRows.value.filter(item => item.dataSourceId === sourceId)
   if (!keyword) return rows
@@ -644,6 +657,67 @@ function isSourceExpanded(sourceId: number) {
 function setAllSourcesExpanded(expanded: boolean) {
   providerExpansion.value = Object.fromEntries(filteredProviderGroups.value.map(group => [group.providerId, expanded]))
   sourceExpansion.value = Object.fromEntries(sources.value.map(source => [source.id, expanded]))
+}
+
+async function loadServiceSourcePage(sourceId: number, append = false) {
+  const current = servicePages.value[sourceId]
+  if (current?.loading || (append && current && current.rows.length >= current.total)) return
+  const page = append ? (current?.page ?? 0) + 1 : 1
+  servicePages.value = { ...servicePages.value, [sourceId]: { rows: current?.rows ?? [], total: current?.total ?? 0, page: current?.page ?? 0, loading: true } }
+  try {
+    const result = await api.interfacePage({ dataSourceId: sourceId, page, size: 30 })
+    servicePages.value = { ...servicePages.value, [sourceId]: { rows: append ? [...(current?.rows ?? []), ...result.rows] : result.rows, total: result.total, page, loading: false } }
+  } catch (error) {
+    servicePages.value = { ...servicePages.value, [sourceId]: { rows: current?.rows ?? [], total: current?.total ?? 0, page: current?.page ?? 0, loading: false } }
+    ElMessage.error(error instanceof Error ? error.message : '服务目录加载失败')
+  }
+}
+
+async function loadServiceSearch(append = false) {
+  const keyword = sourceSearch.value.trim()
+  if (!keyword || serviceSearchPage.value.loading) return
+  const requestId = ++serviceCatalogRequest
+  const current = serviceSearchPage.value
+  const page = append ? current.page + 1 : 1
+  serviceSearchPage.value = { ...current, loading: true }
+  try {
+    const result = await api.interfacePage({ keyword, page, size: 30 })
+    if (requestId !== serviceCatalogRequest || keyword !== sourceSearch.value.trim()) return
+    serviceSearchPage.value = { rows: append ? [...current.rows, ...result.rows] : result.rows, total: result.total, page, loading: false }
+  } catch (error) {
+    if (requestId === serviceCatalogRequest) {
+      serviceSearchPage.value = { ...current, loading: false }
+      ElMessage.error(error instanceof Error ? error.message : '服务搜索失败')
+    }
+  }
+}
+
+watch(sourceSearch, () => {
+  if (activeMenu.value !== 'service-development') return
+  if (serviceSearchTimer) clearTimeout(serviceSearchTimer)
+  ++serviceCatalogRequest
+  serviceSearchPage.value = { rows: [], total: 0, page: 0, loading: false }
+  if (sourceSearch.value.trim()) serviceSearchTimer = setTimeout(() => void loadServiceSearch(), 300)
+})
+
+async function toggleServiceSource(sourceId: number) {
+  sourceExpansion.value[sourceId] = !isSourceExpanded(sourceId)
+  if (sourceExpansion.value[sourceId] && !servicePages.value[sourceId]?.page) await loadServiceSourcePage(sourceId)
+}
+
+async function searchResourceOptions(keyword = '') {
+  const requestId = ++resourceSearchRequest
+  remoteResourceLoading.value = true
+  try {
+    const result = await api.resourceApiPage({ dataSourceId: serviceCreationSourceId.value, keyword, page: 1, size: 30 })
+    if (requestId === resourceSearchRequest) {
+      const selected = remoteResourceOptions.value.find(item => item.id === platformServiceForm.value.resourceApiId)
+      remoteResourceOptions.value = selected && !result.rows.some(item => item.id === selected.id)
+        ? [selected, ...result.rows] : result.rows
+    }
+  } catch (error) {
+    if (requestId === resourceSearchRequest) ElMessage.error(error instanceof Error ? error.message : '资源 API 搜索失败')
+  } finally { if (requestId === resourceSearchRequest) remoteResourceLoading.value = false }
 }
 async function locateSelectedApi() {
   sourceSearch.value = ''
@@ -939,8 +1013,8 @@ async function login() {
 async function loadAll() {
   loading.value = true
   try {
-    const loadCatalog = ['resource', 'service-development', 'authorization', 'billing'].includes(activeMenu.value)
-    const loadResourceCatalog = ['resource', 'service-development'].includes(activeMenu.value)
+    const loadCatalog = ['authorization', 'billing'].includes(activeMenu.value)
+    const loadResourceCatalog = activeMenu.value === 'resource'
     const loadAuth = activeMenu.value === 'authorization'
     const [dashboardData, providerData, sourceData, resourceApiData, interfaceData, clientData, authData, authSummary, rules, summary, usage, monitor, points, alerts, approvalData, algorithmData] = await Promise.all([
       api.dashboard(), api.providers(), api.dataSources(), loadResourceCatalog ? api.resourceApis() : Promise.resolve([]), loadCatalog ? api.interfaces() : Promise.resolve([]), api.clients(), loadAuth ? api.authorizations() : Promise.resolve([]), loadAuth ? Promise.resolve({ activeCount: 0 }) : api.authorizationSummary(), api.billingRules(), api.billingSummary(), api.usageRecords(),
@@ -979,6 +1053,7 @@ async function loadAll() {
     if (!selectedSourceId.value && sourceData.length) selectedSourceId.value = sourceData[0].id
     if (!selectedProviderId.value && providerData.length) { selectedProviderId.value = providerData[0].id; await loadProviderAccounts() }
     if (loadCatalog) await loadInterfaces(false)
+    if (activeMenu.value === 'service-development' && selectedSourceId.value) await loadServiceSourcePage(selectedSourceId.value)
   } finally { loading.value = false }
 }
 
@@ -1021,6 +1096,9 @@ async function loadInterfaces(reset = true) {
     let sourceInterfaces: InterfaceSummary[]
     if (activeMenu.value === 'resource') {
       sourceInterfaces = allResourceApis.value.filter(item => item.dataSourceId === sourceId).map(resourceApiProjection)
+    } else if (activeMenu.value === 'service-development') {
+      if (!servicePages.value[sourceId]?.page) await loadServiceSourcePage(sourceId)
+      sourceInterfaces = servicePages.value[sourceId]?.rows ?? []
     } else {
       sourceInterfaces = interfaceCache.get(sourceId) ?? await api.interfaces(sourceId)
       interfaceCache.set(sourceId, sourceInterfaces)
@@ -1157,6 +1235,8 @@ function markDraftSaved() {
   if (!detail.value) return
   detail.value.summary.currentVersion = (detail.value.summary.publishedVersion ?? 0) + 1
   if (detail.value.summary.status !== 'OFFLINE') detail.value.summary.status = 'DRAFT'
+  const page = servicePages.value[detail.value.summary.dataSourceId]
+  if (page) page.rows = page.rows.map(item => item.id === detail.value?.summary.id ? { ...detail.value.summary } : item)
   lastOrchestrationValidation.value = null
   lastE2ETest.value = null
 }
@@ -1212,13 +1292,14 @@ async function confirmDiscardUnsaved() {
 
 async function selectSource(id: number) {
   if (guideBusy.value || testRunning.value || connectionSaving.value) return
-  if (id === selectedSourceId.value && !sourceSwitching.value) return
+  if (id === selectedSourceId.value && !sourceSwitching.value && activeMenu.value !== 'service-development') return
   if (!await confirmDiscardUnsaved()) return
   selectedSourceId.value = id
   const source = sources.value.find(item => item.id === id)
   const providerId = source ? resolvedProviderId(source) : undefined
   if (providerId != null) providerExpansion.value[providerId] = true
   sourceExpansion.value[id] = true
+  if (activeMenu.value === 'service-development' && !servicePages.value[id]?.page) await loadServiceSourcePage(id)
   await loadInterfaces()
 }
 
@@ -1234,6 +1315,8 @@ async function selectResourceInterface(sourceId: number, interfaceId: number) {
   sourceExpansion.value[sourceId] = true
   interfaces.value = activeMenu.value === 'resource'
     ? allResourceApis.value.filter(item => item.dataSourceId === sourceId).map(resourceApiProjection)
+    : activeMenu.value === 'service-development'
+      ? servicePages.value[sourceId]?.rows ?? serviceSearchPage.value.rows.filter(item => item.dataSourceId === sourceId)
     : interfaceCache.get(sourceId) ?? allInterfaces.value.filter(item => item.dataSourceId === sourceId)
   selectedInterfaceId.value = interfaceId
   ;(activeMenu.value === 'resource' ? selectedResourceApiBySource : selectedInterfaceBySource).set(sourceId, interfaceId)
@@ -1261,8 +1344,8 @@ async function selectServiceDevelopmentStage(stage: 'UPSTREAM' | 'ORCHESTRATION'
     activeTab.value = 'request'
     if (testMode.value === 'UPSTREAM') testMode.value = 'PLATFORM'
     activeMenu.value = 'service-development'
-    const ready = allInterfaces.value.find(item => item.id === selectedInterfaceId.value && item.upstreamStatus === 'READY')
-      ?? allInterfaces.value.find(item => item.upstreamStatus === 'READY')
+    const ready = servicePages.value[selectedSourceId.value]?.rows.find(item => item.id === selectedInterfaceId.value)
+      ?? servicePages.value[selectedSourceId.value]?.rows[0]
     if (ready) { selectedSourceId.value = ready.dataSourceId; selectedInterfaceId.value = ready.id; void loadInterfaces(false) }
   }
 }
@@ -1272,17 +1355,18 @@ async function navigate(menu: string) {
   if (['resource', 'service-development'].includes(activeMenu.value) && !await confirmDiscardUnsaved()) return
   const originatingResourceApiId = activeMenu.value === 'resource' ? selectedInterfaceId.value : undefined
   activeMenu.value = menu
+  if (menu === 'resource' || menu === 'service-development') sourceSearch.value = ''
   if (menu === 'overview') void refreshOverview()
   if (menu === 'authorization') {
     await loadPlatformInterfaceCatalog()
-  } else if (['resource', 'service-development', 'billing'].includes(menu)) {
+  } else if (menu === 'billing') {
     if (!interfaceCatalogLoaded.value) await loadPlatformInterfaceCatalog()
   }
   if (menu === 'authorization') {
     authorizations.value = await api.authorizations()
     activeAuthorizationCount.value = authorizations.value.filter(item => item.status === 'ACTIVE' && item.validFrom <= today.value && item.validTo >= today.value && clients.value.some(client => client.id === item.clientId && client.status === 'ACTIVE')).length
   }
-  if (['resource', 'service-development'].includes(menu) && !allResourceApis.value.length) allResourceApis.value = await api.resourceApis()
+  if (menu === 'resource' && !allResourceApis.value.length) allResourceApis.value = await api.resourceApis()
   if (menu === 'resource') {
     upstreamSection.value = 0
     serviceDevelopmentStage.value = 'UPSTREAM'
@@ -1297,9 +1381,11 @@ async function navigate(menu: string) {
     serviceDevelopmentStage.value = 'ORCHESTRATION'
     activeTab.value = 'request'
     if (testMode.value === 'UPSTREAM') testMode.value = 'PLATFORM'
-    const ready = (originatingResourceApiId ? allInterfaces.value.find(item => item.resourceApiId === originatingResourceApiId) : undefined)
-      ?? allInterfaces.value.find(item => item.id === selectedInterfaceBySource.get(selectedSourceId.value))
-      ?? allInterfaces.value[0]
+    if (selectedSourceId.value && !servicePages.value[selectedSourceId.value]?.page) await loadServiceSourcePage(selectedSourceId.value)
+    const selectedPage = servicePages.value[selectedSourceId.value]?.rows ?? []
+    const ready = (originatingResourceApiId ? selectedPage.find(item => item.resourceApiId === originatingResourceApiId) : undefined)
+      ?? selectedPage.find(item => item.id === selectedInterfaceBySource.get(selectedSourceId.value))
+      ?? selectedPage[0]
     if (ready) { selectedSourceId.value = ready.dataSourceId; selectedInterfaceId.value = ready.id; void loadInterfaces(false) }
     else { selectedInterfaceId.value = 0; detail.value = null }
   }
@@ -1491,6 +1577,7 @@ async function archiveRelease(target: InterfaceSummary) {
     await ElMessageBox.confirm('归档后资源目录不再展示该 API，但版本、审批和链路记录仍会保留。确认归档删除吗？', '确认归档删除', { type: 'warning', confirmButtonText: '归档删除', cancelButtonText: '取消' })
     await api.deleteInterface(target.id)
     removeInterfaceFromLocalState(target)
+    if (servicePages.value[target.dataSourceId]) await loadServiceSourcePage(target.dataSourceId)
     ElMessage.success('API 已归档，历史审计数据已保留')
     releaseDetailDrawer.value = false
     releaseDetail.value = null
@@ -1504,7 +1591,13 @@ function removeInterfaceFromLocalState(target: InterfaceSummary) {
   const sourceRows = allInterfaces.value.filter(item => item.dataSourceId === target.dataSourceId && item.id !== target.id)
   allInterfaces.value = allInterfaces.value.filter(item => item.id !== target.id)
   interfaceCache.set(target.dataSourceId, sourceRows)
-  if (selectedSourceId.value === target.dataSourceId) interfaces.value = sourceRows
+  const servicePage = servicePages.value[target.dataSourceId]
+  if (servicePage) {
+    servicePage.rows = servicePage.rows.filter(item => item.id !== target.id)
+    servicePage.total = Math.max(0, servicePage.total - 1)
+  }
+  if (selectedSourceId.value === target.dataSourceId) interfaces.value = activeMenu.value === 'service-development'
+    ? servicePage?.rows ?? [] : sourceRows
   sources.value = sources.value.map(source => source.id === target.dataSourceId
     ? { ...source, interfaceCount: Math.max(0, source.interfaceCount - 1) } : source)
   dashboard.value.interfaceCount = Math.max(0, dashboard.value.interfaceCount - 1)
@@ -1512,7 +1605,8 @@ function removeInterfaceFromLocalState(target: InterfaceSummary) {
   if (target.status === 'PUBLISHED') dashboard.value.publishedCount = Math.max(0, dashboard.value.publishedCount - 1)
   detailCache.delete(target.id)
   selectedInterfaceBySource.delete(target.dataSourceId)
-  const next = sourceRows[0] ?? allInterfaces.value[0]
+  const next = (activeMenu.value === 'service-development' ? servicePage?.rows[0] : undefined)
+    ?? sourceRows[0] ?? allInterfaces.value[0]
   return next?.id ?? 0
 }
 function accessConfigDefaults(mode = 'HTTP') {
@@ -1830,14 +1924,17 @@ async function deleteCurrentInterface() {
     )
     await api.deleteInterface(target.id)
     const nextId = removeInterfaceFromLocalState(target)
+    if (servicePages.value[target.dataSourceId]) await loadServiceSourcePage(target.dataSourceId)
     ElMessage.success('服务已归档，历史记录已保留')
     if (nextId) {
-      const next = allInterfaces.value.find(item => item.id === nextId)
+      const next = servicePages.value[target.dataSourceId]?.rows.find(item => item.id === nextId)
+        ?? allInterfaces.value.find(item => item.id === nextId)
       if (next) {
         selectedSourceId.value = next.dataSourceId
         selectedInterfaceId.value = next.id
         selectedInterfaceBySource.set(next.dataSourceId, next.id)
-        interfaces.value = interfaceCache.get(next.dataSourceId) ?? []
+        interfaces.value = activeMenu.value === 'service-development'
+          ? servicePages.value[next.dataSourceId]?.rows ?? [] : interfaceCache.get(next.dataSourceId) ?? []
         await loadDetail()
       }
     } else {
@@ -2253,14 +2350,17 @@ function selectServiceResource(resourceApiId: number) {
   }
 }
 
-function openPlatformServiceDialog() {
+function openPlatformServiceDialog(sourceId?: number) {
   const resource = activeMenu.value === 'resource' ? selectedResourceApi.value : undefined
   if (activeMenu.value === 'resource' && (!resource || resource.status !== 'READY' || upstreamSaveRequired.value)) {
     ElMessage.warning('请先保存当前资源 API，再创建平台标准服务')
     return
   }
+  serviceCreationSourceId.value = typeof sourceId === 'number' ? sourceId : undefined
+  remoteResourceOptions.value = []
   selectServiceResource(resource?.id ?? 0)
   platformServiceDialog.value = true
+  void searchResourceOptions()
 }
 
 async function createPlatformService() {
@@ -2277,15 +2377,14 @@ async function createPlatformService() {
   try {
     const created = await api.createPlatformService(form)
     platformServiceDialog.value = false
-    await loadAll()
-    selectedSourceId.value = created.dataSourceId
-    selectedInterfaceId.value = created.id
-    selectedInterfaceBySource.set(created.dataSourceId, created.id)
+    await loadServiceSourcePage(created.dataSourceId)
     activeMenu.value = 'service-development'
+    sourceSearch.value = ''
     serviceDevelopmentStage.value = 'ORCHESTRATION'
     activeTab.value = 'request'
     testMode.value = 'PLATFORM'
-    await loadInterfaces(false)
+    selectedInterfaceId.value = 0
+    await selectResourceInterface(created.dataSourceId, created.id)
     ElMessage.success(`平台标准服务 ${created.interfaceCode} 已创建，已继承资源接口定义`)
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '平台标准服务创建失败')
@@ -3217,7 +3316,7 @@ function formatDateTime(value: string) { return value ? value.replace('T', ' ').
     </main>
   </div>
 
-  <el-container v-else class="app-shell" :class="{'sidebar-collapsed':sidebarCollapsed}" v-loading="loading">
+  <el-container v-else class="app-shell" :class="{'sidebar-collapsed':sidebarCollapsed, 'service-development-shell':activeMenu==='service-development'}" v-loading="loading">
     <el-aside :width="sidebarCollapsed ? '68px' : '224px'" class="sidebar" :class="{collapsed:sidebarCollapsed}">
       <div class="brand"><img class="brand-mark" src="/images/jsrcub-emblem.png" alt="江苏农村商业联合银行标识"/><div class="brand-copy"><div class="brand-name">外部数据平台</div><div class="brand-sub">External Data Service</div></div><button class="sidebar-collapse-button" type="button" :title="sidebarCollapsed?'展开菜单':'收起菜单'" :aria-label="sidebarCollapsed?'展开菜单':'收起菜单'" :aria-expanded="!sidebarCollapsed" @click.stop="sidebarCollapsed=!sidebarCollapsed"><component :is="sidebarCollapsed?Expand:Fold"/></button></div>
       <el-menu :default-active="activeSidebarMenu" :collapse="sidebarCollapsed" :collapse-transition="false" class="side-menu">
@@ -3486,11 +3585,13 @@ function formatDateTime(value: string) { return value ? value.replace('T', ' ').
             <aside class="resource-tree-panel" :class="{collapsed:resourceCatalogCollapsed}">
               <button v-if="resourceCatalogCollapsed" class="api-catalog-rail" type="button" title="展开 API 资源目录" aria-label="展开 API 资源目录" @click="resourceCatalogCollapsed=false"><Expand/><span>API</span></button>
               <template v-else>
-              <div class="panel-title"><div><span>{{ activeMenu==='resource' ? '资源 API 目录' : '平台服务目录' }}</span></div><div class="catalog-heading-actions"><el-button :icon="Fold" text title="收起 API 目录" aria-label="收起 API 目录" @click="resourceCatalogCollapsed=true"/></div></div>
-              <el-button v-if="activeMenu==='service-development'" class="create-standard-service" type="primary" plain :icon="Plus" @click="openPlatformServiceDialog">新增标准服务</el-button>
-              <el-input v-model="sourceSearch" :prefix-icon="Search" placeholder="搜索提供商、数据源、API 或路径" clearable aria-label="搜索资源目录" />
-              <div class="resource-tree-tools"><button :disabled="!!sourceSearch.trim()" @click="setAllSourcesExpanded(true)">展开全部</button><button :disabled="!!sourceSearch.trim()" @click="setAllSourcesExpanded(false)">收起全部</button><button :disabled="!selectedInterfaceId" @click="locateSelectedApi">定位当前</button></div>
-              <p v-if="sourceSearch.trim()" class="resource-search-hint">找到 {{ filteredProviderGroups.length }} 个资源提供商、{{ filteredSources.length }} 个数据源，已展开匹配结果</p>
+              <div class="catalog-sticky-tools">
+                <div class="panel-title"><div><span>{{ activeMenu==='resource' ? '资源 API 目录' : '平台服务目录' }}</span></div><div class="catalog-heading-actions"><el-button :icon="Fold" text title="收起 API 目录" aria-label="收起 API 目录" @click="resourceCatalogCollapsed=true"/></div></div>
+                <el-button v-if="activeMenu==='service-development'" class="create-standard-service" type="primary" plain :icon="Plus" @click="openPlatformServiceDialog()">新增标准服务</el-button>
+                <el-input v-model="sourceSearch" :prefix-icon="Search" :placeholder="activeMenu==='service-development' ? '搜索服务、数据源或提供商' : '搜索提供商、数据源、API 或路径'" clearable aria-label="搜索资源目录" />
+                <div v-if="activeMenu==='resource'" class="resource-tree-tools"><button :disabled="!!sourceSearch.trim()" @click="setAllSourcesExpanded(true)">展开全部</button><button :disabled="!!sourceSearch.trim()" @click="setAllSourcesExpanded(false)">收起全部</button><button :disabled="!selectedInterfaceId" @click="locateSelectedApi">定位当前</button></div>
+              </div>
+              <p v-if="sourceSearch.trim()" class="resource-search-hint">{{ activeMenu==='service-development' ? (serviceSearchPage.loading ? '搜索中' : `找到 ${serviceSearchPage.total} 个标准服务`) : `找到 ${filteredProviderGroups.length} 个资源提供商、${filteredSources.length} 个数据源` }}</p>
               <div class="resource-tree" aria-label="资源提供商、数据源与接口目录">
                 <section v-for="providerGroup in filteredProviderGroups" :key="providerGroup.providerId" class="resource-provider-group">
                   <div class="resource-provider-heading">
@@ -3500,20 +3601,23 @@ function formatDateTime(value: string) { return value ? value.replace('T', ' ').
                   <div v-show="isProviderExpanded(providerGroup.providerId)" :id="'provider-sources-' + providerGroup.providerId" class="resource-provider-sources">
                     <div v-for="source in providerGroup.sources" :key="source.id" class="resource-source-group" :class="{active: source.id === selectedSourceId}">
                       <div class="resource-source-heading">
-                        <button class="source-expand-toggle" :class="{expanded:isSourceExpanded(source.id)}" :aria-expanded="isSourceExpanded(source.id)" :aria-controls="'source-apis-' + source.id" :aria-label="(isSourceExpanded(source.id) ? '收起' : '展开') + source.sourceName" :disabled="!!sourceSearch.trim()" @click="sourceExpansion[source.id] = !isSourceExpanded(source.id)"><ArrowRight/></button>
-                        <button class="resource-source-head" :title="source.sourceName + ' · ' + source.sourceCode" @click="selectSource(source.id)"><span><strong>{{ source.sourceName }}</strong><small>{{ activeMenu==='resource' ? source.sourceCode + ' · ' : '' }}{{ sourceInterfaces(source.id).length }} 个{{ activeMenu==='resource' ? '资源 API' : '标准服务' }}</small></span><i class="status-dot" :class="source.status.toLowerCase()"></i></button>
+                        <button class="source-expand-toggle" :class="{expanded:isSourceExpanded(source.id)}" :aria-expanded="isSourceExpanded(source.id)" :aria-controls="'source-apis-' + source.id" :aria-label="(isSourceExpanded(source.id) ? '收起' : '展开') + source.sourceName" :disabled="!!sourceSearch.trim()" @click="activeMenu==='service-development' ? toggleServiceSource(source.id) : sourceExpansion[source.id] = !isSourceExpanded(source.id)"><ArrowRight/></button>
+                        <button class="resource-source-head" :title="source.sourceName + ' · ' + source.sourceCode" @click="selectSource(source.id)"><span><strong>{{ source.sourceName }}</strong><small>{{ activeMenu==='resource' ? source.sourceCode + ' · ' : '' }}{{ activeMenu==='resource' ? sourceInterfaces(source.id).length : (servicePages[source.id]?.total ?? source.interfaceCount) }} 个{{ activeMenu==='resource' ? '资源 API' : '标准服务' }}</small></span><i class="status-dot" :class="source.status.toLowerCase()"></i></button>
+                        <el-dropdown v-if="activeMenu==='service-development'" trigger="click" @command="(command: string) => { if (command==='create') openPlatformServiceDialog(source.id) }"><button type="button" class="source-more-button" :aria-label="source.sourceName + '更多操作'" title="更多操作" @click.stop><MoreFilled/></button><template #dropdown><el-dropdown-menu><el-dropdown-item command="create">从此数据源新增标准服务</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
                       </div>
                       <div v-show="isSourceExpanded(source.id)" :id="'source-apis-' + source.id">
                         <div class="resource-api-list">
                           <button v-for="apiItem in sourceInterfaces(source.id)" :key="apiItem.id" class="resource-api-item" :class="{active: apiItem.id === selectedInterfaceId}" :aria-current="apiItem.id === selectedInterfaceId ? 'page' : undefined" :title="apiItem.interfaceName + ' · ' + apiItem.interfaceCode" @click="selectResourceInterface(source.id, apiItem.id)"><span v-if="activeMenu==='resource'" class="api-method">{{ apiItem.httpMethod }}</span><span><strong>{{ apiItem.interfaceName }}</strong><small v-if="activeMenu==='resource'">{{ apiItem.interfaceCode }}</small></span><el-tag size="small" :type="serviceDevelopmentStage==='UPSTREAM' ? (apiItem.upstreamStatus==='READY'?'success':'info') : apiItem.status === 'OFFLINE' ? 'danger' : apiItem.status === 'PUBLISHED' ? 'success' : 'info'">{{ serviceDevelopmentStage==='UPSTREAM' ? (apiItem.upstreamStatus==='READY'?'已接入':'未保存') : apiItem.status === 'OFFLINE' ? '已下线' : apiItem.status === 'PUBLISHED' ? '已发布' : '开发中' }}</el-tag></button>
-                          <div v-if="!sourceInterfaces(source.id).length" class="resource-api-empty">{{ sourceSearch.trim() ? '没有匹配的 API' : '暂无 API，点击下方按钮创建' }}</div>
+                          <div v-if="!sourceInterfaces(source.id).length" class="resource-api-empty">{{ activeMenu==='service-development' ? (servicePages[source.id]?.loading || serviceSearchPage.loading ? '正在加载' : '暂无标准服务') : sourceSearch.trim() ? '没有匹配的 API' : '暂无 API，点击下方按钮创建' }}</div>
+                          <button v-if="activeMenu==='service-development' && !sourceSearch.trim() && servicePages[source.id] && servicePages[source.id].rows.length < servicePages[source.id].total" class="catalog-load-more" :disabled="servicePages[source.id].loading" @click="loadServiceSourcePage(source.id, true)">{{ servicePages[source.id].loading ? '加载中' : '加载更多' }}</button>
                         </div>
                         <button v-if="activeMenu==='resource'" class="resource-add-api" @click="openApiDialogForSource(source.id)"><Plus/> 新增资源 API</button>
                       </div>
                     </div>
                   </div>
                 </section>
-                <div v-if="!filteredProviderGroups.length" class="resource-tree-empty"><Files/><strong>未找到匹配资源</strong><span>尝试提供商、数据源、API 或服务路径</span><el-button text @click="sourceSearch=''">清空搜索</el-button></div>
+                <button v-if="activeMenu==='service-development' && sourceSearch.trim() && serviceSearchPage.rows.length < serviceSearchPage.total" class="catalog-load-more" :disabled="serviceSearchPage.loading" @click="loadServiceSearch(true)">{{ serviceSearchPage.loading ? '加载中' : '加载更多匹配服务' }}</button>
+                <div v-if="!filteredProviderGroups.length && !(activeMenu==='service-development' && serviceSearchPage.loading)" class="resource-tree-empty"><Files/><strong>{{ activeMenu==='service-development' ? '未找到匹配服务' : '未找到匹配资源' }}</strong><el-button text @click="sourceSearch=''">清空搜索</el-button></div>
               </div>
               <div class="resource-tree-footer">{{ workspaceInterfaceRows.length }} 个{{ activeMenu==='resource' ? '资源 API' : '标准服务' }} · 按资源提供商 / 数据源分组</div>
               </template>
@@ -3731,7 +3835,7 @@ function formatDateTime(value: string) { return value ? value.replace('T', ' ').
                   <template v-if="serviceDevelopmentStage==='UPSTREAM'">
                     <el-button :loading="connectionSaving" :disabled="testRunning || detailLoading" @click="saveConnectionConfig">保存接入配置</el-button>
                     <el-button :loading="testRunning" :disabled="connectionSaving || (connectionForm.executionMode !== 'SQL' && !previewUpstreamUrl)" @click="validateUpstreamCapability">{{ connectionForm.executionMode === 'SQL' ? '查询数据' : '测试接口' }}</el-button>
-                    <el-tooltip :disabled="!upstreamSaveRequired" content="请先保存当前配置" placement="top"><span><el-button type="primary" :disabled="testRunning || connectionSaving || upstreamSaveRequired" @click="openPlatformServiceDialog">创建标准服务</el-button></span></el-tooltip>
+                    <el-tooltip :disabled="!upstreamSaveRequired" content="请先保存当前配置" placement="top"><span><el-button type="primary" :disabled="testRunning || connectionSaving || upstreamSaveRequired" @click="openPlatformServiceDialog()">创建标准服务</el-button></span></el-tooltip>
                   </template>
                   <template v-else>
                     <el-button :type="activeTab==='test' ? 'primary' : 'default'" :loading="guideBusy || testRunning || connectionSaving" :disabled="resourcePrimaryActionDisabled || deletingApi || detailLoading" @click="runCurrentPrimaryAction">{{ resourcePrimaryActionLabel }}</el-button>
@@ -3742,7 +3846,7 @@ function formatDateTime(value: string) { return value ? value.replace('T', ' ').
             </div>
             <div v-else class="empty-editor" v-loading="detailLoading">
               <template v-if="detailLoading"><el-icon><Refresh /></el-icon><strong>正在加载接口配置</strong><span>加载完成前不会保留上一接口的映射数据</span></template>
-              <template v-else><el-icon><Files /></el-icon><strong>{{ activeMenu==='resource' ? '该数据源暂无资源 API' : '暂无标准服务' }}</strong><span>{{ activeMenu==='resource' ? '先完善数据源信息，再定义资源提供商的原始请求与响应接口' : '从已保存的资源 API 创建标准服务' }}</span><div v-if="activeMenu==='resource' && selectedSource" class="empty-editor-actions"><el-button :icon="Setting" @click="openSourceSettingsEditor">编辑数据源</el-button><el-button type="primary" :icon="Plus" @click="openApiDialog">新增资源 API</el-button></div><el-button v-else-if="activeMenu!=='resource'" type="primary" :icon="Plus" @click="openPlatformServiceDialog">新增标准服务</el-button></template>
+              <template v-else><el-icon><Files /></el-icon><strong>{{ activeMenu==='resource' ? '该数据源暂无资源 API' : '暂无标准服务' }}</strong><span>{{ activeMenu==='resource' ? '先完善数据源信息，再定义资源提供商的原始请求与响应接口' : '从已保存的资源 API 创建标准服务' }}</span><div v-if="activeMenu==='resource' && selectedSource" class="empty-editor-actions"><el-button :icon="Setting" @click="openSourceSettingsEditor">编辑数据源</el-button><el-button type="primary" :icon="Plus" @click="openApiDialog">新增资源 API</el-button></div><el-button v-else-if="activeMenu!=='resource'" type="primary" :icon="Plus" @click="openPlatformServiceDialog()">新增标准服务</el-button></template>
             </div>
           </section>
         </template>
@@ -3868,8 +3972,8 @@ function formatDateTime(value: string) { return value ? value.replace('T', ' ').
   </el-dialog>
   <el-dialog v-model="platformServiceDialog" title="基于资源 API 创建平台标准服务" width="680px">
     <el-form label-position="top">
-      <el-form-item required><template #label>来源资源 API<HelpTip title="来源资源 API" content="可选择任意已保存的资源 API，不要求测试通过。同一资源 API 可封装为多个标准服务。创建时复制原始请求和响应作为开发基准，后续资源变更可手动同步至服务草稿。"/></template><el-select :model-value="platformServiceForm.resourceApiId || undefined" filterable placeholder="搜索提供商、数据源、接口名称或编码" class="service-resource-select" @change="selectServiceResource(Number($event))"><el-option v-for="resource in serviceResourceOptions" :key="resource.id" :value="resource.id" :label="resource.lineage + ' / ' + resource.resourceApiName + ' · ' + resource.resourceApiCode"><div class="service-resource-option"><strong>{{ resource.resourceApiName }} · {{ resource.resourceApiCode }}</strong><small>{{ resource.lineage }}</small></div></el-option></el-select></el-form-item>
-      <el-empty v-if="!serviceResourceOptions.length" description="暂无已保存的资源 API" :image-size="56"><el-button @click="platformServiceDialog=false;navigate('resource')">前往数据资源接入</el-button></el-empty>
+      <el-form-item required><template #label>来源资源 API<HelpTip title="来源资源 API" content="可选择任意已保存的资源 API，不要求测试通过。同一资源 API 可封装为多个标准服务。创建时复制原始请求和响应作为开发基准，后续资源变更可手动同步至服务草稿。"/></template><el-select :model-value="platformServiceForm.resourceApiId || undefined" filterable remote :remote-method="searchResourceOptions" :loading="remoteResourceLoading" placeholder="搜索提供商、数据源、接口名称或编码" class="service-resource-select" @change="selectServiceResource(Number($event))"><el-option v-for="resource in serviceResourceOptions" :key="resource.id" :value="resource.id" :label="resource.lineage + ' / ' + resource.resourceApiName + ' · ' + resource.resourceApiCode"><div class="service-resource-option"><strong>{{ resource.resourceApiName }} · {{ resource.resourceApiCode }}</strong><small>{{ resource.lineage }}</small></div></el-option></el-select></el-form-item>
+      <el-empty v-if="!remoteResourceLoading && !serviceResourceOptions.length" description="暂无已保存的资源 API" :image-size="56"><el-button @click="platformServiceDialog=false;navigate('resource')">前往数据资源接入</el-button></el-empty>
       <div v-if="serviceCreationResource" class="service-resource-lineage"><span>{{ serviceCreationResource.lineage }}</span><code>{{ serviceCreationResource.resourceApiCode }}</code><span>{{ serviceCreationResource.verifiedAt ? '曾测试通过' : '未验证' }}</span></div>
       <div class="form-grid"><el-form-item label="标准服务名称" required><el-input v-model="platformServiceForm.serviceName"/></el-form-item><el-form-item required><template #label>标准服务编码<HelpTip title="标准服务编码" content="行内接口文档中的服务唯一标识，对应 XML 的 Service_Header/service_id。"/></template><el-input v-model="platformServiceForm.serviceCode" maxlength="100"/></el-form-item></div>
       <details class="advanced-settings"><summary>内部转发配置</summary><div class="form-grid"><el-form-item label="内部 HTTP 方法"><el-select v-model="platformServiceForm.httpMethod"><el-option label="POST" value="POST"/><el-option label="GET" value="GET"/></el-select></el-form-item><el-form-item label="内部服务路径" required><el-input v-model="platformServiceForm.servicePath" placeholder="选择资源 API 后自动生成"/></el-form-item></div></details>

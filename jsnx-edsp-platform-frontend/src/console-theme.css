@@ -129,8 +129,21 @@ body { background: var(--canvas); }
 
 /* API development workbench */
 .resource-workbench { min-width: 0; min-height: calc(100vh - 130px); grid-template-columns: 282px minmax(0,1fr); gap: 0; overflow: hidden; }
+.app-shell.service-development-shell { height: 100vh; min-height: 0; }
+.service-development-shell > .el-container { min-height: 0; }
 .resource-workbench.catalog-collapsed { grid-template-columns: 40px minmax(0,1fr); }
 .resource-workbench .resource-tree-panel { padding: 12px 9px; border-right: 1px solid var(--border); border-radius: 0; background: #f5f9fd; }
+.resource-workbench.service-workbench { overflow: visible; }
+.service-workbench .resource-tree-panel:not(.collapsed) { position: sticky; top: 12px; align-self: start; height: calc(100vh - 92px); min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.service-workbench .catalog-sticky-tools { flex: 0 0 auto; }
+.service-workbench .resource-tree { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.service-workbench .create-standard-service { width: 100%; margin-bottom: 10px; }
+.service-workbench .source-more-button { width: 28px; height: 30px; display: grid; place-items: center; flex: 0 0 28px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #5c6d7e; cursor: pointer; }
+.service-workbench .source-more-button:hover, .service-workbench .source-more-button:focus-visible { color: var(--brand); background: #e1effb; }
+.service-workbench .source-more-button svg { width: 16px; height: 16px; }
+.service-workbench .catalog-load-more { width: 100%; min-height: 30px; margin-top: 4px; border: 0; border-radius: 4px; background: transparent; color: var(--brand); font-size: 12px; cursor: pointer; }
+.service-workbench .catalog-load-more:hover, .service-workbench .catalog-load-more:focus-visible { background: #e1effb; }
+.service-workbench .catalog-load-more:disabled { color: var(--muted); cursor: default; }
 .resource-workbench .resource-tree-panel.collapsed { min-height: 600px; padding: 6px 3px; }
 .api-catalog-rail { color: #66737d; }
 .resource-workbench .panel-title { height: auto; min-height: 36px; margin-bottom: 9px; }
@@ -748,6 +761,8 @@ button:focus-visible { outline: 2px solid #6ca8ec; outline-offset: 2px; }
 }
 
 @media (max-width: 760px) {
+  .service-workbench .resource-tree-panel:not(.collapsed) { position: static; height: auto; min-height: 0; overflow: visible; }
+  .service-workbench .resource-tree { flex: none; max-height: 250px; overflow-y: auto; }
   .provider-info-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .provider-info-grid .wide { grid-column: 1 / -1; }
   .provider-detail .panel-heading { flex-wrap: wrap; }

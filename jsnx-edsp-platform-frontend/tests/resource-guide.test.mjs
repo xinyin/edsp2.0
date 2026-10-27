@@ -22,7 +22,7 @@ const sourceFile = ts.createSourceFile('App.ts', script, ts.ScriptTarget.Latest,
 const imports = sourceFile.statements.filter(ts.isImportDeclaration)
 let standalone = script
 for (const declaration of [...imports].reverse()) standalone = standalone.slice(0, declaration.getStart()) + standalone.slice(declaration.end)
-const appJS = ts.transpileModule(standalone + '\nglobalThis.__selectedTraceKey = selectedTraceKey;', { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText
+const appJS = ts.transpileModule(standalone + '\nglobalThis.__selectedTraceKey = selectedTraceKey; globalThis.__catalogState = { remoteResourceOptions, servicePages, serviceSearchPage, loadServiceSourcePage, loadServiceSearch, searchResourceOptions };', { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText
 
 const mapping = direction => ({ direction, sourcePath: 'name', targetPath: 'name', transformType: 'DIRECT', transformConfig: {}, defaultValue: '', required: true, sortOrder: 1 })
 const codes = [{ vendorCode: '0000', standardCode: 'EXT-SUCCESS', resultStatus: 'HIT', billable: true, retryable: false }]
@@ -44,13 +44,14 @@ function harness(overrides = {}, confirm = async () => true) {
     } } } },
     ElMessage: Object.fromEntries(['error', 'warning', 'success', 'info'].map(kind => [kind, message => messages.push({ kind, message })])),
     ElMessageBox: { confirm }, isDemoMode: () => false,
-    api: new Proxy({ securityAlgorithms: async () => [], interfaces: async () => [], resourceApis: async () => [], authorizations: async () => [], authorizationSummary: async () => ({ activeCount: 0 }), clearOperatorSession: () => {},
+    api: new Proxy({ securityAlgorithms: async () => [], interfaces: async () => [], resourceApis: async () => [], resourceApiPage: async () => ({ rows: [], total: 0, page: 1, size: 30 }), interfacePage: async () => ({ rows: [], total: 0, page: 1, size: 30 }), authorizations: async () => [], authorizationSummary: async () => ({ activeCount: 0 }), clearOperatorSession: () => {},
       validationStatus: async () => ({ upstreamVerified: false, orchestrationVerified: false }),
       resourceValidationStatus: async () => ({ upstreamVerified: false }), ...overrides },
       { get: (target, name) => target[name] ?? (() => { throw new Error('Unexpected API call: ' + String(name)) }) })
   })
   const state = vm.runInNewContext('(() => { ' + appJS + ' return { responseStructurePreview, platformResponseContracts, contractEditorForm, contractEditorDialog, contractEditorSaving, platformContractFieldsDrawer, platformContractFields, selectedPlatformContractId, viewPlatformContract, editPlatformContract, savePlatformContract, platformManagementTab, openPlatformManagement, activeSidebarMenu, pageMeta, auditFilters, auditRange, auditRows, auditPage, auditSize, auditTotal, auditLoading, loadOperationAudit, searchOperationAudit, resetOperationAudit, savedResponsePolicyBaseline, platformServiceDialog, platformServiceForm, serviceResourceOptions, serviceCreationResource, selectServiceResource, openPlatformServiceDialog, createPlatformService, validateUpstreamCapability, testResult, testError, testSucceeded, navigate, sourceForm, sourceStep, sourceError, sourceSaving, advanceSourceWizard, createSource, authorizationSearch, authorizationClient, filteredAuthorizations, pagedAuthorizations, authForm, authDialogMode, editingAuthorization, availableAuthInterfaces, batchAuthForm, filteredBatchAuthorizationInterfaces, openAuthDialog, editAuthorization, createAuthorization, openBatchAuthorization, activeMenu, activeTab, detail, canDeleteApi, deleteApiRestriction, selectedInterfaceId, selectedSourceId, sources, providers, clients, authorizations, allInterfaces, allResourceApis, catalogProviders, filteredCatalogProviders, connectionForm, savedConnectionBaseline, savedUpstreamRequestBaseline, savedUpstreamResponseBaseline, savedMappingsBaseline, savedRequestBaseline, savedResponseBaseline, savedResponseCodesBaseline, savedSecurityBaseline, standardServiceForm, savedStandardServiceBaseline, securityPolicy, requestText, responseText, upstreamRequestText, sourceSearch, providerExpansion, sourceExpansion, isProviderExpanded, isSourceExpanded, sourceInterfaces, filteredProviderGroups, filteredSources, setAllSourcesExpanded, locateSelectedApi, timeoutExpanded, hasUnsavedChanges, resourceEditorState, resourcePrimaryActionDisabled, markDraftSaved, guideError, guideBusy, apiGuideSteps, lastUpstreamValidation, lastOrchestrationValidation, lastE2ETest, currentUpstreamVerified, currentOrchestrationVerified, serviceDevelopmentStage, selectServiceDevelopmentStage, continueGuide, openGuideStep, runCurrentPrimaryAction, runTest, testMode, loadDetail, apiForm, apiDialog, apiMetadataDialog, apiMetadataSaving, apiMetadataForm, openResourceApiMetadataEditor, saveResourceApiMetadata, mappingDirection, mappingIsPassThrough, mappingModeLabel, onResponseSourceChange, startMappingConfiguration, deleteMapping, mappingRowKey, enumDrawer, enumPairs, enumDefaultValue, openEnumDrawer, removeEnumPair, applyEnumConfig, upgradeLegacyGeneratedUpstreamExample }; })()', deps)
   state.selectedTraceKey = deps.__selectedTraceKey
+  Object.assign(state, deps.__catalogState)
   state.selectedSourceId.value = 1
   state.activeMenu.value = 'resource'
   state.selectedInterfaceId.value = 11
@@ -215,10 +216,12 @@ test('标准服务可以独立选择已保存的资源 API，不以测试通过�
     { id: 22, dataSourceId: 1, resourceApiCode: 'UNSAVED', resourceApiName: '未保存接口', status: 'DRAFT', platformServiceCount: 0 },
     { id: 23, dataSourceId: 1, resourceApiCode: 'RELATION', resourceApiName: '关系查询', status: 'READY', platformServiceCount: 0, verifiedAt: '2026-10-16T10:00:00' }
   ]
-  assert.deepEqual(Array.from(s.serviceResourceOptions.value, item => item.id), [21, 23])
+  assert.deepEqual(Array.from(s.serviceResourceOptions.value, item => item.id), [])
   s.openPlatformServiceDialog()
   assert.equal(s.platformServiceDialog.value, true)
   assert.equal(s.platformServiceForm.value.resourceApiId, 0)
+  s.remoteResourceOptions.value = s.allResourceApis.value
+  assert.deepEqual(Array.from(s.serviceResourceOptions.value, item => item.id), [21, 23])
   s.selectServiceResource(21)
   assert.equal(s.platformServiceForm.value.resourceApiId, 21)
   assert.equal(s.platformServiceForm.value.serviceCode, 'RAEX_RISK_SERVICE_02')
@@ -228,6 +231,34 @@ test('标准服务可以独立选择已保存的资源 API，不以测试通过�
   assert.equal(s.platformServiceForm.value.servicePath, '/api/v1/relation/01')
   s.selectServiceResource(22)
   assert.equal(s.platformServiceForm.value.resourceApiId, 0)
+})
+
+test('服务目录按数据源分页，创建资源 API 从指定数据源远程查询', async () => {
+  const calls = []
+  const service = id => ({ id, dataSourceId: 2, interfaceName: `服务${id}`, interfaceCode: `S${id}`, servicePath: `/api/${id}` })
+  const resource = { id: 81, dataSourceId: 2, resourceApiCode: 'SOURCE_81', resourceApiName: '资源接口', status: 'READY', platformServiceCount: 0 }
+  const s = harness({
+    interfacePage: async filters => {
+      calls.push(['service', filters])
+      return { rows: filters.page === 1 ? [service(3)] : [service(2)], total: 2, page: filters.page, size: 30 }
+    },
+    resourceApiPage: async filters => {
+      calls.push(['resource', filters])
+      return { rows: filters.keyword ? [] : [resource], total: filters.keyword ? 0 : 1, page: 1, size: 30 }
+    }
+  })
+  s.activeMenu.value = 'service-development'
+  await s.loadServiceSourcePage(2)
+  await s.loadServiceSourcePage(2, true)
+  assert.deepEqual(Array.from(s.servicePages.value[2].rows, item => item.id), [3, 2])
+  assert.deepEqual(calls.filter(([kind]) => kind === 'service').map(([, filters]) => filters.page), [1, 2])
+  s.openPlatformServiceDialog(2)
+  await s.searchResourceOptions()
+  assert.equal(s.remoteResourceOptions.value[0].id, 81)
+  s.selectServiceResource(81)
+  await s.searchResourceOptions('other')
+  assert.equal(s.serviceCreationResource.value.id, 81)
+  assert.ok(calls.filter(([kind]) => kind === 'resource').every(([, filters]) => filters.dataSourceId === 2))
 })
 
 test('新增标准服务弹窗只保留创建所需信息，不展示 ESB 接入方式说明', () => {
@@ -689,19 +720,22 @@ test('目录按资源提供商、数据源、API 三级稳定分组', () => {
     { id: 2, providerId: 10, providerName: '企信资源提供商', sourceName: '企业风险数据源', sourceCode: 'RISK' },
     { id: 3, providerId: 20, providerName: '司法资源提供商', sourceName: '司法涉诉数据源', sourceCode: 'JUDICIAL' }
   )
-  s.allInterfaces.value = [
+  const services = [
     { id: 11, dataSourceId: 1, interfaceName: '企业查询', interfaceCode: 'ENT_QUERY', servicePath: '/enterprise' },
     { id: 12, dataSourceId: 2, interfaceName: '风险查询', interfaceCode: 'RISK_QUERY', servicePath: '/risk' },
     { id: 13, dataSourceId: 3, interfaceName: '涉诉查询', interfaceCode: 'CASE_QUERY', servicePath: '/case' }
   ]
+  s.servicePages.value = Object.fromEntries(services.map(item => [item.dataSourceId, { rows: [item], total: 1, page: 1, loading: false }]))
   assert.equal(s.filteredProviderGroups.value.length, 2)
   assert.deepEqual(Array.from(s.filteredProviderGroups.value[0].sources, item => item.id), [1, 2])
   assert.deepEqual(Array.from(s.sourceInterfaces(2), item => item.id), [12])
   s.sourceSearch.value = 'QX'
+  s.serviceSearchPage.value = { rows: services.slice(0, 2), total: 2, page: 1, loading: false }
   assert.equal(s.filteredProviderGroups.value.length, 1)
   assert.deepEqual(Array.from(s.filteredProviderGroups.value[0].sources, item => item.id), [1, 2])
   assert.deepEqual(Array.from(s.sourceInterfaces(2), item => item.id), [12])
   s.sourceSearch.value = 'CASE_QUERY'
+  s.serviceSearchPage.value = { rows: [services[2]], total: 1, page: 1, loading: false }
   assert.deepEqual(Array.from(s.filteredProviderGroups.value[0].sources, item => item.id), [3])
   assert.deepEqual(Array.from(s.sourceInterfaces(3), item => item.id), [13])
 })
@@ -873,7 +907,7 @@ test('服务发布列表由后端分页筛选，详情保持独立抽屉', () =>
   assert.match(appText, /运行中未授权/)
   assert.match(appText, /运行中已授权/)
   assert.match(appText, /v-model="releaseDetailDrawer" title="服务发布详情"/)
-  assert.match(appText, /loadCatalog = \['resource', 'service-development', 'authorization', 'billing'\]\.includes\(activeMenu\.value\)/)
+  assert.match(appText, /loadCatalog = \['authorization', 'billing'\]\.includes\(activeMenu\.value\)/)
 })
 test('服务发布详情展示当前路由和资源归属，列表操作列居中', () => {
   assert.match(appText, /<section class="release-config-summary plain-panel">[\s\S]*?当前开发配置[\s\S]*?内部 HTTP 服务路径/)
@@ -1000,7 +1034,7 @@ test('服务归档规则与后端一致：未发布草稿和已下线版本可�
   assert.equal(s.canDeleteApi.value, false)
 })
 test('标准服务只展示上游已保存接口，菜单支持横向和分组折叠，审批不占主菜单', () => {
-  assert.match(appText, /item\.upstreamStatus === 'READY'/)
+  assert.match(appText, /resource\.status === 'READY'/)
   assert.match(appText, /sidebarCollapsed/)
   assert.match(appText, /menuGroups\.services/)
   assert.doesNotMatch(appText, /<el-menu-item index="approvals"/)

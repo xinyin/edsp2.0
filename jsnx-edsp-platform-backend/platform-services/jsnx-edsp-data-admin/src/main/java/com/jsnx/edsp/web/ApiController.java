@@ -120,6 +120,13 @@ public class ApiController {
         return service.resourceApis(dataSourceId);
     }
 
+    @GetMapping("/resource-apis/page")
+    public ResourceApiPage resourceApiPage(@RequestParam(required = false) Long dataSourceId,
+            @RequestParam(required = false) String keyword, @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return service.resourceApiPage(dataSourceId, keyword, page, size);
+    }
+
     @GetMapping("/data-sources/{id}/database-tables")
     public Map<String, Object> databaseTables(@PathVariable long id) {
         return service.databaseMetadata(id, null);
@@ -164,6 +171,13 @@ public class ApiController {
     @GetMapping("/interfaces")
     public List<InterfaceSummary> interfaces(@RequestParam(required = false) Long dataSourceId) {
         return service.interfaces(dataSourceId);
+    }
+
+    @GetMapping("/interfaces/page")
+    public InterfacePage interfacePage(@RequestParam(required = false) Long dataSourceId,
+            @RequestParam(required = false) String keyword, @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "30") int size) {
+        return service.interfacePage(dataSourceId, keyword, page, size);
     }
 
     @GetMapping("/release-services")

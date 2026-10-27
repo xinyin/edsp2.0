@@ -913,6 +913,54 @@ public class InterfaceService {
         return dataSourceId == null ? jdbc.query(sql, interfaceMapper()) : jdbc.query(sql, interfaceMapper(), dataSourceId);
     }
 
+    public InterfacePage interfacePage(Long dataSourceId, String keyword, int page, int size) {
+        int safePage = Math.max(1, page);
+        int safeSize = Math.max(1, Math.min(100, size));
+        StringBuilder where = new StringBuilder(" WHERE ai.status <> 'DELETED'");
+        List<Object> args = new ArrayList<>();
+        if (dataSourceId != null) { where.append(" AND ai.data_source_id=?"); args.add(dataSourceId); }
+        if (keyword != null && !keyword.isBlank()) {
+            where.append(" AND (ai.interface_name LIKE ? OR ai.interface_code LIKE ? OR ai.service_path LIKE ?"
+                    + " OR ds.source_name LIKE ? OR ds.source_code LIKE ?"
+                    + " OR EXISTS (SELECT 1 FROM data_provider p WHERE p.id=ds.provider_id"
+                    + " AND (p.provider_name LIKE ? OR p.provider_code LIKE ?)))");
+            String pattern = "%" + keyword.trim() + "%";
+            for (int i = 0; i < 7; i++) args.add(pattern);
+        }
+        String from = " FROM api_interface ai JOIN data_source ds ON ds.id=ai.data_source_id";
+        long total = jdbc.queryForObject("SELECT COUNT(*)" + from + where, Long.class, args.toArray());
+        List<Object> pageArgs = new ArrayList<>(args);
+        pageArgs.add(safeSize);
+        pageArgs.add((safePage - 1L) * safeSize);
+        List<InterfaceSummary> rows = jdbc.query(interfaceSelect() + where + " ORDER BY ai.id DESC LIMIT ? OFFSET ?",
+                interfaceMapper(), pageArgs.toArray());
+        return new InterfacePage(rows, total, safePage, safeSize);
+    }
+
+    public ResourceApiPage resourceApiPage(Long dataSourceId, String keyword, int page, int size) {
+        int safePage = Math.max(1, page);
+        int safeSize = Math.max(1, Math.min(100, size));
+        StringBuilder where = new StringBuilder(" WHERE ra.status='READY'");
+        List<Object> args = new ArrayList<>();
+        if (dataSourceId != null) { where.append(" AND ra.data_source_id=?"); args.add(dataSourceId); }
+        if (keyword != null && !keyword.isBlank()) {
+            where.append(" AND (ra.resource_api_name LIKE ? OR ra.resource_api_code LIKE ?"
+                    + " OR ds.source_name LIKE ? OR ds.source_code LIKE ?"
+                    + " OR EXISTS (SELECT 1 FROM data_provider p WHERE p.id=ds.provider_id"
+                    + " AND (p.provider_name LIKE ? OR p.provider_code LIKE ?)))");
+            String pattern = "%" + keyword.trim() + "%";
+            for (int i = 0; i < 6; i++) args.add(pattern);
+        }
+        String from = " FROM resource_api ra JOIN data_source ds ON ds.id=ra.data_source_id";
+        long total = jdbc.queryForObject("SELECT COUNT(*)" + from + where, Long.class, args.toArray());
+        List<Object> pageArgs = new ArrayList<>(args);
+        pageArgs.add(safeSize);
+        pageArgs.add((safePage - 1L) * safeSize);
+        List<ResourceApiSummary> rows = jdbc.query(resourceApiSelect() + where + " ORDER BY ra.id DESC LIMIT ? OFFSET ?",
+                resourceApiMapper(), pageArgs.toArray());
+        return new ResourceApiPage(rows, total, safePage, safeSize);
+    }
+
     public ReleaseServicePage releaseServices(String keyword, Long providerId, Long dataSourceId,
                                                String runStatus, String authorizationStatus,
                                                int page, int size) {

@@ -36,6 +36,9 @@ public final class ApiModels {
     public record ReleaseServicePage(
             List<ReleaseServiceRow> rows, long total, int page, int size) {}
 
+    public record InterfacePage(List<InterfaceSummary> rows, long total, int page, int size) {}
+    public record ResourceApiPage(List<ResourceApiSummary> rows, long total, int page, int size) {}
+
     public record ResourceApiSummary(
             long id, long dataSourceId, String resourceApiCode, String resourceApiName,
             String httpMethod, String upstreamUrl, String upstreamPath, String configScope,
