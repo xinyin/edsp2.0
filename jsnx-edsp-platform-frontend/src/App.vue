@@ -420,6 +420,13 @@ const databaseResultRows = computed(() => {
   return Array.isArray(rows) ? rows as Record<string, unknown>[] : []
 })
 const databaseResultColumns = computed(() => Object.keys(databaseResultRows.value[0] ?? {}))
+const databaseRequestParameters = computed(() => {
+  const request = testResult.value?.upstreamRequest
+  return request && typeof request === 'object' && !Array.isArray(request)
+    ? request as Record<string, unknown>
+    : {}
+})
+const databaseRequestHasParameters = computed(() => Object.keys(databaseRequestParameters.value).length > 0)
 
 function readObjectPath(source: Record<string, unknown>, path: string) {
   return path.split('.').reduce<unknown>((current, key) => current && typeof current === 'object'
@@ -3596,11 +3603,16 @@ function formatDateTime(value: string) { return value ? value.replace('T', ' ').
                     </section>
                     <section v-if="upstreamSection===2" class="resource-test-detail">
                       <details class="address-disclosure test-route-disclosure"><summary>查看调用路径</summary><div class="address-disclosure-body"><span>处理应用</span><code>{{ selectedSource.applicationName || '未配置应用' }} · {{ selectedSource.runtimeUrl || '尚未配置地址' }}</code></div><div class="address-disclosure-body"><span>供应商接口</span><code>{{ previewUpstreamUrl || '尚未配置地址' }}</code></div></details>
-                      <div class="test-grid">
-                        <div class="code-pane readonly" :class="{'database-query-parameters':detail.executionMode === 'SQL'}"><div class="code-title"><span>{{ testResult ? (detail.executionMode === 'SQL' ? '本次查询参数' : '本次原始请求') : (detail.executionMode === 'SQL' ? '请求参数样例' : '原始请求样例') }}</span></div><CopyableBlock :value="testResult ? formatJson(testResult.upstreamRequest) : upstreamRequestText"><pre>{{ testResult ? formatJson(testResult.upstreamRequest) : upstreamRequestText }}</pre></CopyableBlock></div>
-                        <div class="code-pane readonly"><div class="code-title"><span>{{ detail.executionMode === 'SQL' ? '查询结果' : '供应商原始响应' }}<small v-if="detail.executionMode === 'SQL' && testResult">{{ databaseResultRows.length }} 条</small></span></div><CopyableBlock :value="testResult ? formatJson(testResult.upstreamResponse) : testError || '等待执行测试'"><pre>{{ testResult ? formatJson(testResult.upstreamResponse) : testError || '等待执行测试' }}</pre></CopyableBlock></div>
+                      <div v-if="detail.executionMode === 'SQL'" class="database-query-output">
+                        <div v-if="testResult && databaseRequestHasParameters" class="code-pane readonly database-query-parameters"><div class="code-title"><span>本次查询参数</span></div><CopyableBlock :value="formatJson(databaseRequestParameters)"><pre>{{ formatJson(databaseRequestParameters) }}</pre></CopyableBlock></div>
+                        <el-table v-if="databaseResultRows.length" :data="databaseResultRows" border size="small" max-height="360" class="database-query-result-table"><el-table-column v-for="column in databaseResultColumns" :key="column" :prop="column" :label="column" min-width="140" show-overflow-tooltip/></el-table>
+                        <div v-else-if="testResult" class="database-query-empty">查询成功，没有返回记录</div>
+                        <details v-if="testResult" class="database-query-raw"><summary>查看原始查询结果</summary><CopyableBlock :value="formatJson(testResult.upstreamResponse)"><pre>{{ formatJson(testResult.upstreamResponse) }}</pre></CopyableBlock></details>
                       </div>
-                      <el-table v-if="detail.executionMode === 'SQL' && databaseResultRows.length" :data="databaseResultRows" border size="small" max-height="360" class="database-query-result-table"><el-table-column v-for="column in databaseResultColumns" :key="column" :prop="column" :label="column" min-width="140" show-overflow-tooltip/></el-table>
+                      <div v-else class="test-grid">
+                        <div class="code-pane readonly"><div class="code-title"><span>{{ testResult ? '本次原始请求' : '原始请求样例' }}</span></div><CopyableBlock :value="testResult ? formatJson(testResult.upstreamRequest) : upstreamRequestText"><pre>{{ testResult ? formatJson(testResult.upstreamRequest) : upstreamRequestText }}</pre></CopyableBlock></div>
+                        <div class="code-pane readonly"><div class="code-title"><span>供应商原始响应</span></div><CopyableBlock :value="testResult ? formatJson(testResult.upstreamResponse) : testError || '等待执行测试'"><pre>{{ testResult ? formatJson(testResult.upstreamResponse) : testError || '等待执行测试' }}</pre></CopyableBlock></div>
+                      </div>
                     </section>
                     <p v-if="upstreamSection===2 && !selectedSource.runtimeUrl" class="route-notice">资源提供商尚未配置处理应用。<el-button text type="primary" @click="goToProviderManagement()">前往资源方管理</el-button></p>
                   </div>

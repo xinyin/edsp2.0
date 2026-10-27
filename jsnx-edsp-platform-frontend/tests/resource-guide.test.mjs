@@ -1093,9 +1093,12 @@ test('配置说明按需点击展示，字段映射窄屏仍有语义标签', ()
 
 test('测试结果按内容起高，空参数和长响应不会互相撑出大片留白', () => {
   assert.match(appText, /database-query-parameters/)
+  assert.match(appText, /database-query-output/)
+  assert.match(appText, /查看原始查询结果/)
+  assert.match(appText, /v-if="testResult && databaseRequestHasParameters"/)
   assert.match(stylesText, /\.test-grid\s*\{[^}]*align-items:\s*start/)
   assert.match(stylesText, /\.code-pane\.readonly pre\s*\{[^}]*min-height:\s*96px/)
   assert.match(consoleThemeText, /\.resource-test-detail \.database-query-parameters pre\s*\{[^}]*min-height:\s*0/)
   assert.match(consoleThemeText, /\.resource-test-detail pre\s*\{[^}]*max-height:\s*320px/)
-  assert.match(stylesText, /\.result-pane pre\s*\{[^}]*max-height:\s*360px/)
+  assert.match(readFileSync(new URL('../src/resource-workbench.css', import.meta.url), 'utf8'), /\.database-query-raw pre\s*\{[^}]*max-height:\s*220px/)
 })

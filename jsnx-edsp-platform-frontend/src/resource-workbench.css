@@ -25,7 +25,12 @@
 .database-test-result.is-error { border-color: #eddfdb; background: #fcf7f5; color: #8b4739; }
 .database-test-result small { color: inherit; opacity: .8; font-size: 11px; }
 .database-query-limit-hint { margin-left: 10px; color: #65778a; font-size: 11px; }
-.database-query-result-table { max-height: 360px; margin-top: 12px; overflow: auto; }
+.database-query-result-table { max-height: 360px; margin-top: 0; overflow: auto; }
+.database-query-output { display: grid; gap: 10px; align-items: start; }
+.database-query-empty { padding: 16px; border: 1px solid #e2e8ed; color: #687b89; background: #fafcfd; font-size: 12px; text-align: center; }
+.database-query-raw { border-top: 1px solid #e4e9ed; color: #526a7e; font-size: 12px; }
+.database-query-raw summary { padding: 9px 2px; cursor: pointer; }
+.database-query-raw pre { min-height: 0; max-height: 220px; }
 .test-route-disclosure { border-top: 0; border-bottom: 1px solid #e6ebf0; }
 @media (max-width: 640px) {
   .address-detail-row, .address-disclosure-body { grid-template-columns: minmax(0, 1fr) auto; }
