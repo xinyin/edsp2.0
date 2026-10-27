@@ -44,16 +44,19 @@ public class DemoEventIngestionService {
                 INSERT INTO usage_record(trace_id,client_id,interface_id,result_status,standard_code,billable,
                 unit_price,amount,duration_ms,upstream_duration_ms,gateway_duration_ms,request_status,node_name,called_at)
                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(3))
-                ON DUPLICATE KEY UPDATE result_status=VALUES(result_status),standard_code=VALUES(standard_code),
+                ON DUPLICATE KEY UPDATE client_id=VALUES(client_id),interface_id=VALUES(interface_id),
+                result_status=VALUES(result_status),standard_code=VALUES(standard_code),
                 billable=VALUES(billable),unit_price=VALUES(unit_price),amount=VALUES(amount),
                 duration_ms=VALUES(duration_ms),upstream_duration_ms=VALUES(upstream_duration_ms),
-                request_status=VALUES(request_status),node_name=VALUES(node_name)
+                gateway_duration_ms=VALUES(gateway_duration_ms),request_status=VALUES(request_status),
+                node_name=VALUES(node_name),called_at=VALUES(called_at)
                 """, traceId, clientId, interfaceId, text(event.get("resultStatus")), text(event.get("responseCode")),
                 billable, unitPrice, amount, number(event.get("durationMs")), number(event.get("upstreamDurationMs")),
                 1, text(event.get("requestStatus")), text(event.get("application")));
 
         List<Map<String, Object>> nodes = event.get("nodes") instanceof List<?> values
                 ? mapper.convertValue(values, List.class) : new ArrayList<>();
+        jdbc.update("DELETE FROM api_call_node_log WHERE trace_id=?", traceId);
         int order = 10;
         for (Map<String, Object> node : nodes) {
             saveNode(traceId, node, order);
