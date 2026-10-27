@@ -1105,3 +1105,13 @@ test('测试结果按内容起高，空参数和长响应不会互相撑出大�
   assert.match(consoleThemeText, /\.resource-test-detail pre\s*\{[^}]*max-height:\s*320px/)
   assert.match(readFileSync(new URL('../src/resource-workbench.css', import.meta.url), 'utf8'), /\.database-query-raw pre\s*\{[^}]*max-height:\s*220px/)
 })
+
+test('资源查询刷新时保留现有结果并显示进行中状态，已保存配置不重复保存', () => {
+  const validation = appText.slice(appText.indexOf('async function validateUpstreamCapability()'), appText.indexOf('async function continueGuide()'))
+  const save = appText.slice(appText.indexOf('async function saveConnectionConfig()'), appText.indexOf('function selectServiceResource('))
+  assert.doesNotMatch(validation, /testResult\.value = null[\s\S]*?try \{[\s\S]*?api\.verifyResourceApi/)
+  assert.match(validation, /catch \(error\)[\s\S]*?testResult\.value = null/)
+  assert.match(appText, /v-if="testRunning" class="upstream-validation-result pending"/)
+  assert.match(save, /if \(!hasUnsavedChanges\.value\)/)
+  assert.doesNotMatch(save, /upstreamStatus !== 'READY'/)
+})

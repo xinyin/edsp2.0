@@ -2019,9 +2019,6 @@ async function validateUpstreamCapability() {
     if (!detail.value || testRunning.value) return false
     testRunning.value = true
     testError.value = ''
-    testResult.value = null
-    testSucceeded.value = false
-    lastUpstreamValidation.value = null
     try {
       const databaseQuery = detail.value.executionMode === 'SQL'
       const result = await api.verifyResourceApi(detail.value.summary.id, databaseQuery ? databaseQueryLimit.value : undefined)
@@ -2035,6 +2032,9 @@ async function validateUpstreamCapability() {
       return true
     } catch (error) {
       testError.value = error instanceof Error ? error.message : '上游资源接口验证失败'
+      testResult.value = null
+      testSucceeded.value = false
+      lastUpstreamValidation.value = null
       ElMessage.error(testError.value)
       return false
     } finally { testRunning.value = false }
@@ -2149,7 +2149,7 @@ async function createInterface() {
 
 async function saveConnectionConfig() {
   if (!detail.value || connectionSaving.value) return false
-  if (!hasUnsavedChanges.value && !(activeMenu.value === 'resource' && detail.value.summary.upstreamStatus !== 'READY')) {
+  if (!hasUnsavedChanges.value) {
     ElMessage.success('当前上游配置已保存，无需重复保存')
     return true
   }
@@ -3595,7 +3595,8 @@ function formatDateTime(value: string) { return value ? value.replace('T', ' ').
                     <section v-show="upstreamSection===2" class="upstream-validation-panel" :class="{'has-error':!!testError && !currentUpstreamVerified}">
                       <div class="upstream-validation-copy"><div><h3>{{ detail.executionMode === 'SQL' ? '查询结果' : '测试结果' }}<HelpTip title="测试范围" content="通过资源提供商独立处理应用执行已保存的 SQL 或发送 HTTP 请求，并展示原始查询结果或供应商响应。此测试不执行标准服务字段转换。"/></h3></div></div>
                       <div v-if="detail.executionMode==='SQL'" class="database-query-limit-control"><span>单次查询条数</span><el-input-number v-model="databaseQueryLimit" :min="1" :max="500" :step="1" controls-position="right"/><small>默认 5 条，最多 500 条</small></div>
-                      <div class="upstream-validation-result success" v-if="currentUpstreamVerified"><span class="status-dot"></span><strong>{{ detail.executionMode === 'SQL' ? '查询成功' : '当前连接验证通过' }}</strong><small>{{ detail.executionMode === 'SQL' ? `${databaseResultRows.length} 条查询结果` : '已收到上游原始响应' }}</small></div>
+                      <div v-if="testRunning" class="upstream-validation-result pending" role="status" aria-live="polite"><span class="status-dot"></span><div><strong>{{ detail.executionMode === 'SQL' ? '正在查询' : '正在测试连接' }}</strong><small>{{ testResult ? '完成后将更新结果' : '正在通过处理应用执行' }}</small></div></div>
+                      <div class="upstream-validation-result success" v-else-if="currentUpstreamVerified"><span class="status-dot"></span><strong>{{ detail.executionMode === 'SQL' ? '查询成功' : '当前连接验证通过' }}</strong><small>{{ detail.executionMode === 'SQL' ? `${databaseResultRows.length} 条查询结果` : '已收到上游原始响应' }}</small></div>
                       <div class="upstream-validation-result error" v-else-if="testError" role="alert"><span class="status-dot offline"></span><div><strong>验证失败</strong><small>{{ testError }}</small></div></div>
                       <div v-else class="upstream-validation-idle">尚未执行{{ detail.executionMode === 'SQL' ? '查询' : '测试' }}</div>
                     </section>

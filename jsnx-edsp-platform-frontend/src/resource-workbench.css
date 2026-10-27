@@ -285,6 +285,9 @@
 .upstream-validation-result strong { color: #23745c; font-size: 11px; }
 .upstream-validation-result small { margin-top: 3px; color: #6d7f8e; font-size: 11px; line-height: 1.55; }
 .upstream-validation-result.success { grid-column: 1; border-color: #cde4d9; background: #fbfefc; }
+.upstream-validation-result.pending { grid-column: 1; border-color: #d8e3ec; background: #f8fbfd; }
+.upstream-validation-result.pending .status-dot { background: #6485a0; box-shadow: 0 0 0 3px #e8f0f6; }
+.upstream-validation-result.pending strong { color: #45647b; }
 .upstream-validation-result.error strong { color: #aa3e3e; }
 .upstream-contract-panel { margin-top: 14px; border: 1px solid #d7e0e7; background: #fff; }
 .upstream-contract-panel > header { min-height: 58px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #e3e8ed; }
