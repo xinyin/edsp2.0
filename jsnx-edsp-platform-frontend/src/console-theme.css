@@ -341,7 +341,16 @@ body { background: var(--canvas); }
 .release-routing-warning { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 11px 14px; border: 1px solid #dbc9aa; border-radius: 2px; background: #fffaf2; }
 .release-routing-warning strong, .release-routing-warning span { display: block; font-size: 12px; }
 .release-routing-warning span { margin-top: 3px; color: #766d5c; }
-.authorization-overview { display: block; margin-bottom: 14px; }
+.authorization-overview { display: block; width: 100%; max-width: 960px; margin-bottom: 14px; container-type: inline-size; }
+.authorization-overview .plain-panel, .authorization-list-panel { min-width: 0; }
+.authorization-list-panel { width: 100%; max-width: 1200px; container-type: inline-size; }
+.authorization-overview .el-table, .authorization-list-panel .el-table { width: 100%; }
+.authorization-name-cell { display: flex; flex-direction: column; min-width: 0; gap: 2px; line-height: 1.35; }
+.authorization-name-cell strong, .authorization-name-cell code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.authorization-name-cell strong { color: var(--text-primary); font-size: 12px; font-weight: 600; }
+.authorization-name-cell code { color: var(--muted); font: 11px Menlo, Monaco, monospace; }
+.authorization-list-panel .panel-heading > div { flex-direction: row; align-items: center; gap: 4px; }
+.authorization-mobile-list { display: none; }
 .authorization-list-panel .panel-heading-actions { display: none; }
 .auth-summary-panel { min-height: 0; padding: 15px; color: #394851; border: 1px solid var(--border); border-radius: 3px; background: #fafbfa; }
 .auth-summary-panel > strong { color: #394851; font-size: 12px; }
@@ -351,6 +360,32 @@ body { background: var(--canvas); }
 .list-filter-bar .el-select { width: 200px; max-width: 100%; }
 .list-filter-bar > span { margin-left: auto; color: var(--muted); font-size: 12px; }
 .list-pagination { justify-content: flex-end; padding-top: 12px; }
+
+@container (max-width: 900px) {
+  .authorization-overview .el-table, .authorization-list-panel .el-table { display: none; }
+  .authorization-mobile-list { display: block; }
+  .authorization-mobile-item { padding: 12px 14px; border-top: 1px solid var(--border); background: #fff; }
+  .authorization-mobile-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; min-width: 0; }
+  .authorization-mobile-head .authorization-name-cell { flex: 1; }
+  .authorization-mobile-head .authorization-name-cell strong, .authorization-mobile-head .authorization-name-cell code { white-space: normal; overflow-wrap: anywhere; }
+  .authorization-mobile-head .el-tag { flex: 0 0 auto; }
+  .authorization-mobile-meta { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 9px; color: var(--muted); font-size: 11px; }
+  .authorization-mobile-meta span { min-width: 0; }
+  .authorization-mobile-meta strong { margin-left: 4px; color: var(--text-regular); font-weight: 500; overflow-wrap: anywhere; }
+  .authorization-mobile-actions { display: flex; justify-content: flex-end; margin-top: 4px; }
+  .authorization-mobile-empty { padding: 24px 14px; color: var(--muted); text-align: center; font-size: 12px; }
+  .authorization-list-panel .list-filter-bar { padding: 10px 14px; }
+  .authorization-list-panel .list-filter-bar .el-input, .authorization-list-panel .list-filter-bar .el-select { width: 100%; }
+  .authorization-list-panel .list-filter-bar > span { margin-left: 0; }
+  .authorization-list-panel .list-pagination { justify-content: center; padding: 10px; }
+}
+
+@container (min-width: 600px) and (max-width: 900px) {
+  .authorization-list-panel .authorization-mobile-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; padding-top: 10px; padding-bottom: 10px; }
+  .authorization-list-panel .authorization-mobile-head, .authorization-list-panel .authorization-mobile-meta { grid-column: 1; }
+  .authorization-list-panel .authorization-mobile-meta { margin-top: 4px; }
+  .authorization-list-panel .authorization-mobile-actions { grid-column: 2; grid-row: 1 / 3; align-items: center; margin: 0; }
+}
 
 /* Dashboards and operations: blue interaction with distinct semantic accents. */
 .cockpit-command, .monitor-command { border: 1px solid var(--border); border-left: 4px solid var(--brand); border-radius: 4px; color: #314654; background: #fff; box-shadow: 0 1px 2px rgba(26,55,74,.04); }
