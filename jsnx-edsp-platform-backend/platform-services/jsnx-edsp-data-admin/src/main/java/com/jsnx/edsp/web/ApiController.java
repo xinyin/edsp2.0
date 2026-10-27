@@ -151,7 +151,10 @@ public class ApiController {
     }
 
     @PostMapping("/resource-apis/{id}/verify")
-    public TestResult verifyResourceApi(@PathVariable long id) { return service.verifyResourceApi(id); }
+    public TestResult verifyResourceApi(@PathVariable long id,
+                                        @Valid @RequestBody(required = false) VerifyResourceApiRequest request) {
+        return service.verifyResourceApi(id, request == null ? null : request.maxRows());
+    }
 
     @PostMapping("/platform-services")
     public InterfaceSummary createPlatformService(@Valid @RequestBody CreatePlatformServiceRequest request) {

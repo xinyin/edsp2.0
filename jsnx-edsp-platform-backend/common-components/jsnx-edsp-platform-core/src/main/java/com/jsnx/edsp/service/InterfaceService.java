@@ -821,9 +821,15 @@ public class InterfaceService {
     }
 
     @Transactional
-    public TestResult verifyResourceApi(long id) {
+    public TestResult verifyResourceApi(long id) { return verifyResourceApi(id, null); }
+
+    public TestResult verifyResourceApi(long id, Integer maxRows) {
         jdbc.queryForObject("SELECT id FROM resource_api WHERE id=? FOR UPDATE", Long.class, id);
         ResourceApiDetail resource = resourceApi(id);
+        if ("SQL".equalsIgnoreCase(resource.executionMode()) && maxRows != null
+                && (maxRows < 1 || maxRows > 500)) {
+            throw new IllegalArgumentException("单次查询条数必须在 1 到 500 之间");
+        }
         long started = System.nanoTime();
         ResourceApiSummary summary = resource.summary();
         InterfaceSummary executionResource = new InterfaceSummary(summary.id(), summary.dataSourceId(),
@@ -831,8 +837,10 @@ public class InterfaceService {
                 summary.upstreamUrl(), summary.upstreamPath(), summary.configScope(), "DIRECT", null,
                 summary.effectiveTimeoutMs(), "READY", "DRAFT", summary.currentVersion(), null,
                 summary.updatedAt(), summary.id(), summary.resourceApiCode(), summary.resourceApiName());
-        Map<String, Object> response = invokeThroughDataApplication(executionResource, resource.requestExample(),
-                UUID.randomUUID().toString().replace("-", ""), resource.requestHeaders());
+        String traceId = UUID.randomUUID().toString().replace("-", "");
+        Map<String, Object> response = maxRows == null
+                ? invokeThroughDataApplication(executionResource, resource.requestExample(), traceId, resource.requestHeaders())
+                : invokeThroughDataApplication(executionResource, resource.requestExample(), traceId, resource.requestHeaders(), maxRows);
         long duration = elapsedMs(started);
         Map<String, Object> safeResponse = response == null ? Map.of() : response;
         jdbc.update("UPDATE resource_api SET status='READY',verified_at=CURRENT_TIMESTAMP,verified_checksum=? WHERE id=?",
@@ -2026,6 +2034,12 @@ public class InterfaceService {
     Map<String, Object> invokeThroughDataApplication(InterfaceSummary summary,
                                                               Map<String, Object> request, String traceId,
                                                               Map<String, String> requestHeaders) {
+        return invokeThroughDataApplication(summary, request, traceId, requestHeaders, null);
+    }
+
+    Map<String, Object> invokeThroughDataApplication(InterfaceSummary summary,
+                                                              Map<String, Object> request, String traceId,
+                                                              Map<String, String> requestHeaders, Integer maxRows) {
         String applicationEndpoint = dataApplicationEndpoint(summary);
         if (applicationEndpoint == null) {
             throw new IllegalStateException("资源提供商尚未配置处理应用访问地址，不允许绕过应用直连外围系统");
@@ -2039,7 +2053,11 @@ public class InterfaceService {
         payload.put("upstreamHttpMethod", upstreamHttpMethod(summary));
         Map<String, Object> connection = new LinkedHashMap<>(providerConnection(summary));
         connection.put("requestHeaders", requestHeaders);
-        connection.put("resourceQuery", resourceQuery(summary));
+        Map<String, Object> resourceQuery = new LinkedHashMap<>(resourceQuery(summary));
+        if (maxRows != null && "SQL".equalsIgnoreCase(Objects.toString(resourceQuery.get("executionMode"), ""))) {
+            resourceQuery.put("maxRows", Math.max(1, Math.min(500, maxRows)));
+        }
+        connection.put("resourceQuery", resourceQuery);
         payload.put("providerConnection", connection);
         payload.put("timeoutMs", summary.effectiveTimeoutMs());
         payload.put("requestBody", request);

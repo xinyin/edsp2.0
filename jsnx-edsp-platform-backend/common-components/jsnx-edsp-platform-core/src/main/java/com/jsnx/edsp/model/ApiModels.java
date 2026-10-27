@@ -257,6 +257,8 @@ public final class ApiModels {
             @NotBlank String resourceApiName,
             @NotBlank @Pattern(regexp = "(?i)GET|POST|PUT|DELETE|PATCH", message = "不支持的 HTTP 请求方式") String httpMethod) {}
 
+    public record VerifyResourceApiRequest(@Min(1) @Max(500) Integer maxRows) {}
+
     public record CreatePlatformServiceRequest(
             @Min(value = 1, message = "请选择来源资源 API") long resourceApiId,
             @NotBlank @Pattern(regexp = "[A-Za-z0-9_-]+", message = "服务编码不能包含空格或特殊字符") String serviceCode,

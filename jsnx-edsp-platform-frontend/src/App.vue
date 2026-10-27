@@ -289,6 +289,7 @@ const databaseSelectedTable = ref('')
 const databaseSelectedFields = ref<string[]>([])
 const databaseFilterFields = ref<string[]>([])
 const databaseSchemaLoading = ref(false)
+const databaseQueryLimit = ref(5)
 const databaseQueryMode = ref<'TABLE' | 'SQL'>('TABLE')
 const apiMetadataDialog = ref(false)
 const apiMetadataSaving = ref(false)
@@ -414,6 +415,11 @@ async function openGuideStep(key: string) {
 
 const selectedTraceNode = computed(() => testResult.value?.traceNodes.find(node => node.key === selectedTraceKey.value)
   ?? testResult.value?.traceNodes[0] ?? null)
+const databaseResultRows = computed(() => {
+  const rows = testResult.value?.upstreamResponse?.rows
+  return Array.isArray(rows) ? rows as Record<string, unknown>[] : []
+})
+const databaseResultColumns = computed(() => Object.keys(databaseResultRows.value[0] ?? {}))
 
 function readObjectPath(source: Record<string, unknown>, path: string) {
   return path.split('.').reduce<unknown>((current, key) => current && typeof current === 'object'
@@ -2012,14 +2018,15 @@ async function validateUpstreamCapability() {
     testSucceeded.value = false
     lastUpstreamValidation.value = null
     try {
-      const result = await api.verifyResourceApi(detail.value.summary.id)
+      const databaseQuery = detail.value.executionMode === 'SQL'
+      const result = await api.verifyResourceApi(detail.value.summary.id, databaseQuery ? databaseQueryLimit.value : undefined)
       testResult.value = result
       testSucceeded.value = true
       selectedTraceKey.value = result.traceNodes[0]?.key ?? 'DATA_SOURCE'
       lastUpstreamValidation.value = { interfaceId: detail.value.summary.id, connectionFingerprint: upstreamValidationFingerprint.value }
       const index = allResourceApis.value.findIndex(item => item.id === detail.value?.summary.id)
       if (index >= 0) allResourceApis.value[index] = { ...allResourceApis.value[index], verifiedAt: new Date().toISOString(), status: 'READY' }
-      ElMessage.success('上游资源接口验证成功')
+      ElMessage.success(databaseQuery ? '数据库查询完成' : '上游资源接口验证成功')
       return true
     } catch (error) {
       testError.value = error instanceof Error ? error.message : '上游资源接口验证失败'
@@ -3537,6 +3544,7 @@ function formatDateTime(value: string) { return value ? value.replace('T', ' ').
                             <el-form label-position="top">
                               <el-form-item label="SQL 查询语句" required><CopyableBlock :value="connectionForm.sqlTemplate"><el-input v-model="connectionForm.sqlTemplate" type="textarea" :rows="10" resize="vertical" placeholder="SELECT id, name FROM user_info WHERE user_id = :userId"/></CopyableBlock></el-form-item>
                               <el-form-item label="请求参数 JSON"><CopyableBlock :value="connectionForm.sqlParameters"><el-input v-model="connectionForm.sqlParameters" type="textarea" :rows="5" resize="vertical" placeholder="{\n  &quot;userId&quot;: &quot;10001&quot;\n}"/></CopyableBlock></el-form-item>
+                              <el-form-item label="单次查询条数"><el-input-number v-model="databaseQueryLimit" :min="1" :max="500" :step="1" controls-position="right"/><span class="database-query-limit-hint">默认 5 条，最多 500 条</span></el-form-item>
                             </el-form>
                           </template>
                           <template v-else>
@@ -3581,17 +3589,18 @@ function formatDateTime(value: string) { return value ? value.replace('T', ' ').
                       </div>
                     </section>
                     <section v-show="upstreamSection===2" class="upstream-validation-panel" :class="{'has-error':!!testError && !currentUpstreamVerified}">
-                      <div class="upstream-validation-copy"><div><h3>测试结果<HelpTip title="测试范围" content="通过提供商处理应用发送已保存的原始请求，展示供应商原始响应，不执行标准服务的字段转换、签名或加解密。测试结果不限制标准服务开发。"/></h3></div></div>
-                      <div class="upstream-validation-result success" v-if="currentUpstreamVerified"><span class="status-dot"></span><strong>当前连接验证通过</strong><small>已收到上游原始响应</small></div>
+                      <div class="upstream-validation-copy"><div><h3>{{ detail.executionMode === 'SQL' ? '查询结果' : '测试结果' }}<HelpTip title="测试范围" content="通过资源提供商独立处理应用执行已保存的 SQL 或发送 HTTP 请求，并展示原始查询结果或供应商响应。此测试不执行标准服务字段转换。"/></h3></div></div>
+                      <div class="upstream-validation-result success" v-if="currentUpstreamVerified"><span class="status-dot"></span><strong>{{ detail.executionMode === 'SQL' ? '查询成功' : '当前连接验证通过' }}</strong><small>{{ detail.executionMode === 'SQL' ? `${databaseResultRows.length} 条查询结果` : '已收到上游原始响应' }}</small></div>
                       <div class="upstream-validation-result error" v-else-if="testError" role="alert"><span class="status-dot offline"></span><div><strong>验证失败</strong><small>{{ testError }}</small></div></div>
-                      <div v-else class="upstream-validation-idle">尚未执行测试</div>
+                      <div v-else class="upstream-validation-idle">尚未执行{{ detail.executionMode === 'SQL' ? '查询' : '测试' }}</div>
                     </section>
                     <section v-if="upstreamSection===2" class="resource-test-detail">
                       <details class="address-disclosure test-route-disclosure"><summary>查看调用路径</summary><div class="address-disclosure-body"><span>处理应用</span><code>{{ selectedSource.applicationName || '未配置应用' }} · {{ selectedSource.runtimeUrl || '尚未配置地址' }}</code></div><div class="address-disclosure-body"><span>供应商接口</span><code>{{ previewUpstreamUrl || '尚未配置地址' }}</code></div></details>
                       <div class="test-grid">
-                        <div class="code-pane readonly"><div class="code-title"><span>{{ testResult ? '本次原始请求' : '原始请求样例' }}</span></div><CopyableBlock :value="testResult ? formatJson(testResult.upstreamRequest) : upstreamRequestText"><pre>{{ testResult ? formatJson(testResult.upstreamRequest) : upstreamRequestText }}</pre></CopyableBlock></div>
-                        <div class="code-pane readonly"><div class="code-title"><span>供应商原始响应</span></div><CopyableBlock :value="testResult ? formatJson(testResult.upstreamResponse) : testError || '等待执行测试'"><pre>{{ testResult ? formatJson(testResult.upstreamResponse) : testError || '等待执行测试' }}</pre></CopyableBlock></div>
+                        <div class="code-pane readonly"><div class="code-title"><span>{{ testResult ? (detail.executionMode === 'SQL' ? '本次查询参数' : '本次原始请求') : (detail.executionMode === 'SQL' ? '请求参数样例' : '原始请求样例') }}</span></div><CopyableBlock :value="testResult ? formatJson(testResult.upstreamRequest) : upstreamRequestText"><pre>{{ testResult ? formatJson(testResult.upstreamRequest) : upstreamRequestText }}</pre></CopyableBlock></div>
+                        <div class="code-pane readonly"><div class="code-title"><span>{{ detail.executionMode === 'SQL' ? '查询结果' : '供应商原始响应' }}<small v-if="detail.executionMode === 'SQL' && testResult">{{ databaseResultRows.length }} 条</small></span></div><CopyableBlock :value="testResult ? formatJson(testResult.upstreamResponse) : testError || '等待执行测试'"><pre>{{ testResult ? formatJson(testResult.upstreamResponse) : testError || '等待执行测试' }}</pre></CopyableBlock></div>
                       </div>
+                      <el-table v-if="detail.executionMode === 'SQL' && databaseResultRows.length" :data="databaseResultRows" border size="small" class="database-query-result-table"><el-table-column v-for="column in databaseResultColumns" :key="column" :prop="column" :label="column" min-width="140" show-overflow-tooltip/></el-table>
                     </section>
                     <p v-if="upstreamSection===2 && !selectedSource.runtimeUrl" class="route-notice">资源提供商尚未配置处理应用。<el-button text type="primary" @click="goToProviderManagement()">前往资源方管理</el-button></p>
                   </div>
@@ -3710,7 +3719,7 @@ function formatDateTime(value: string) { return value ? value.replace('T', ' ').
                 <div class="api-footer-actions">
                   <template v-if="serviceDevelopmentStage==='UPSTREAM'">
                     <el-button :loading="connectionSaving" :disabled="testRunning || detailLoading" @click="saveConnectionConfig">保存接入配置</el-button>
-                    <el-button :loading="testRunning" :disabled="connectionSaving || !previewUpstreamUrl" @click="validateUpstreamCapability">测试接口</el-button>
+                    <el-button :loading="testRunning" :disabled="connectionSaving || (connectionForm.executionMode !== 'SQL' && !previewUpstreamUrl)" @click="validateUpstreamCapability">{{ connectionForm.executionMode === 'SQL' ? '查询数据' : '测试接口' }}</el-button>
                     <el-tooltip :disabled="!upstreamSaveRequired" content="请先保存当前配置" placement="top"><span><el-button type="primary" :disabled="testRunning || connectionSaving || upstreamSaveRequired" @click="openPlatformServiceDialog">创建标准服务</el-button></span></el-tooltip>
                   </template>
                   <template v-else>

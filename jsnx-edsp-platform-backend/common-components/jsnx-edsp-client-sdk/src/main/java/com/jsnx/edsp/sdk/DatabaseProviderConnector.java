@@ -59,7 +59,9 @@ public final class DatabaseProviderConnector implements ProviderConnector, AutoC
         String user = text(config.get("username"));
         if (!url.startsWith("jdbc:") || user.isBlank()) throw new IllegalStateException("数据库连接配置不完整");
         String password = password(config);
-        int maxRows = boundedNumber(config.get("maxRows"), 500, 1, ABSOLUTE_MAX_ROWS);
+        int configuredMaxRows = boundedNumber(config.get("maxRows"), 500, 1, ABSOLUTE_MAX_ROWS);
+        int queryMaxRows = boundedNumber(query.get("maxRows"), configuredMaxRows, 1, ABSOLUTE_MAX_ROWS);
+        int maxRows = Math.min(configuredMaxRows, queryMaxRows);
         int queryTimeout = Math.max(1, (int) Math.ceil(timeoutMs / 1000.0));
         QueryPool pool = pool(url, user, password, config, queryTimeout, maxRows);
         List<Map<String, Object>> rows = pool.query.query(sql, parameters, resultSet -> {

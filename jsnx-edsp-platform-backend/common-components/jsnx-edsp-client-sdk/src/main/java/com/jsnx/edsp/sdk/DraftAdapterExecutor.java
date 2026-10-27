@@ -52,6 +52,8 @@ public final class DraftAdapterExecutor {
             Map<String, Object> query = new LinkedHashMap<>();
             query.put("executionMode", executionMode);
             query.put("sqlTemplate", text(payload.get("sqlTemplate")));
+            if (payload.get("sqlParameters") != null) query.put("sqlParameters", payload.get("sqlParameters"));
+            if (payload.get("maxRows") != null) query.put("maxRows", payload.get("maxRows"));
             connection.put("resourceQuery", query);
         }
         int timeoutMs = timeout(payload.get("timeoutMs"));
