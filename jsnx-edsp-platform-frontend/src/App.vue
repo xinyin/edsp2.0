@@ -241,6 +241,8 @@ type PlatformManagementTab = 'contract' | 'codes' | 'security' | 'audit'
 const platformManagementTab = ref<PlatformManagementTab>('contract')
 const platformCodeSearch = ref('')
 const platformCodeCategory = ref('')
+const platformCodePage = ref(1)
+const platformCodePageSize = ref(20)
 const platformCodeCategories = [
   { value: 'SUCCESS', label: '成功结果' }, { value: 'NO_DATA', label: '未查得数据' },
   { value: 'REQUEST', label: '请求校验' }, { value: 'AUTH', label: '认证授权' },
@@ -273,6 +275,14 @@ const filteredPlatformResponseCodes = computed(() => {
   return platformResponseCodes.value.filter(item =>
     (!platformCodeCategory.value || item.category === platformCodeCategory.value)
     && (!keyword || `${item.code} ${item.name} ${item.description} ${platformCodeCategoryLabel(item.category)}`.toLowerCase().includes(keyword)))
+})
+const pagedPlatformResponseCodes = computed(() => filteredPlatformResponseCodes.value.slice(
+  (platformCodePage.value - 1) * platformCodePageSize.value,
+  platformCodePage.value * platformCodePageSize.value))
+watch([platformCodeSearch, platformCodeCategory, platformCodePageSize], () => { platformCodePage.value = 1 })
+watch(filteredPlatformResponseCodes, rows => {
+  const lastPage = Math.max(1, Math.ceil(rows.length / platformCodePageSize.value))
+  if (platformCodePage.value > lastPage) platformCodePage.value = lastPage
 })
 const codeEditorDialog = ref(false)
 const codeEditorOriginal = ref('')
@@ -3486,7 +3496,8 @@ function formatDateTime(value: string) { return value ? value.replace('T', ' ').
 
             <section v-else-if="platformManagementTab==='codes'" class="platform-management-panel plain-panel">
               <div class="platform-toolbar"><el-input v-model="platformCodeSearch" :prefix-icon="Search" clearable placeholder="搜索返回码、名称或原始码"/><el-select v-model="platformCodeCategory" class="platform-code-category-filter" aria-label="返回码分类"><el-option label="全部分类" value=""/><el-option v-for="category in platformCodeCategories" :key="category.value" :label="category.label" :value="category.value"/></el-select><el-button type="primary" :icon="Plus" @click="editPlatformCode()">新增返回码</el-button></div>
-              <el-table :data="filteredPlatformResponseCodes" v-loading="loading" size="small" class="platform-code-table" empty-text="暂无平台返回码"><el-table-column prop="code" label="返回码" width="190"><template #default="{row}"><code>{{ row.code }}</code></template></el-table-column><el-table-column prop="name" label="名称" min-width="170"/><el-table-column label="分类" width="110"><template #default="{row}">{{ platformCodeCategoryLabel(row.category) }}</template></el-table-column><el-table-column label="结果状态" width="110"><template #default="{row}"><el-tag size="small" :type="row.resultStatus==='HIT'?'success':row.resultStatus==='MISS'?'info':'danger'">{{ row.resultStatus==='HIT'?'命中':row.resultStatus==='MISS'?'未命中':'异常' }}</el-tag></template></el-table-column><el-table-column label="状态" width="90"><template #default="{row}">{{ row.enabled ? '启用' : '停用' }}</template></el-table-column><el-table-column prop="description" label="说明" min-width="260" show-overflow-tooltip/><el-table-column label="操作" width="130" fixed="right"><template #default="{row}"><el-button text type="primary" @click="editPlatformCode(row)">编辑</el-button><el-button text type="danger" @click="deletePlatformCode(row)">删除</el-button></template></el-table-column></el-table>
+              <el-table :data="pagedPlatformResponseCodes" v-loading="loading" size="small" class="platform-code-table" empty-text="暂无平台返回码"><el-table-column prop="code" label="返回码" width="190"><template #default="{row}"><code>{{ row.code }}</code></template></el-table-column><el-table-column prop="name" label="名称" min-width="170"/><el-table-column label="分类" width="110"><template #default="{row}">{{ platformCodeCategoryLabel(row.category) }}</template></el-table-column><el-table-column label="结果状态" width="110"><template #default="{row}"><el-tag size="small" :type="row.resultStatus==='HIT'?'success':row.resultStatus==='MISS'?'info':'danger'">{{ row.resultStatus==='HIT'?'命中':row.resultStatus==='MISS'?'未命中':'异常' }}</el-tag></template></el-table-column><el-table-column label="状态" width="90"><template #default="{row}">{{ row.enabled ? '启用' : '停用' }}</template></el-table-column><el-table-column prop="description" label="说明" min-width="260" show-overflow-tooltip/><el-table-column label="操作" width="130" fixed="right"><template #default="{row}"><el-button text type="primary" @click="editPlatformCode(row)">编辑</el-button><el-button text type="danger" @click="deletePlatformCode(row)">删除</el-button></template></el-table-column></el-table>
+              <el-pagination v-model:current-page="platformCodePage" v-model:page-size="platformCodePageSize" class="platform-code-pagination" :page-sizes="[10, 20, 50, 100]" :total="filteredPlatformResponseCodes.length" layout="total, sizes, prev, pager, next" background/>
             </section>
 
             <section v-else-if="platformManagementTab==='security'" class="platform-management-panel plain-panel">
@@ -3616,7 +3627,7 @@ function formatDateTime(value: string) { return value ? value.replace('T', ' ').
                       <div class="resource-source-heading">
                         <button class="source-expand-toggle" :class="{expanded:isSourceExpanded(source.id)}" :aria-expanded="isSourceExpanded(source.id)" :aria-controls="'source-apis-' + source.id" :aria-label="(isSourceExpanded(source.id) ? '收起' : '展开') + source.sourceName" :disabled="!!sourceSearch.trim()" @click="activeMenu==='service-development' ? toggleServiceSource(source.id) : sourceExpansion[source.id] = !isSourceExpanded(source.id)"><ArrowRight/></button>
                         <button class="resource-source-head" :title="source.sourceName + ' · ' + source.sourceCode" @click="selectSource(source.id)"><span><strong>{{ source.sourceName }}</strong><small>{{ activeMenu==='resource' ? source.sourceCode + ' · ' : '' }}{{ activeMenu==='resource' ? sourceInterfaces(source.id).length : (servicePages[source.id]?.total ?? source.interfaceCount) }} 个{{ activeMenu==='resource' ? '资源 API' : '标准服务' }}</small></span><i class="status-dot" :class="source.status.toLowerCase()"></i></button>
-                        <el-dropdown v-if="activeMenu==='service-development'" trigger="click" @command="(command: string) => { if (command==='create') openPlatformServiceDialog(source.id) }"><button type="button" class="source-more-button" :aria-label="source.sourceName + '更多操作'" title="更多操作" @click.stop><MoreFilled/></button><template #dropdown><el-dropdown-menu><el-dropdown-item command="create">从此数据源新增标准服务</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
+                        <el-dropdown v-if="activeMenu==='service-development'" trigger="click" popper-class="service-source-menu" @command="(command: string) => { if (command==='create') openPlatformServiceDialog(source.id) }"><button type="button" class="source-more-button" :aria-label="source.sourceName + '更多操作'" title="更多操作" @click.stop><MoreFilled/></button><template #dropdown><el-dropdown-menu><el-dropdown-item command="create" :icon="Plus">新增标准服务</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
                       </div>
                       <div v-show="isSourceExpanded(source.id)" :id="'source-apis-' + source.id">
                         <div class="resource-api-list">

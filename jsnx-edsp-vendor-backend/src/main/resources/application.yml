@@ -11,3 +11,6 @@ spring:
   sql:
     init:
       mode: never
+vendor:
+  crypto:
+    test-key: ${VENDOR_CRYPTO_TEST_KEY:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}

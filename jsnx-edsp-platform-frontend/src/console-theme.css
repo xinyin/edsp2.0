@@ -141,6 +141,11 @@ body { background: var(--canvas); }
 .service-workbench .source-more-button { width: 28px; height: 30px; display: grid; place-items: center; flex: 0 0 28px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #5c6d7e; cursor: pointer; }
 .service-workbench .source-more-button:hover, .service-workbench .source-more-button:focus-visible { color: var(--brand); background: #e1effb; }
 .service-workbench .source-more-button svg { width: 16px; height: 16px; }
+.service-workbench .source-more-button svg { transform: rotate(90deg); }
+.service-source-menu.el-popper { min-width: 152px; padding: 4px; border-radius: 5px; }
+.service-source-menu .el-dropdown-menu { padding: 0; }
+.service-source-menu .el-dropdown-menu__item { min-height: 34px; padding: 6px 10px; border-radius: 3px; color: #34495b; font-size: 12px; }
+.service-source-menu .el-dropdown-menu__item:hover { background: #edf4fa; color: var(--brand); }
 .service-workbench .catalog-load-more { width: 100%; min-height: 30px; margin-top: 4px; border: 0; border-radius: 4px; background: transparent; color: var(--brand); font-size: 12px; cursor: pointer; }
 .service-workbench .catalog-load-more:hover, .service-workbench .catalog-load-more:focus-visible { background: #e1effb; }
 .service-workbench .catalog-load-more:disabled { color: var(--muted); cursor: default; }
