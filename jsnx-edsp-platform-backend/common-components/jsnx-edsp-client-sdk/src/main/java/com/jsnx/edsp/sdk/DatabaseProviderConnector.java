@@ -63,8 +63,11 @@ public final class DatabaseProviderConnector implements ProviderConnector, AutoC
         int queryMaxRows = boundedNumber(query.get("maxRows"), configuredMaxRows, 1, ABSOLUTE_MAX_ROWS);
         int maxRows = Math.min(configuredMaxRows, queryMaxRows);
         int queryTimeout = Math.max(1, (int) Math.ceil(timeoutMs / 1000.0));
-        QueryPool pool = pool(url, user, password, config, queryTimeout, maxRows);
-        List<Map<String, Object>> rows = pool.query.query(sql, parameters, resultSet -> {
+        QueryPool pool = pool(url, user, password, config);
+        JdbcTemplate jdbc = new JdbcTemplate(pool.dataSource);
+        jdbc.setQueryTimeout(queryTimeout);
+        jdbc.setMaxRows(maxRows);
+        List<Map<String, Object>> rows = new NamedParameterJdbcTemplate(jdbc).query(sql, parameters, resultSet -> {
             List<Map<String, Object>> result = new ArrayList<>();
             var metadata = resultSet.getMetaData();
             int columns = metadata.getColumnCount();
@@ -116,7 +119,7 @@ public final class DatabaseProviderConnector implements ProviderConnector, AutoC
         String user = text(config.get("username"));
         if (!url.startsWith("jdbc:") || user.isBlank()) throw new IllegalStateException("数据库连接配置不完整");
         String password = password(config);
-        QueryPool pool = pool(url, user, password, config, Math.max(1, (int) Math.ceil(timeoutMs / 1000.0)), 2_000);
+        QueryPool pool = pool(url, user, password, config);
         try (var jdbc = pool.dataSource.getConnection()) {
             jdbc.setNetworkTimeout(java.util.concurrent.ForkJoinPool.commonPool(), Math.max(100, Math.min(120_000, timeoutMs)));
             if ("CONNECTION_TEST".equalsIgnoreCase(mode)) {
@@ -167,8 +170,7 @@ public final class DatabaseProviderConnector implements ProviderConnector, AutoC
         }
     }
 
-    private QueryPool pool(String url, String user, String password, Map<String, Object> config,
-                           int queryTimeout, int maxRows) {
+    private QueryPool pool(String url, String user, String password, Map<String, Object> config) {
         String key = Integer.toHexString(Objects.hash(url, user, password));
         return pools.computeIfAbsent(key, ignored -> {
             HikariConfig pool = new HikariConfig();
@@ -180,14 +182,11 @@ public final class DatabaseProviderConnector implements ProviderConnector, AutoC
             pool.setPoolName("edsp-provider-db-" + key);
             pool.setMaximumPoolSize(boundedNumber(config.get("maxActive"), 10, 1, 20));
             pool.setMinimumIdle(boundedNumber(config.get("minIdle"), 0, 0, 10));
-            pool.setConnectionTimeout(Math.max(1_000, Math.min(15_000, queryTimeout * 1_000L)));
+            pool.setConnectionTimeout(15_000);
             pool.setReadOnly(true);
             pool.setAutoCommit(true);
             HikariDataSource dataSource = new HikariDataSource(pool);
-            JdbcTemplate jdbc = new JdbcTemplate(dataSource);
-            jdbc.setQueryTimeout(queryTimeout);
-            jdbc.setMaxRows(maxRows);
-            return new QueryPool(dataSource, new NamedParameterJdbcTemplate(jdbc));
+            return new QueryPool(dataSource);
         });
     }
 
@@ -236,5 +235,5 @@ public final class DatabaseProviderConnector implements ProviderConnector, AutoC
 
     @Override public void close() { pools.values().forEach(pool -> pool.dataSource.close()); pools.clear(); }
 
-    private record QueryPool(HikariDataSource dataSource, NamedParameterJdbcTemplate query) {}
+    private record QueryPool(HikariDataSource dataSource) {}
 }

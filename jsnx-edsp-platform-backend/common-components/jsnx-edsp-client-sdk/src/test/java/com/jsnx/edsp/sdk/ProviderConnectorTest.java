@@ -133,6 +133,33 @@ class ProviderConnectorTest {
     }
 
     @Test
+    void databaseQueryLimitAppliesPerStatementWhenTheConnectionPoolIsReused() throws Exception {
+        String jdbcUrl = "jdbc:h2:mem:query_limit_test;DB_CLOSE_DELAY=-1";
+        try (var connection = java.sql.DriverManager.getConnection(jdbcUrl, "sa", "")) {
+            connection.createStatement().execute("CREATE TABLE IF NOT EXISTS query_rows (id INT PRIMARY KEY)");
+            connection.createStatement().execute("DELETE FROM query_rows");
+            connection.createStatement().execute("INSERT INTO query_rows SELECT X FROM SYSTEM_RANGE(1, 10)");
+        }
+        DatabaseProviderConnector connector = new DatabaseProviderConnector(name -> null);
+        Map<String, Object> connection = Map.of("accessConfig", Map.of(
+                        "jdbcUrl", jdbcUrl, "username", "sa", "driver", "org.h2.Driver"),
+                "resourceQuery", Map.of("executionMode", "SQL", "sqlTemplate", "SELECT id FROM query_rows ORDER BY id"));
+
+        Map<String, Object> first = connector.execute(connectionWithLimit(connection, 2), "QUERY", "", Map.of(), "T1", 3_000);
+        Map<String, Object> second = connector.execute(connectionWithLimit(connection, 7), "QUERY", "", Map.of(), "T2", 3_000);
+
+        assertThat(first.get("rowCount")).isEqualTo(2);
+        assertThat(second.get("rowCount")).isEqualTo(7);
+        connector.close();
+    }
+
+    private Map<String, Object> connectionWithLimit(Map<String, Object> connection, int maxRows) {
+        Map<String, Object> resourceQuery = new java.util.LinkedHashMap<>((Map<String, Object>) connection.get("resourceQuery"));
+        resourceQuery.put("maxRows", maxRows);
+        return Map.of("accessConfig", connection.get("accessConfig"), "resourceQuery", resourceQuery);
+    }
+
+    @Test
     void connectionTestReturnsAdapterFailureWithoutExposingExceptionAsHttp500() {
         ProviderConnector connector = new ProviderConnector() {
             public String accessMode() { return "DATABASE"; }

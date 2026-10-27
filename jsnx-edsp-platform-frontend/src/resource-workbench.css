@@ -25,7 +25,7 @@
 .database-test-result.is-error { border-color: #eddfdb; background: #fcf7f5; color: #8b4739; }
 .database-test-result small { color: inherit; opacity: .8; font-size: 11px; }
 .database-query-limit-hint { margin-left: 10px; color: #65778a; font-size: 11px; }
-.database-query-result-table { margin-top: 12px; }
+.database-query-result-table { max-height: 360px; margin-top: 12px; overflow: auto; }
 .test-route-disclosure { border-top: 0; border-bottom: 1px solid #e6ebf0; }
 @media (max-width: 640px) {
   .address-detail-row, .address-disclosure-body { grid-template-columns: minmax(0, 1fr) auto; }
